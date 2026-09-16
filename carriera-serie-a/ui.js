@@ -186,6 +186,9 @@
   };
   // Modulo scelto per l'anteprima: solo preferenza di vista, non persistito.
   let previewFormation = '433';
+  // Chi hai selezionato per uno scambio titolare/panchina (pid), o null se non stai
+  // scambiando nessuno. Anche questo solo stato di vista, non persistito.
+  let selectedPreviewPid = null;
 
   // Probabile formazione: solo un'anteprima (i migliori per overall in ciascun ruolo, gli
   // stessi criteri di pickMatchLineup ma senza il margine di casualità a partita). Non
@@ -210,7 +213,8 @@
     for (let i = 0; i < count; i++) {
       const p = list[i];
       chips.push(p
-        ? `<div class="ow-pitch-chip" title="${p.n} · ${p.ovr}"><span class="ovr" style="${ROLE_BADGE[p.pos] || ''}">${p.ovr}</span><span class="nm">${flagOf(p)}${p.n.split(' ').slice(-1)[0]}</span></div>`
+        ? `<div class="ow-pitch-chip${p.pid === selectedPreviewPid ? ' sel' : ''}" data-pid="${p.pid}" title="${p.n} · ${p.ovr} · tocca per scambiare">
+            <span class="ovr" style="${ROLE_BADGE[p.pos] || ''}">${p.ovr}</span><span class="nm">${flagOf(p)}${p.n.split(' ').slice(-1)[0]}</span></div>`
         : '<div class="ow-pitch-chip empty"><span class="ovr">–</span><span class="nm">—</span></div>');
     }
     return `<div class="ow-pitch-row">${chips.join('')}</div>`;
@@ -233,16 +237,60 @@
     const half = Math.ceil(flexPlayers.length / 2);
     return flexPlayers.slice(0, half).concat(pure, flexPlayers.slice(half));
   }
-  function pitchHTML(key) {
+  // Undici (o meno, a seconda del modulo) migliori disponibili per il modulo dato, in
+  // ordine di riga: solo pid, null dove il ruolo non ha abbastanza giocatori.
+  function computeAutoXI(key) {
     const f = FORMATIONS[key] || FORMATIONS['433'];
     const byPos = previewLineup();
     const cursor = { POR: 0, DIF: 0, CEN: 0, ATT: 0 };
-    const rows = f.rows.map(([role, n, flexRole, flexN]) => {
+    const pids = [];
+    f.rows.forEach(([role, n, flexRole, flexN]) => {
       const list = flexN ? buildFlexRow(byPos, cursor, role, n, flexRole, flexN) : byPos[role].slice(cursor[role], cursor[role] + n);
       if (!flexN) cursor[role] += n;
-      return pitchRowHTML(list, n);
+      for (let i = 0; i < n; i++) pids.push(list[i] ? list[i].pid : null);
+    });
+    return pids;
+  }
+  // La formazione mostrata è quella scelta a mano (S.previewXI), finché resta valida per
+  // il modulo attuale e tutti i pid sono ancora in rosa; altrimenti si ricalcola quella
+  // automatica e diventa la nuova base. Così gli scambi fatti a mano restano finché non
+  // cambi modulo o venda/perda uno dei titolari scelti.
+  function getPreviewXI() {
+    const f = FORMATIONS[previewFormation] || FORMATIONS['433'];
+    const totalSlots = f.rows.reduce((a, r) => a + r[1], 0);
+    const stored = S.previewXI;
+    if (stored && stored.key === previewFormation && Array.isArray(stored.pids) && stored.pids.length === totalSlots) {
+      if (stored.pids.every((pid) => pid == null || S.squad.some((p) => p.pid === pid))) return stored.pids;
+    }
+    const auto = computeAutoXI(previewFormation);
+    S.previewXI = { key: previewFormation, pids: auto };
+    return auto;
+  }
+  function pitchHTML(key, pids) {
+    const f = FORMATIONS[key] || FORMATIONS['433'];
+    let idx = 0;
+    const rows = f.rows.map(([role, n]) => {
+      const slotPids = pids.slice(idx, idx + n); idx += n;
+      const players = slotPids.map((pid) => (pid != null ? S.squad.find((p) => p.pid === pid) : null));
+      return pitchRowHTML(players, n);
     }).join('');
     return `<div class="ow-pitch">${rows}</div>`;
+  }
+  // Panchina: tutta la rosa che non è fra i titolari del modulo scelto, ordinata per ruolo
+  // e overall. Ogni riga è cliccabile come i giocatori in campo, per lo scambio.
+  function benchHTML(xiPids) {
+    const xiSet = new Set(xiPids.filter((x) => x != null));
+    const order = { POR: 0, DIF: 1, CEN: 2, ATT: 3 };
+    const bench = S.squad.filter((p) => !xiSet.has(p.pid)).sort((a, b) => (order[a.pos] - order[b.pos]) || (b.ovr - a.ovr));
+    if (!bench.length) return '<div class="ow-sub" style="margin-top:8px">Nessun altro giocatore in panchina.</div>';
+    return `
+      <div class="ow-bench-title">🔁 Panchina — tocca un giocatore e poi uno in campo per scambiarli</div>
+      <div class="ow-bench-list">${bench.map((p) => `
+        <div class="ow-bench-chip${p.pid === selectedPreviewPid ? ' sel' : ''}" data-pid="${p.pid}">
+          <span class="ovr" style="${ROLE_BADGE[p.pos] || ''}">${p.ovr}</span>
+          <span class="postag postag-${p.pos}">${p.pos}</span>
+          <span class="nm">${flagOf(p)}${p.n}</span>
+        </div>`).join('')}</div>`;
   }
   function formationPickerHTML() {
     return `<div class="ow-formation-picker">${Object.keys(FORMATIONS).map((k) => `<button type="button" class="ow-formation-pick ${previewFormation === k ? 'on' : ''}" data-formation="${k}">${FORMATIONS[k].label}</button>`).join('')}</div>`;
@@ -354,6 +402,7 @@
         }).join('')}
       </div>` : ''}`;
 
+    const xiPids = getPreviewXI();
     const rosaHTML = `
       <div class="ow-sec">
         <div class="ow-sec-title">🧠 Allenatore</div>
@@ -396,7 +445,9 @@
       <div class="ow-sec">
         <div class="ow-sec-title">⚽ Probabile formazione (${FORMATIONS[previewFormation].label})</div>
         ${formationPickerHTML()}
-        ${pitchHTML(previewFormation)}
+        ${pitchHTML(previewFormation, xiPids)}
+        ${benchHTML(xiPids)}
+        <button class="dyn-mini" id="resetXIBtn" style="margin-top:10px;width:100%">🔄 Formazione automatica</button>
       </div>`;
 
     const stadioHTML = `
@@ -563,7 +614,24 @@
     body.querySelectorAll('[data-role]').forEach((el) => el.addEventListener('click', () => { squadRoleFilter = el.dataset.role; renderBoard(); }));
     const sortBtn = $('squadSortBtn');
     if (sortBtn) sortBtn.addEventListener('click', () => { squadSortDesc = !squadSortDesc; renderBoard(); });
-    body.querySelectorAll('[data-formation]').forEach((el) => el.addEventListener('click', () => { previewFormation = el.dataset.formation; renderBoard(); }));
+    body.querySelectorAll('[data-formation]').forEach((el) => el.addEventListener('click', () => { previewFormation = el.dataset.formation; selectedPreviewPid = null; renderBoard(); }));
+    // Scambio titolare/panchina: primo tocco seleziona, secondo tocco su un altro giocatore
+    // scambia i due (stesso giocatore due volte = deseleziona). Funziona anche titolare
+    // con titolare, per riordinare la formazione a piacere.
+    body.querySelectorAll('[data-pid]').forEach((el) => el.addEventListener('click', () => {
+      const pid = +el.dataset.pid;
+      if (selectedPreviewPid == null) { selectedPreviewPid = pid; renderBoard(); return; }
+      if (selectedPreviewPid === pid) { selectedPreviewPid = null; renderBoard(); return; }
+      const xi = S.previewXI.pids;
+      const idxA = xi.indexOf(selectedPreviewPid), idxB = xi.indexOf(pid);
+      if (idxA >= 0 && idxB >= 0) { xi[idxA] = pid; xi[idxB] = selectedPreviewPid; }
+      else if (idxA >= 0) { xi[idxA] = pid; }
+      else if (idxB >= 0) { xi[idxB] = selectedPreviewPid; }
+      selectedPreviewPid = null;
+      renderBoard(); saveGame();
+    }));
+    const resetXI = $('resetXIBtn');
+    if (resetXI) resetXI.addEventListener('click', () => { S.previewXI = null; selectedPreviewPid = null; renderBoard(); saveGame(); });
     $('startSeasonBtn').addEventListener('click', startSeason);
     $('sellBtn').addEventListener('click', confirmSell);
     $('resignBtn').addEventListener('click', confirmResign);
