@@ -275,7 +275,101 @@
     'Reid', 'Stewart', 'Watson', 'Mitchell', 'Campbell', 'Anderson',
     'Palmer', 'Foster', 'Cross', 'Hood', 'Marsh', 'Chapman', 'Dyer', 'Osei', 'Amankwah',
   ];
-  const genName = () => pick(FIRST) + ' ' + pick(LAST);
+  // Le prime voci di FIRST/LAST sono italiane in senso stretto (usate per i nazionali
+  // italiani); il resto del pool è il mix multinazionale già esistente, riusato per
+  // ogni giocatore straniero a prescindere dalla nazionalità estratta.
+  const ITA_FIRST = FIRST.slice(0, 38), ITA_LAST = LAST.slice(0, 40);
+  const FOREIGN_FIRST = FIRST.slice(38), FOREIGN_LAST = LAST.slice(40);
+  const genName = (nat) => {
+    if (nat && nat.code === 'ITA') return pick(ITA_FIRST) + ' ' + pick(ITA_LAST);
+    if (nat) return pick(FOREIGN_FIRST) + ' ' + pick(FOREIGN_LAST);
+    return pick(FIRST) + ' ' + pick(LAST);
+  };
+
+  /* ---------------- nazionalità ---------------- */
+  // In Eccellenza la rosa è quasi tutta italiana; salendo di categoria la quota di
+  // stranieri cresce, fino a rispecchiare una vera Serie A. NATIONS è la lista degli
+  // esteri possibili (bandiera + nome); ITA è gestita a parte perché è sempre la più comune.
+  const ITA_NAT = { code: 'ITA', name: 'Italia', flag: '🇮🇹' };
+  const NATIONS = [
+    { code: 'ESP', name: 'Spagna', flag: '🇪🇸' }, { code: 'ARG', name: 'Argentina', flag: '🇦🇷' },
+    { code: 'BRA', name: 'Brasile', flag: '🇧🇷' }, { code: 'POR', name: 'Portogallo', flag: '🇵🇹' },
+    { code: 'FRA', name: 'Francia', flag: '🇫🇷' }, { code: 'SEN', name: 'Senegal', flag: '🇸🇳' },
+    { code: 'CIV', name: 'Costa d\'Avorio', flag: '🇨🇮' }, { code: 'MLI', name: 'Mali', flag: '🇲🇱' },
+    { code: 'GHA', name: 'Ghana', flag: '🇬🇭' }, { code: 'NGA', name: 'Nigeria', flag: '🇳🇬' },
+    { code: 'SRB', name: 'Serbia', flag: '🇷🇸' }, { code: 'CRO', name: 'Croazia', flag: '🇭🇷' },
+    { code: 'ROU', name: 'Romania', flag: '🇷🇴' }, { code: 'SWE', name: 'Svezia', flag: '🇸🇪' },
+    { code: 'NOR', name: 'Norvegia', flag: '🇳🇴' }, { code: 'DEN', name: 'Danimarca', flag: '🇩🇰' },
+    { code: 'GER', name: 'Germania', flag: '🇩🇪' }, { code: 'NED', name: 'Olanda', flag: '🇳🇱' },
+    { code: 'ENG', name: 'Inghilterra', flag: '🏴' }, { code: 'SCO', name: 'Scozia', flag: '🏴' },
+    { code: 'IRL', name: 'Irlanda', flag: '🇮🇪' }, { code: 'TUR', name: 'Turchia', flag: '🇹🇷' },
+    { code: 'GRE', name: 'Grecia', flag: '🇬🇷' }, { code: 'POL', name: 'Polonia', flag: '🇵🇱' },
+    { code: 'CZE', name: 'Rep. Ceca', flag: '🇨🇿' }, { code: 'GEO', name: 'Georgia', flag: '🇬🇪' },
+    { code: 'JPN', name: 'Giappone', flag: '🇯🇵' }, { code: 'KOR', name: 'Corea del Sud', flag: '🇰🇷' },
+    { code: 'COL', name: 'Colombia', flag: '🇨🇴' }, { code: 'CHI', name: 'Cile', flag: '🇨🇱' },
+    { code: 'MAR', name: 'Marocco', flag: '🇲🇦' }, { code: 'ALG', name: 'Algeria', flag: '🇩🇿' },
+    { code: 'IRN', name: 'Iran', flag: '🇮🇷' }, { code: 'UKR', name: 'Ucraina', flag: '🇺🇦' },
+    { code: 'ISL', name: 'Islanda', flag: '🇮🇸' }, { code: 'BEL', name: 'Belgio', flag: '🇧🇪' },
+  ];
+  // Quota di italiani per categoria (indice = S.div, 0=Eccellenza … 4=Serie A): scende
+  // gradualmente, come la vera piramide del calcio italiano.
+  const ITA_SHARE = [0.97, 0.90, 0.75, 0.55, 0.35];
+  function pickNationality(divIdx) {
+    const itaChance = ITA_SHARE[clamp(divIdx, 0, ITA_SHARE.length - 1)];
+    return Math.random() < itaChance ? ITA_NAT : pick(NATIONS);
+  }
+  const flagOf = (p) => (p.nat && p.nat.flag ? p.nat.flag + ' ' : '');
+
+  /* ---------------- stemma procedurale ---------------- */
+  // Non più un unico stemma riciclato ovunque: alla creazione del club si sceglie una
+  // forma (scudo/tondo/esagono) + due colori, e da quel momento è la vera identità
+  // grafica del club — nella barra home, in sala del consiglio e nella bacheca finale.
+  function hslToHex(h, s, l) {
+    s /= 100; l /= 100;
+    const k = (n) => (n + h / 30) % 12;
+    const a = s * Math.min(l, 1 - l);
+    const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    const toHex = (x) => Math.round(255 * x).toString(16).padStart(2, '0');
+    return '#' + toHex(f(0)) + toHex(f(8)) + toHex(f(4));
+  }
+  function randCrestColors() {
+    const h1 = rnd(360), h2 = (h1 + 24 + rnd(48)) % 360;
+    return [hslToHex(h1, 55 + rnd(20), 36 + rnd(12)), hslToHex(h2, 45 + rnd(20), 16 + rnd(12))];
+  }
+  const CREST_DEFAULT = { shape: 'shield', colors: ['#f0c869', '#7a4f16'] };
+  let crestUid = 0;
+  // I tre "disegni" disponibili: contorno + un piccolo emblema a stella interno, entrambi
+  // riempiti con lo stesso gradiente a 2 colori scelto dal presidente.
+  function crestInner(shape, gradId) {
+    if (shape === 'round') {
+      return `<circle cx="60" cy="63" r="56" fill="url(#${gradId})" fill-opacity=".18" stroke="url(#${gradId})" stroke-width="3.5"/>
+        <path d="M60 33 L67 53 L88 54 L71 67 L77 88 L60 76 L43 88 L49 67 L32 54 L53 53 Z" fill="url(#${gradId})"/>`;
+    }
+    if (shape === 'hex') {
+      return `<path d="M60 4 L108 30 V90 L60 116 L12 90 V30 Z" fill="url(#${gradId})" fill-opacity=".18" stroke="url(#${gradId})" stroke-width="3.5"/>
+        <path d="M60 32 L67 52 L88 53 L71 66 L77 87 L60 75 L43 87 L49 66 L32 53 L53 52 Z" fill="url(#${gradId})"/>`;
+    }
+    return `<path d="M60 4 L112 26 V64 C112 96 90 120 60 134 C30 120 8 96 8 64 V26 Z" fill="url(#${gradId})" fill-opacity=".18" stroke="url(#${gradId})" stroke-width="3.5"/>
+      <path d="M60 40 L67 60 L88 61 L71 74 L77 95 L60 83 L43 95 L49 74 L32 61 L53 60 Z" fill="url(#${gradId})"/>`;
+  }
+  function crestMarkup(shape, colors, cls) {
+    const id = 'cg' + (crestUid++);
+    const c = colors && colors.length === 2 ? colors : CREST_DEFAULT.colors;
+    return `<svg viewBox="0 0 120 138" xmlns="http://www.w3.org/2000/svg" class="${cls || ''}" aria-hidden="true">
+      <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="${c[0]}" /><stop offset="1" stop-color="${c[1]}" />
+      </linearGradient></defs>
+      ${crestInner(shape || CREST_DEFAULT.shape, id)}
+    </svg>`;
+  }
+  // Aggiorna lo stemma nella barra home con quello del club attivo (o quello di
+  // default finché non esiste ancora una carriera).
+  function syncHomeCrest() {
+    const wrap = $('owHomeCrestWrap'); if (!wrap) return;
+    const shape = (S && S.crestShape) || CREST_DEFAULT.shape;
+    const colors = (S && S.crestColors) || CREST_DEFAULT.colors;
+    wrap.innerHTML = crestMarkup(shape, colors, '');
+  }
 
   /* ---------------- avversari di coppa ---------------- */
   // Coppa Italia: pesca un club vero (da una qualunque delle categorie italiane note) con
@@ -341,22 +435,54 @@
   // panchina: giocano meno (peso ridotto) ma incassano comunque una presenza e una
   // chance di incidere. Richiamata una volta a partita (non per gol), così titolari e
   // presenze restano coerenti nell'arco dei 90 minuti.
+  // Infortuni e squalifiche: ogni chiamata a pickMatchLineup rappresenta UNA partita, quindi
+  // è anche il punto giusto per far scorrere i contatori di chi è ai box (in settimane di
+  // partite, non calendario) prima di scegliere chi è disponibile.
+  function tickAbsences() {
+    S.squad.forEach((p) => { if (p.outWeeks > 0) p.outWeeks--; if (p.suspMatches > 0) p.suspMatches--; });
+  }
+  // Dopo la partita, chi ha giocato rischia un infortunio (più probabile più si va avanti
+  // con l'età) o, se titolare, un cartellino che lo terrà fuori dalla prossima. Leggero di
+  // proposito: qui l'obiettivo è dare peso alla gestione della rosa, non simulare un vero
+  // bollettino medico.
+  function rollAbsences(lineup) {
+    const events = [];
+    S.squad.forEach((p) => {
+      if (!(lineup.starters.has(p.pid) || lineup.subs.has(p.pid))) return;
+      if (p.outWeeks > 0 || p.suspMatches > 0) return;
+      const injChance = p.age >= 32 ? 0.03 : p.age >= 28 ? 0.02 : 0.013;
+      if (Math.random() < injChance) {
+        const weeks = 1 + rnd(3);
+        p.outWeeks = weeks;
+        events.push({ n: p.n, nat: p.nat, kind: 'inj', weeks });
+      } else if (lineup.starters.has(p.pid) && Math.random() < 0.018) {
+        p.suspMatches = 1;
+        events.push({ n: p.n, nat: p.nat, kind: 'susp' });
+      }
+    });
+    return events;
+  }
   function pickMatchLineup(squad) {
-    const rated = squad.map((p) => ({ p, eff: p.ovr * (p.formSeason || 1) * (0.82 + Math.random() * 0.36) }));
+    tickAbsences();
+    const available = squad.filter((p) => !(p.outWeeks > 0) && !(p.suspMatches > 0));
+    const pool = available.length >= Math.min(11, squad.length) ? available : squad;   // rosa decimata: si gioca comunque con chi c'è
+    const rated = pool.map((p) => ({ p, eff: p.ovr * (p.formSeason || 1) * (0.82 + Math.random() * 0.36) }));
     const byPos = { POR: [], DIF: [], CEN: [], ATT: [] };
     rated.forEach((r) => { if (byPos[r.p.pos]) byPos[r.p.pos].push(r); });
     Object.keys(byPos).forEach((k) => byPos[k].sort((a, b) => b.eff - a.eff));
     const need = { POR: 1, DIF: 4, CEN: 3, ATT: 3 };
     const starters = new Set();
     Object.keys(need).forEach((k) => byPos[k].slice(0, need[k]).forEach((r) => starters.add(r.p.pid)));
-    const target = Math.min(11, squad.length);
+    const target = Math.min(11, pool.length);
     if (starters.size < target) {
       rated.slice().sort((a, b) => b.eff - a.eff).forEach((r) => { if (starters.size < target) starters.add(r.p.pid); });
     }
-    const bench = squad.filter((p) => !starters.has(p.pid));
+    const bench = pool.filter((p) => !starters.has(p.pid));
     const subsCount = Math.min(bench.length, 1 + rnd(3));
     const subs = new Set(shuffle(bench.slice()).slice(0, subsCount).map((p) => p.pid));
-    return { starters, subs };
+    const lineup = { starters, subs };
+    lineup.events = rollAbsences(lineup);
+    return lineup;
   }
   // Chi ha giocato quella partita (titolare o subentrato) guadagna una presenza.
   function registerAppearances(lineup) {
@@ -499,17 +625,42 @@
   // budget da Serie D.
   function roundWage(w) { if (w >= 50e3) return Math.round(w / 1e3) * 1e3; if (w >= 5e3) return Math.round(w / 5e2) * 5e2; return Math.max(250, Math.round(w / 50) * 50); }
   const wageFor = (ovr) => roundWage(600 * Math.pow(1.135, ovr - 45) * (0.88 + Math.random() * 0.28));
+  /* ---------------- settore giovanile / scouting ---------------- */
+  // Un investimento persistente (4 livelli) che rende ogni spin migliore in media e più
+  // affidabile (meno varianza), e alza la chance del "colpo" da titoli di giornale. Dal
+  // livello 2 in su può anche regalare un giovane di prospettiva gratis a inizio stagione.
+  const SCOUT_TIERS = [
+    { name: 'Nessuno', bonus: 0, varDelta: 0, gem: 0, prospectChance: 0 },
+    { name: 'Base', bonus: 2, varDelta: -0.6, gem: 0.02, prospectChance: 0.20 },
+    { name: 'Avanzato', bonus: 4, varDelta: -1.1, gem: 0.05, prospectChance: 0.38 },
+    { name: 'Elite', bonus: 7, varDelta: -1.6, gem: 0.09, prospectChance: 0.60 },
+  ];
+  const scoutTier = () => SCOUT_TIERS[S.scoutLevel || 0];
+  const scoutUpgradeCost = (lvl) => Math.round(divOf().spin * [0, 1.3, 2.8, 5.5][lvl] / 1000) * 1000;
+  // Un prospetto giovane (16-19 anni) gratuito, generato al più una volta a stagione se il
+  // dado lo concede: non entra subito in squadra, va ingaggiato dal presidente come uno
+  // svincolato.
+  function maybeScoutProspect() {
+    if (!S.scoutLevel || S.scoutProspectSeason === S.season) return;
+    S.scoutProspectSeason = S.season;
+    if (Math.random() < scoutTier().prospectChance) {
+      const d = divOf(), nat = pickNationality(S.div);
+      const ovr = clamp(gaussInt(d.avg - 5, 5), 40, 90);
+      S.scoutProspect = { n: genName(nat), nat, ovr, age: 16 + rnd(4), wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 };
+    }
+  }
   function spinPlayer(premium) {
-    const d = divOf();
-    let ovr = gaussInt(d.avg + (premium ? 6 : 1), 4);
-    if (premium && Math.random() < 0.09) ovr += 5 + rnd(4);   // lo scout scopre un gioiello
+    const d = divOf(), scout = scoutTier();
+    let ovr = gaussInt(d.avg + (premium ? 6 : 1) + scout.bonus, clamp(4 + scout.varDelta, 2, 4));
+    if (Math.random() < (premium ? 0.09 : 0) + scout.gem) ovr += 5 + rnd(4);   // lo scout scopre un gioiello
     ovr = clamp(ovr, 40, 94);
     const age = premium && Math.random() < 0.35 ? 18 + rnd(5) : 19 + rnd(13);
-    return { n: genName(), ovr, age, wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 };
+    const nat = pickNationality(S.div);
+    return { n: genName(nat), nat, ovr, age, wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 };
   }
   // Svincolati: nessun costo di cartellino, rating scarso per il livello, stipendi modesti.
   // Servono a portare un club in difficoltà al minimo di 16 giocatori, non a vincere partite.
-  const freeAgent = () => { const d = divOf(); const ovr = clamp(d.avg - 13 + rnd(6), 40, 94); return { n: genName(), ovr, age: 24 + rnd(9), wage: roundWage(wageFor(ovr) * 0.7), yrs: 1 + rnd(2), pid: newPid(), pos: randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 }; };
+  const freeAgent = () => { const d = divOf(); const ovr = clamp(d.avg - 13 + rnd(6), 40, 94); const nat = pickNationality(S.div); return { n: genName(nat), nat, ovr, age: 24 + rnd(9), wage: roundWage(wageFor(ovr) * 0.7), yrs: 1 + rnd(2), pid: newPid(), pos: randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 }; };
   const MIN_SQUAD = 16;
   const playerValue = (p) => p.wage * 52 * (p.ovr >= 85 ? 9 : p.ovr >= 78 ? 7 : p.ovr >= 68 ? 5 : 3.5) * (p.age <= 23 ? 1.4 : p.age >= 31 ? 0.6 : 1);
   const wageBill = () => S.squad.reduce((a, p) => a + p.wage, 0) * 52;
@@ -523,7 +674,11 @@
     if (!S || !S.squad) return;
     if (S.pidNext == null) S.pidNext = 1;
     if (!S.offers) S.offers = [];
-    S.squad.forEach((p) => { if (p.yrs == null) p.yrs = 2 + rnd(2); if (p.pid == null) p.pid = newPid(); if (!p.pos) p.pos = randPos(); if (p.seasonGoals == null) p.seasonGoals = 0; if (p.seasonAssists == null) p.seasonAssists = 0; if (p.seasonCleanSheets == null) p.seasonCleanSheets = 0; if (p.seasonApps == null) p.seasonApps = 0; });
+    if (!S.crestColors) S.crestColors = randCrestColors();
+    if (!S.crestShape) S.crestShape = CREST_DEFAULT.shape;
+    if (S.scoutLevel == null) S.scoutLevel = 0;
+    if (S.scoutProspectSeason == null) S.scoutProspectSeason = 0;
+    S.squad.forEach((p) => { if (p.yrs == null) p.yrs = 2 + rnd(2); if (p.pid == null) p.pid = newPid(); if (!p.pos) p.pos = randPos(); if (p.seasonGoals == null) p.seasonGoals = 0; if (p.seasonAssists == null) p.seasonAssists = 0; if (p.seasonCleanSheets == null) p.seasonCleanSheets = 0; if (p.seasonApps == null) p.seasonApps = 0; if (!p.nat) p.nat = pickNationality(S.div); if (p.outWeeks == null) p.outWeeks = 0; if (p.suspMatches == null) p.suspMatches = 0; });
   }
   const finalYear = (p) => (p.yrs || 0) <= 1;   // ultimo anno di contratto -> rinnova o lo perdi a zero
   // Cosa chiede per rinnovare: il suo stipendio di mercato per il suo rating (spesso
@@ -666,9 +821,13 @@
     { key: 'provincia', title: 'Club di provincia stabile', blurb: 'Nessun lusso, ma né debiti né sorprese: si parte alla pari con tutti.', strRange: [43, 51], budgetRange: [2.2e6, 2.9e6], stadiumTier: 0, stadiumChance: 0, fanbaseRange: [0.95, 1.1] },
   ];
   let takeovers = null, selTakeover = -1;
+  // Stato dello stemma in fase di creazione del club (prima che esista S).
+  let crestShape = CREST_DEFAULT.shape, crestColors = randCrestColors();
   // Filtro/ordinamento della lista rosa in sala del consiglio: solo preferenza di vista,
   // non tocca lo stato di gioco.
   let squadRoleFilter = 'ALL', squadSortDesc = true;
+  // Tab attiva in Sala del Consiglio: solo preferenza di vista, non persistita.
+  let boardTab = 'finanze';
   function genTakeovers() {
     return SITUATIONS.map((s) => ({
       key: s.key, title: s.title, blurb: s.blurb,
@@ -693,9 +852,22 @@
       grid.querySelectorAll('.ow-takeover').forEach((x) => x.classList.toggle('on', +x.dataset.i === selTakeover));
     }));
   }
+  function updateCrestPreview() {
+    const wrap = $('crestPreviewWrap'); if (wrap) wrap.innerHTML = crestMarkup(crestShape, crestColors, 'setup-crest');
+    const c1 = $('crestColor1'), c2 = $('crestColor2');
+    if (c1) c1.value = crestColors[0]; if (c2) c2.value = crestColors[1];
+    document.querySelectorAll('.ow-crest-shape').forEach((el) => el.classList.toggle('on', el.dataset.shape === crestShape));
+  }
   function boot() {
     takeovers = genTakeovers(); renderTakeovers();
     if (!$('owClubName').value) $('owClubName').value = pick(POOLS[0]).n;   // suggerimento a caso, modificabile
+    updateCrestPreview();
+    document.querySelectorAll('.ow-crest-shape').forEach((el) => el.addEventListener('click', () => { crestShape = el.dataset.shape; updateCrestPreview(); }));
+    const c1 = $('crestColor1'), c2 = $('crestColor2');
+    if (c1) c1.addEventListener('input', (e) => { crestColors[0] = e.target.value; updateCrestPreview(); });
+    if (c2) c2.addEventListener('input', (e) => { crestColors[1] = e.target.value; updateCrestPreview(); });
+    const crestReroll = $('crestRerollBtn');
+    if (crestReroll) crestReroll.addEventListener('click', () => { crestColors = randCrestColors(); updateCrestPreview(); });
     $('owRerollBtn').addEventListener('click', () => { takeovers = genTakeovers(); selTakeover = -1; renderTakeovers(); toast('Nuove condizioni di partenza sul tavolo.'); });
     $('owStartBtn').addEventListener('click', () => {
       if (selTakeover < 0) { toast('Scegli prima una situazione di partenza.'); return; }
@@ -723,7 +895,7 @@
   function startDynasty(owner, t, customClub) {
     clearSave();
     const squad = [];
-    for (let i = 0; i < 16; i++) { const ovr = clamp(gaussInt(t.str - 1, 3.5), 40, 55); squad.push({ n: genName(), ovr, age: 19 + rnd(12), wage: wageFor(ovr), yrs: 1 + rnd(3), pos: randPos(squad), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 }); }
+    for (let i = 0; i < 16; i++) { const ovr = clamp(gaussInt(t.str - 1, 3.5), 40, 55); const nat = pickNationality(0); squad.push({ n: genName(nat), nat, ovr, age: 19 + rnd(12), wage: wageFor(ovr), yrs: 1 + rnd(3), pos: randPos(squad), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 }); }
     S = {
       owner, club: (customClub || '').slice(0, 24) || pick(POOLS[0]).n, div: 0, season: 1,
       budget: Math.round(t.budget), fanbase: Math.round(t.fanbase * 100) / 100,
@@ -734,6 +906,8 @@
       trophies: { titles: [0, 0, 0, 0, 0], nat: 0, ucl: 0, uel: 0, conf: 0, total: 0 },
       history: [], over: false, peakWorth: 0,
       pidNext: 1, offers: [],
+      crestShape: crestShape, crestColors: crestColors.slice(),
+      scoutLevel: 0, scoutProspect: null, scoutProspectSeason: 0,
     };
     normSquad();
     S.peakWorth = computeWorth();
@@ -748,9 +922,49 @@
     const col = v >= 60 ? 'var(--dyn)' : v >= 35 ? 'var(--gold)' : 'var(--bad)';
     return `<div class="ow-meter"><span class="lbl">${label}</span><span class="bar"><span class="fill" style="width:${v}%;background:${col}"></span></span><span class="val" style="color:${col}">${Math.round(v)}${warn ? ' ⚠️' : ''}</span></div>`;
   }
+  // Sparkline SVG minimale (nessuna libreria): un'area + linea che mostra l'andamento
+  // di una serie di valori stagione per stagione, usata nella bacheca di fine carriera.
+  function sparklineSVG(values, color) {
+    const w = 320, h = 54, pad = 4;
+    if (!values || values.length < 2) return '<div class="ow-sub">Non ancora abbastanza stagioni per un grafico.</div>';
+    const min = Math.min(...values), max = Math.max(...values), range = (max - min) || 1;
+    const stepX = (w - pad * 2) / (values.length - 1);
+    const pts = values.map((v, i) => [pad + i * stepX, h - pad - ((v - min) / range) * (h - pad * 2)]);
+    const line = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+    const area = line + ` L${pts[pts.length - 1][0].toFixed(1)},${h - pad} L${pts[0][0].toFixed(1)},${h - pad} Z`;
+    const dots = pts.map((p, i) => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${i === pts.length - 1 ? 3.4 : 1.8}" fill="${color}"/>`).join('');
+    return `<svg viewBox="0 0 ${w} ${h}" class="ow-spark" preserveAspectRatio="none">
+      <path d="${area}" fill="${color}" fill-opacity=".14" stroke="none"/>
+      <path d="${line}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+      ${dots}
+    </svg>`;
+  }
+  // Coriandoli CSS per i momenti che contano (promozione, scudetto, coppe): niente
+  // canvas o librerie, solo elementi assoluti con un'animazione di caduta.
+  function fireConfetti(container) {
+    if (!container) return;
+    const wrap = document.createElement('div'); wrap.className = 'confetti-wrap';
+    const colors = ['#ffd24a', '#c9902f', '#f0c869', '#ff2d78', '#28d9a0'];
+    for (let i = 0; i < 26; i++) {
+      const el = document.createElement('span'); el.className = 'confetti-piece';
+      el.style.left = (Math.random() * 100) + '%';
+      el.style.background = pick(colors);
+      el.style.animationDelay = (Math.random() * 0.5) + 's';
+      el.style.animationDuration = (2 + Math.random() * 1.2) + 's';
+      wrap.appendChild(el);
+    }
+    container.appendChild(wrap);
+    setTimeout(() => wrap.remove(), 4200);
+  }
+  function celebrate(panelEl) {
+    if (!panelEl) return;
+    panelEl.classList.add('celebrate');
+    fireConfetti(panelEl);
+  }
   function renderBoard() {
     const d = divOf(), body = $('boardBody');
     normSquad();
+    maybeScoutProspect();
     const fyCount = S.squad.filter(finalYear).length;
     if (!S.sponsorOpts && !S.sponsor) S.sponsorOpts = sponsorOffers();
     if (!S.mgrOpts) S.mgrOpts = [genManager(0), genManager(3), genManager(6)];
@@ -767,21 +981,17 @@
       return `
       <div class="ow-player${fy ? ' final' : ''}"><span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span>
         <span class="postag postag-${p.pos}">${p.pos}</span>
-        <span class="nm">${p.n}<small>età ${p.age}</small></span>
+        <span class="nm">${flagOf(p)}${p.n}<small>età ${p.age}</small></span>
+        ${p.outWeeks > 0 ? `<span class="stat-tag inj" title="Infortunato">🚑 ${p.outWeeks}</span>` : p.suspMatches > 0 ? '<span class="stat-tag susp" title="Squalificato">🟥</span>' : ''}
         ${p.loan ? '<span class="yy loan" title="Torna al suo club a fine stagione">prestito</span>' : `<span class="yy${fy ? ' fy' : ''}" title="Anni di contratto rimasti">${p.yrs}a</span>`}
         <span class="wg">${fmtYr(p.wage)}</span>
         ${fy ? `<button class="ow-renew" data-renew="${p.pid}" title="Offri un nuovo contratto">Rinnova</button>` : ''}
         ${p.loan ? '' : `<button class="ow-x" data-rel="${p.pid}" title="Vendi">💷</button>`}</div>`;
     }).join('') : '<div class="ow-sub" style="margin:10px 0">Nessun giocatore in questo ruolo.</div>';
     const estRevenue = estSeasonRevenue();
-    body.innerHTML = `
-      <div class="ow-stickybar">
-        <div class="cell main"><span>Budget</span><b class="${S.budget < 0 ? 'bad' : ''}">${fmtMoney(S.budget)}</b></div>
-        <div class="cell"><span>Costo d'avvio</span><b>${fmtMoney(bill)}</b></div>
-        <div class="cell free"><span>Libero da spendere</span><b class="${free < 0 ? 'bad' : ''}">${fmtMoney(free)}</b></div>
-      </div>
-      <div class="dyn-top"><div class="dyn-top-title">La Sala del Consiglio</div><div class="dyn-top-sub">${S.owner} · ${S.club} · Stagione ${S.season} di ${MAX_SEASONS}</div></div>
-      ${ladderHTML()}
+    const scout = scoutTier(), scoutLv = S.scoutLevel || 0, nextScoutCost = scoutLv < SCOUT_TIERS.length - 1 ? scoutUpgradeCost(scoutLv + 1) : null;
+
+    const financeHTML = `
       <div class="ow-sec ow-status">
         <div class="ow-bigmoney"><span>Valore del club</span><b>${fmtMoney(worth)}</b></div>
         <div class="ow-fin-row" style="padding:2px 0 6px"><span>Indice tifoseria (cresce con successo e prezzi equi)</span><b>${S.fanbase.toFixed(2)}</b></div>
@@ -798,26 +1008,7 @@
         <div class="ow-fin-row total ${broke ? 'bad' : ''}"><span>Costo d'avvio</span><b>${fmtMoney(bill)}</b></div>
         <div class="ow-fin-row"><span>Ricavi di stagione (stima)</span><b>${fmtMoney(estRevenue)}</b></div>
         ${broke ? '<div class="ow-warn">⚠️ Ti mancano <b>' + fmtMoney(bill - S.budget) + '</b> per coprire il costo d\'avvio. Ricorda: gli spin spendono cassa anche se rifiuti il giocatore. Vendi giocatori (💷), prendi il bonus investitore o assumi un allenatore più economico prima dell\'inizio.</div>' : ''}
-      </div>
-      <div class="ow-sec">
-        <div class="ow-sec-title">🧠 Allenatore</div>
-        <div class="ow-mgr"><span class="ovr">${S.manager.rating}</span><span class="nm">${S.manager.n}<small>${fmtMoney(S.manager.salary)}/anno</small></span><span class="tag">In carica</span></div>
-        <div class="ow-sub">Candidati (l'esonero paga il 30% di buonuscita):</div>
-        ${S.mgrOpts.map((m, i) => `<div class="ow-mgr cand"><span class="ovr">${m.rating}</span><span class="nm">${m.n}<small>${fmtMoney(m.salary)}/anno</small></span><button class="dyn-mini ow-hire" data-hire="${i}">Assumi</button></div>`).join('')}
-      </div>
-      <div class="ow-sec">
-        <div class="ow-sec-title">🤝 Sponsorizzazione</div>
-        ${S.sponsor
-          ? `<div class="ow-fin-row"><span>${S.sponsor.name} (${S.sponsor.left} ann${S.sponsor.left === 1 ? 'o' : 'i'} rimasti${S.sponsor.sent ? ', ' + (S.sponsor.sent > 0 ? 'i tifosi approvano' : 'i tifosi disapprovano') : ''})</span><b>${fmtMoney(S.sponsor.perYear)}/anno</b></div>`
-          : `<div class="ow-sub">Nessuno sponsor di maglia. Scegli un accordo:</div>` + S.sponsorOpts.map((o, i) => `
-            <button class="ow-offer" data-sp="${i}"><span class="info"><b>${o.name}</b><small>${o.years} anni${o.sent ? (o.sent > 0 ? ' · i tifosi approvano' : ' · i tifosi disapprovano') : ''}</small></span><span class="money">${fmtMoney(o.perYear)}/anno</span></button>`).join('')}
-      </div>
-      <div class="ow-sec">
-        <div class="ow-sec-title">🏟️ Stadio + biglietti</div>
-        <div class="ow-fin-row"><span>Capienza</span><b>${capOf().toLocaleString('it-IT')} posti</b></div>
-        ${next ? `<button class="dyn-btn ow-upg" id="upgradeBtn" ${S.budget < next.cost ? 'disabled' : ''}>Amplia a ${next.cap.toLocaleString('it-IT')} posti · ${fmtMoney(next.cost)}</button>` : '<div class="ow-sub">Lo stadio è alla sua dimensione massima.</div>'}
-        <div class="ow-sub" style="margin-top:10px">Prezzi biglietti (i tifosi reagiscono, la domanda cambia):</div>
-        <div class="ow-tickets">${TICKETS.map((t, i) => `<button class="ow-ticket ${S.ticket === i ? 'on' : ''}" data-tk="${i}"><b>${t.label}</b><small>€${Math.round(d.ticket * t.mult)} medio · ${t.hint}</small></button>`).join('')}</div>
+        ${!S.investorUsed ? `<button class="dyn-btn ow-investor" id="investorBtn">💼 Bonus investitore · +${fmtMoney(d.investor)}</button>` : ''}
       </div>
       ${S.offers && S.offers.length ? `
       <div class="ow-sec">
@@ -826,13 +1017,37 @@
         ${S.offers.map((o) => {
           const p = S.squad.find((x) => x.pid === o.pid); if (!p) return '';
           return `<div class="ow-bid">
-            <div class="who"><span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span><span class="nm">${p.n}<small>età ${p.age} · ${o.club} si fa avanti</small></span></div>
+            <div class="who"><span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span><span class="nm">${flagOf(p)}${p.n}<small>età ${p.age} · ${o.club} si fa avanti</small></span></div>
             <div class="act"><span class="fee">${fmtMoney(o.fee)}</span>
               <button class="dyn-mini ow-accept" data-acc="${o.pid}">Accetta</button>
               <button class="dyn-mini ow-reject" data-rej="${o.pid}">Rifiuta</button></div>
           </div>`;
         }).join('')}
-      </div>` : ''}
+      </div>` : ''}`;
+
+    const rosaHTML = `
+      <div class="ow-sec">
+        <div class="ow-sec-title">🧠 Allenatore</div>
+        <div class="ow-mgr"><span class="ovr">${S.manager.rating}</span><span class="nm">${S.manager.n}<small>${fmtMoney(S.manager.salary)}/anno</small></span><span class="tag">In carica</span></div>
+        <div class="ow-sub">Candidati (l'esonero paga il 30% di buonuscita):</div>
+        ${S.mgrOpts.map((m, i) => `<div class="ow-mgr cand"><span class="ovr">${m.rating}</span><span class="nm">${m.n}<small>${fmtMoney(m.salary)}/anno</small></span><button class="dyn-mini ow-hire" data-hire="${i}">Assumi</button></div>`).join('')}
+      </div>
+      <div class="ow-sec">
+        <div class="ow-sec-title">🔭 Settore giovanile</div>
+        <div class="ow-scout-tier">
+          <div><div class="lv">${scout.name}</div><div class="ds">Spin migliori in media (+${scout.bonus} OVR) e più affidabili${scoutLv ? ', più chance di un prospetto gratis a inizio stagione' : ''}</div></div>
+          ${nextScoutCost != null ? `<button class="dyn-mini" id="scoutUpgBtn" ${S.budget < nextScoutCost ? 'disabled' : ''}>⬆️ ${fmtMoney(nextScoutCost)}</button>` : '<span class="tag">Max</span>'}
+        </div>
+        ${S.scoutProspect ? `
+        <div class="ow-jan-card">
+          <div class="ow-jan-head">
+            <span class="ovr" style="${ovrBadge(S.scoutProspect.ovr)}">${S.scoutProspect.ovr}</span>
+            <span class="postag postag-${S.scoutProspect.pos}">${S.scoutProspect.pos}</span>
+            <span class="nm">${flagOf(S.scoutProspect)}${S.scoutProspect.n}<small>${POS_LABEL[S.scoutProspect.pos]} · età ${S.scoutProspect.age} · promessa del vivaio</small></span>
+          </div>
+          <button class="dyn-btn dyn-btn-primary" id="scoutSignBtn">Aggrega alla rosa · Gratis</button>
+        </div>` : ''}
+      </div>
       <div class="ow-sec">
         <div class="ow-sec-title">🎰 Rosa + spin</div>
         <div class="ow-sub">Rosa ${S.squad.length < MIN_SQUAD ? '<b style="color:var(--bad)">' + S.squad.length + ' su ' + MIN_SQUAD + ' giocatori necessari</b>' : S.squad.length + ' giocatori'} · rating <b>${squadStr()}</b> · media di categoria ${d.avg}${fyCount ? ' · <b style="color:var(--gold)">' + fyCount + ' in scadenza</b> (Rinnova o li perdi a zero)' : ''} · tocca 💷 per vendere</div>
@@ -842,20 +1057,59 @@
         </div>
         <div class="ow-sub" style="margin:0 0 8px">${S.spinsBought ? 'Affaticamento scout: i prezzi sono saliti perché hai già fatto ' + S.spinsBought + ' spin quest\'estate.' : 'Ogni spin di questa estate costa più del precedente.'}</div>
         <button class="dyn-btn ow-investor" id="freeAgentBtn">🖊️ Ingaggia uno svincolato · Gratis</button>
-        ${!S.investorUsed ? `<button class="dyn-btn ow-investor" id="investorBtn">💼 Bonus investitore · +${fmtMoney(d.investor)}</button>` : ''}
         <div class="ow-squad-filters">
           ${['ALL', 'POR', 'DIF', 'CEN', 'ATT'].map((k) => `<button class="ow-filter-pill ${squadRoleFilter === k ? 'on' : ''}" data-role="${k}">${k === 'ALL' ? 'Tutti' : k}</button>`).join('')}
           <button class="ow-filter-pill ow-filter-sort" id="squadSortBtn" title="Ordina per overall">OVR ${squadSortDesc ? '▼' : '▲'}</button>
         </div>
         ${squadRoleFilter !== 'ALL' ? `<div class="ow-sub" style="margin:-4px 0 6px">${squadFiltered.length} di ${S.squad.length} giocatori</div>` : ''}
         <div class="ow-squadlist">${squadRows}</div>
+      </div>`;
+
+    const stadioHTML = `
+      <div class="ow-sec">
+        <div class="ow-sec-title">🏟️ Stadio + biglietti</div>
+        <div class="ow-fin-row"><span>Capienza</span><b>${capOf().toLocaleString('it-IT')} posti</b></div>
+        ${next ? `<button class="dyn-btn ow-upg" id="upgradeBtn" ${S.budget < next.cost ? 'disabled' : ''}>Amplia a ${next.cap.toLocaleString('it-IT')} posti · ${fmtMoney(next.cost)}</button>` : '<div class="ow-sub">Lo stadio è alla sua dimensione massima.</div>'}
+        <div class="ow-sub" style="margin-top:10px">Prezzi biglietti (i tifosi reagiscono, la domanda cambia):</div>
+        <div class="ow-tickets">${TICKETS.map((t, i) => `<button class="ow-ticket ${S.ticket === i ? 'on' : ''}" data-tk="${i}"><b>${t.label}</b><small>€${Math.round(d.ticket * t.mult)} medio · ${t.hint}</small></button>`).join('')}</div>
+      </div>`;
+
+    const sponsorHTML = `
+      <div class="ow-sec">
+        <div class="ow-sec-title">🤝 Sponsorizzazione</div>
+        ${S.sponsor
+          ? `<div class="ow-fin-row"><span>${S.sponsor.name} (${S.sponsor.left} ann${S.sponsor.left === 1 ? 'o' : 'i'} rimasti${S.sponsor.sent ? ', ' + (S.sponsor.sent > 0 ? 'i tifosi approvano' : 'i tifosi disapprovano') : ''})</span><b>${fmtMoney(S.sponsor.perYear)}/anno</b></div>`
+          : `<div class="ow-sub">Nessuno sponsor di maglia. Scegli un accordo:</div>` + S.sponsorOpts.map((o, i) => `
+            <button class="ow-offer" data-sp="${i}"><span class="info"><b>${o.name}</b><small>${o.years} anni${o.sent ? (o.sent > 0 ? ' · i tifosi approvano' : ' · i tifosi disapprovano') : ''}</small></span><span class="money">${fmtMoney(o.perYear)}/anno</span></button>`).join('')}
+      </div>`;
+
+    const TABS = [
+      { key: 'finanze', label: '💰 Finanze', html: financeHTML, warn: broke || S.ownerRating < 35 || !!S.debtSeasons || !!(S.offers && S.offers.length) },
+      { key: 'rosa', label: '👥 Rosa', html: rosaHTML, warn: S.squad.length < MIN_SQUAD || fyCount > 0 || !!S.scoutProspect },
+      { key: 'stadio', label: '🏟️ Stadio', html: stadioHTML, warn: false },
+      { key: 'sponsor', label: '🤝 Sponsor', html: sponsorHTML, warn: !S.sponsor },
+    ];
+    if (!TABS.some((t) => t.key === boardTab)) boardTab = 'finanze';
+    const activeTab = TABS.find((t) => t.key === boardTab);
+
+    body.innerHTML = `
+      <div class="ow-stickybar">
+        <div class="cell main"><span>Budget</span><b class="${S.budget < 0 ? 'bad' : ''}">${fmtMoney(S.budget)}</b></div>
+        <div class="cell"><span>Costo d'avvio</span><b>${fmtMoney(bill)}</b></div>
+        <div class="cell free"><span>Libero da spendere</span><b class="${free < 0 ? 'bad' : ''}">${fmtMoney(free)}</b></div>
       </div>
+      ${crestMarkup(S.crestShape, S.crestColors, 'ow-board-crest')}
+      <div class="dyn-top"><div class="dyn-top-title">La Sala del Consiglio</div><div class="dyn-top-sub">${S.owner} · ${S.club} · Stagione ${S.season} di ${MAX_SEASONS}</div></div>
+      ${ladderHTML()}
+      <div class="ow-tabs">${TABS.map((t) => `<button class="ow-tab ${boardTab === t.key ? 'on' : ''}" data-tab="${t.key}">${t.label}${t.warn ? '<span class="dot"></span>' : ''}</button>`).join('')}</div>
+      <div id="boardTabBody">${activeTab.html}</div>
       <button class="dyn-btn dyn-btn-primary" id="startSeasonBtn">Inizia Stagione ${S.season} · ${d.name}</button>
       <div class="ow-exit-row">
         <button class="dyn-btn" id="sellBtn">💷 Vendi il club · ${fmtMoney(worth)}</button>
         <button class="dyn-btn" id="resignBtn">Dimettiti</button>
       </div>`;
     // colleghiamo tutto
+    body.querySelectorAll('[data-tab]').forEach((el) => el.addEventListener('click', () => { boardTab = el.dataset.tab; renderBoard(); }));
     body.querySelectorAll('.ow-x').forEach((el) => el.addEventListener('click', () => {
       const i = S.squad.findIndex((x) => x.pid === +el.dataset.rel); const p = S.squad[i]; if (!p) return;
       const fee = Math.round(playerValue(p) * 0.3);
@@ -871,7 +1125,7 @@
         <h2>📝 Nuovo contratto</h2>
         <div class="ow-spin-card">
           <div class="big" style="color:${ovrTier(p.ovr).c}">${p.ovr}</div>
-          <div class="nm">${p.n}</div>
+          <div class="nm">${flagOf(p)}${p.n}</div>
           <div class="meta">età ${p.age} · guadagna <b>${fmtYr(p.wage)}</b>, ${p.yrs} ann${p.yrs === 1 ? 'o' : 'i'} rimasti</div>
           <div class="meta">Chiede <b>${fmtYr(nw)}</b> per <b>${ny} anni</b></div>
           <div class="meta">Hai <b>${fmtMoney(freeToSpend())}</b> liberi dopo gli stipendi</div>
@@ -929,7 +1183,7 @@
         <h2>🖊️ Svincolato tesserato</h2>
         <div class="ow-spin-card">
           <div class="big" style="color:${ovrTier(p.ovr).c}">${p.ovr}</div>
-          <div class="nm">${p.n} <span class="postag postag-${p.pos}" style="vertical-align:middle">${p.pos}</span></div>
+          <div class="nm">${flagOf(p)}${p.n} <span class="postag postag-${p.pos}" style="vertical-align:middle">${p.pos}</span></div>
           <div class="meta">${POS_LABEL[p.pos]} · età ${p.age} · ${fmtYr(p.wage)}</div>
         </div>
         <div class="dyn-modal-actions">
@@ -946,6 +1200,21 @@
     if (inv) inv.addEventListener('click', () => {
       S.investorUsed = true; S.budget += divOf().investor;
       toast('Un investitore stacca un assegno: +' + fmtMoney(divOf().investor)); renderBoard(); saveGame();
+    });
+    const scoutUpg = $('scoutUpgBtn');
+    if (scoutUpg) scoutUpg.addEventListener('click', () => {
+      const lvl = (S.scoutLevel || 0) + 1, cost = scoutUpgradeCost(lvl); if (S.budget < cost) return;
+      spendGuard(cost, 'L\'investimento nel settore giovanile', '', () => {
+        S.budget -= cost; S.scoutLevel = lvl;
+        toast('Settore giovanile potenziato: ' + SCOUT_TIERS[lvl].name + '.'); renderBoard(); saveGame();
+      });
+    });
+    const scoutSign = $('scoutSignBtn');
+    if (scoutSign) scoutSign.addEventListener('click', () => {
+      if (!S.scoutProspect) return;
+      S.squad.push(S.scoutProspect);
+      toast(S.scoutProspect.n + ' entra in prima squadra dal settore giovanile.');
+      S.scoutProspect = null; renderBoard(); saveGame();
     });
     body.querySelectorAll('[data-role]').forEach((el) => el.addEventListener('click', () => { squadRoleFilter = el.dataset.role; renderBoard(); }));
     const sortBtn = $('squadSortBtn');
@@ -991,7 +1260,7 @@
       <h2>${premium ? '💎 Lo scout torna' : '🎰 Lo scout torna'}</h2>
       <div class="ow-spin-card">
         <div class="big" style="color:${ovrTier(p.ovr).c}">${p.ovr}</div>
-        <div class="nm">${p.n} <span class="postag postag-${p.pos}" style="vertical-align:middle">${p.pos}</span></div>
+        <div class="nm">${flagOf(p)}${p.n} <span class="postag postag-${p.pos}" style="vertical-align:middle">${p.pos}</span></div>
         <div class="meta">${POS_LABEL[p.pos]} · età ${p.age} · chiede <b>${fmtYr(p.wage)}</b></div>
         <div class="meta">Hai <b>${fmtMoney(freeToSpend())}</b> liberi dopo gli stipendi</div>
         ${p.ovr >= d.avg + 7 ? '<div class="gem">⭐ Un colpo da titoli di giornale per questo livello</div>' : ''}
@@ -1053,7 +1322,7 @@
     // Azzera le statistiche (valgono per la stagione in corso) e tira una "forma stagionale":
     // la maggior parte dei giocatori resta vicina alla norma, ma ogni tanto qualcuno esplode
     // (fino quasi al doppio della sua resa attesa) o vive un'annata opaca (anche la metà).
-    S.squad.forEach((p) => { p.seasonGoals = 0; p.seasonAssists = 0; p.seasonCleanSheets = 0; p.seasonApps = 0; p.formSeason = clamp(1 + gaussInt(0, 28) / 100, 0.45, 1.9); });
+    S.squad.forEach((p) => { p.seasonGoals = 0; p.seasonAssists = 0; p.seasonCleanSheets = 0; p.seasonApps = 0; p.formSeason = clamp(1 + gaussInt(0, 28) / 100, 0.45, 1.9); p.outWeeks = 0; p.suspMatches = 0; });
     S.cupMoney = 0; S.euroMoney = S.euro ? EURO_COMPS[S.euroComp].entry : 0;   // montepremi di partecipazione alla coppa europea
     S.opps = rivals().map((o) => ({ name: o.n, s: o.s, pts: seasonPtsFor(o.s), gf: 0, ga: 0 }));
     S.opps.forEach((o) => { o.gf = Math.round(gp() * (o.s - (divOf().avg - 12)) / 22); o.ga = Math.round(gp() * ((divOf().avg + 10) - o.s) / 22); });
@@ -1079,7 +1348,7 @@
     registerAppearances(lineup);
     const goalsFor = genGoals(gf, true, null, lineup), goalsAgainst = genGoals(ga, false, opp.name);
     registerCleanSheet(ga, lineup);
-    const row = { mw: fx.mw, opp: opp.name, home: fx.home, gf, ga, res, goalsFor, goalsAgainst };
+    const row = { mw: fx.mw, opp: opp.name, home: fx.home, gf, ga, res, goalsFor, goalsAgainst, events: lineup.events };
     S.results.push(row); logMatch(row);
     maybeCupRound();
     computeTable(); renderHud(); saveGame();
@@ -1152,7 +1421,7 @@
         <div class="ow-jan-head">
           <span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span>
           <span class="postag postag-${p.pos}">${p.pos}</span>
-          <span class="nm">${p.n}<small>${POS_LABEL[p.pos]} · età ${p.age} · chiede ${fmtYr(p.wage)}</small></span>
+          <span class="nm">${flagOf(p)}${p.n}<small>${POS_LABEL[p.pos]} · età ${p.age} · chiede ${fmtYr(p.wage)}</small></span>
           ${!S._janSwitchUsed ? `<button class="ow-jan-switch" data-jan-switch="${i}" title="Cambia questo giocatore (una sola volta)">🔄</button>` : ''}
         </div>
         <div class="ow-jan-actions">
@@ -1326,7 +1595,7 @@
       p._ovrDelta = p.ovr - before;
       p._retiring = p.age >= 36;
     });
-    S.history.push({ season: S.season, div: d.name, pos, promoted, relegated, trophies, net, worth });
+    S.history.push({ season: S.season, div: d.name, pos, promoted, relegated, trophies, net, worth, budget: S.budget });
     const statement = [
       ['Incasso stadio (' + att.toLocaleString('it-IT') + ' medi)', matchday],
       ['Merchandising (tifoseria ' + S.fanbase.toFixed(2) + ')', merch],
@@ -1393,14 +1662,14 @@
         ${scorers.length ? `
           <div class="ow-sub">Marcatori e assist di ${S.club}${topScorer ? ' · capocannoniere ' + topScorer.n + ' (' + topScorer.seasonGoals + ')' : ''}</div>
           <div class="ow-squadlist" style="max-height:none">${scorers.map((p) => statRowHTML(
-            `${ovrDeltaHTML(p)}<span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span><span class="postag postag-${p.pos}">${p.pos}</span><span class="nm">${p.n}</span>`,
+            `${ovrDeltaHTML(p)}<span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span><span class="postag postag-${p.pos}">${p.pos}</span><span class="nm">${flagOf(p)}${p.n}</span>`,
             `<span style="color:var(--gold)">⚽ ${p.seasonGoals || 0}</span><span>👟 ${p.seasonAssists || 0}</span><span title="Presenze">🎽 ${p.seasonApps || 0}</span>`
           )).join('')}
           </div>` : '<div class="ow-sub">Nessun marcatore o assistman di rilievo questa stagione.</div>'}
         ${keepers.length ? `
           <div class="ow-sub" style="margin-top:10px">Portieri</div>
           <div class="ow-squadlist" style="max-height:none">${keepers.map((p) => statRowHTML(
-            `${ovrDeltaHTML(p)}<span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span><span class="nm">${p.n}<small>${p.pid === gkStarterPid ? 'Titolare' : 'Riserva'}</small></span>`,
+            `${ovrDeltaHTML(p)}<span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span><span class="nm">${flagOf(p)}${p.n}<small>${p.pid === gkStarterPid ? 'Titolare' : 'Riserva'}</small></span>`,
             `<span style="color:var(--good)">🧤 ${p.seasonCleanSheets || 0} clean sheet</span><span title="Presenze">🎽 ${p.seasonApps || 0}</span>`
           )).join('')}
           </div>` : ''}
@@ -1424,6 +1693,7 @@
       </div>
       ${statsHTML}
       <button class="dyn-btn dyn-btn-primary" id="owEndBtn">${e.fate ? 'Affronta le conseguenze' : S.season >= MAX_SEASONS ? 'Concludi la tua carriera' : 'Torna in sala del consiglio'}</button>`;
+    if (e.promoted || e.title || e.trophies.length) celebrate(body.querySelector('.dyn-panel'));
     $('owEndBtn').onclick = () => {
       if (e.fate === 'forced') { endDynasty('forced', 0); return; }
       if (e.fate === 'admin') { endDynasty('admin', 0); return; }
@@ -1490,8 +1760,11 @@
     ['ucl', 'uel', 'conf'].forEach((k) => { if (S.trophies[k]) honours.push(S.trophies[k] + 'x ' + EURO_COMPS[k].name); });
     const topDiv = S.history.reduce((a, hh) => Math.max(a, DIVS.findIndex((x) => x.name === hh.div)), S.div);
     const promotions = S.history.filter((hh) => hh.promoted).length;
+    const sparkRow = (label, values, color) => `
+      <div class="ow-spark-row"><span class="lbl">${label}</span></div>
+      ${sparklineSVG(values, color)}`;
     body.innerHTML = `
-      <div class="dyn-top"><div class="dyn-top-title">${h[0]}</div><div class="dyn-top-sub">${h[1]}</div></div>
+      <div class="dyn-top">${crestMarkup(S.crestShape, S.crestColors, 'ow-hero-crest')}<div class="dyn-top-title">${h[0]}</div><div class="dyn-top-sub">${h[1]}</div></div>
       <div class="dyn-panel">
         <div class="pl-hero"><div class="big" style="font-size:56px">${fmtMoney(how === 'sold' ? S._sale : worth)}</div><div class="cap">${how === 'sold' ? 'PREZZO DI VENDITA' : 'VALORE FINALE DEL CLUB'}</div></div>
         <div class="dyn-trophies">${honours.length ? honours.map((x) => `<span class="trophy">🏆 ${x}</span>`).join('') : '<span class="trophy none">Nessun trofeo</span>'}</div>
@@ -1503,6 +1776,12 @@
         <div class="dyn-verdict">Livello massimo: <b>${DIVS[Math.max(0, topDiv)].name}</b> · Stadio: <b>${capOf().toLocaleString('it-IT')} posti</b> · Trofei: <b>${S.trophies.total}</b></div>
       </div>
       <div class="pl-card" style="padding:14px 12px">
+        <div class="dyn-top-sub" style="text-align:left;margin-bottom:10px">La bacheca, stagione per stagione</div>
+        ${sparkRow('Posizione in classifica (su, meglio)', S.history.map((hh) => -hh.pos), 'var(--gold)')}
+        ${sparkRow('Valore del club', S.history.map((hh) => hh.worth), 'var(--dyn)')}
+        ${sparkRow('Budget a fine stagione', S.history.map((hh) => hh.budget != null ? hh.budget : 0), 'var(--good)')}
+      </div>
+      <div class="pl-card" style="padding:14px 12px">
         <div class="dyn-top-sub" style="text-align:left;margin-bottom:8px">La storia, stagione per stagione</div>
         <div style="overflow-x:auto">
           <table class="dyn-table"><thead><tr><th>S</th><th>Categoria</th><th class="num">Pos</th><th class="num">Saldo</th><th class="num">Valore</th><th>Trofei</th></tr></thead>
@@ -1511,6 +1790,7 @@
       </div>
       <button class="dyn-btn" id="owAgainBtn">Nuova carriera</button>
       <a class="dyn-back" href="index.html">Torna alla Dynasty</a>`;
+    if (S.trophies.total > 0 || how === 'retired') celebrate(body.querySelector('.dyn-panel'));
     $('owAgainBtn').onclick = () => location.reload();
     show('owEndScreen');
   }
@@ -1523,6 +1803,7 @@
     if (wasHidden) window.scrollTo(0, 0); // solo al cambio schermata: un re-render della stessa schermata non deve far saltare lo scroll in cima
     const tb = $('owTopbar'); if (tb) tb.classList.remove('hidden');
     if (S) { S._screen = id; saveGame(); }
+    syncHomeCrest();
   }
   function renderHud() {
     $('hudSeason').textContent = S.season + '/' + MAX_SEASONS;
@@ -1554,8 +1835,9 @@
         ${usSc ? '<div class="sc us">⚽ ' + usSc + '</div>' : ''}
         ${themSc ? '<div class="sc them">🥅 ' + themSc + '</div>' : ''}
       </div>` : '';
+    const eventsHTML = (m.events && m.events.length) ? `<div class="mrow-scorers">${m.events.map((ev) => `<div class="sc them">${ev.kind === 'inj' ? '🚑' : '🟥'} ${flagOf(ev)}${ev.n} ${ev.kind === 'inj' ? 'ko, fuori ' + ev.weeks + ' partit' + (ev.weeks === 1 ? 'a' : 'e') : 'squalificato per la prossima'}</div>`).join('')}</div>` : '';
     row.innerHTML = `<div class="mrow-mw">G${m.mw}</div>
-      <div class="mrow-main"><div class="mrow-fix"><span class="ha">${m.home ? 'C' : 'T'}</span> vs ${m.opp}</div>${scorersHTML}</div>
+      <div class="mrow-main"><div class="mrow-fix"><span class="ha">${m.home ? 'C' : 'T'}</span> vs ${m.opp}</div>${scorersHTML}${eventsHTML}</div>
       <div class="mrow-res ${m.res}">${m.gf}-${m.ga}</div>`;
     $('owLog').prepend(row);
   }

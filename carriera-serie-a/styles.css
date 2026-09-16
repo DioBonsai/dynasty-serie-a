@@ -450,3 +450,69 @@ body{
   font-size:12px; font-weight:800; color:var(--gold); padding:9px 13px; border-radius:11px;
   background:rgba(255,210,74,.08); border:1px solid rgba(255,210,74,.3);
 }
+
+/* ---------- stemma procedurale ---------- */
+.ow-crest-picker{ display:flex; flex-direction:column; align-items:center; gap:12px; margin:0 0 18px; }
+.ow-crest-preview{ width:88px; height:101px; display:block; filter:drop-shadow(0 8px 18px rgba(201,144,47,.25)); }
+.ow-crest-shapes{ display:flex; gap:8px; }
+.ow-crest-shape{
+  appearance:none; background:var(--panel2); border:1px solid var(--line); color:var(--muted);
+  font:800 11.5px/1 var(--sans); padding:8px 14px; border-radius:999px; cursor:pointer; transition:border-color .12s ease,color .12s ease;
+}
+.ow-crest-shape:hover{ border-color:var(--dyn); }
+.ow-crest-shape.on{ border-color:var(--dyn); background:rgba(201,144,47,.14); color:var(--txt); }
+.ow-crest-colors{ display:flex; align-items:center; gap:14px; }
+.ow-crest-swatch{ display:flex; flex-direction:column; align-items:center; gap:5px; }
+.ow-crest-swatch span{ font-size:10px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+.ow-crest-swatch input[type=color]{
+  width:42px; height:42px; padding:0; border:1px solid var(--line); border-radius:12px; background:none; cursor:pointer;
+}
+.ow-crest-swatch input[type=color]::-webkit-color-swatch-wrapper{ padding:3px; }
+.ow-crest-swatch input[type=color]::-webkit-color-swatch{ border-radius:9px; border:none; }
+.ow-crest-reroll{
+  appearance:none; background:none; border:none; color:var(--muted); font:700 11.5px var(--sans);
+  cursor:pointer; text-decoration:underline; text-underline-offset:2px;
+}
+.ow-crest-reroll:hover{ color:var(--txt); }
+.ow-board-crest{ width:50px; height:58px; display:block; margin:0 auto 8px; filter:drop-shadow(0 6px 14px rgba(0,0,0,.4)); }
+.ow-hero-crest{ width:80px; height:92px; display:block; margin:0 auto 14px; filter:drop-shadow(0 8px 18px rgba(0,0,0,.35)); }
+
+/* ---------- tab della sala del consiglio ---------- */
+.ow-tabs{ display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin:0 0 14px; }
+.ow-tab{
+  position:relative; appearance:none; background:var(--panel2); border:1px solid var(--line); color:var(--muted);
+  font:800 12px/1.1 var(--sans); padding:10px 4px; border-radius:12px; cursor:pointer; text-align:center;
+  transition:border-color .12s ease,color .12s ease,background .12s ease;
+}
+.ow-tab:hover{ border-color:var(--dyn); }
+.ow-tab.on{ border-color:var(--dyn); background:rgba(201,144,47,.14); color:var(--txt); }
+.ow-tab .dot{
+  position:absolute; top:6px; right:8px; width:7px; height:7px; border-radius:50%; background:var(--bad);
+  box-shadow:0 0 0 2px var(--panel2);
+}
+
+/* ---------- infortuni / squalifiche ---------- */
+.stat-tag{ flex:0 0 auto; font-size:10px; font-weight:900; padding:3px 7px; border-radius:7px; white-space:nowrap; }
+.stat-tag.inj{ color:var(--bad); background:rgba(255,84,112,.12); border:1px solid rgba(255,84,112,.35); }
+.stat-tag.susp{ color:var(--muted); background:rgba(255,255,255,.06); border:1px solid var(--line); }
+
+/* ---------- settore giovanile / scouting ---------- */
+.ow-scout-tier{
+  display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px;
+  border-radius:12px; background:var(--panel); border:1px solid var(--line); margin-bottom:8px;
+}
+.ow-scout-tier .lv{ font-family:var(--serif); font-weight:800; font-size:14px; }
+.ow-scout-tier .ds{ font-size:11px; color:var(--muted); font-weight:700; margin-top:2px; }
+
+/* ---------- celebrazioni ---------- */
+.confetti-wrap{ position:absolute; inset:0; overflow:hidden; pointer-events:none; border-radius:inherit; z-index:5; }
+.confetti-piece{ position:absolute; top:-12px; width:8px; height:14px; opacity:0; border-radius:2px; animation:confettiFall 2.6s ease-in forwards; }
+@keyframes confettiFall{ 0%{ transform:translateY(-10px) rotate(0deg); opacity:1; } 100%{ transform:translateY(380px) rotate(560deg); opacity:0; } }
+@keyframes goldPulse{ 0%,100%{ box-shadow:var(--shadow); } 50%{ box-shadow:0 0 0 3px rgba(255,210,74,.4), var(--shadow); } }
+.dyn-panel.celebrate{ animation:goldPulse 1.7s ease-in-out 3; }
+
+/* ---------- sparkline ---------- */
+.ow-spark{ display:block; width:100%; height:auto; }
+.ow-spark-row{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:2px; }
+.ow-spark-row .lbl{ font-size:11.5px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+.ow-spark-row .lv{ font-size:13px; font-weight:900; color:var(--txt); font-variant-numeric:tabular-nums; }
