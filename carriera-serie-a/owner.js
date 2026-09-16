@@ -845,7 +845,7 @@
     const worth = computeWorth();
     overlay(`
       <h2>💷 Vendi il club</h2>
-      <p>Una cordata offre <b>${fmtMoney(worth)}</b> per ${S.club}. Vendere chiude qui la tua dinastia.</p>
+      <p>Una cordata offre <b>${fmtMoney(worth)}</b> per ${S.club}. Vendere chiude qui la tua carriera.</p>
       <div class="dyn-modal-actions">
         <button class="dyn-btn dyn-btn-primary" id="ovSell">Vendi per ${fmtMoney(worth)}</button>
         <button class="dyn-btn" id="ovNo">Tieni il club</button>
@@ -1194,7 +1194,7 @@
         <div class="ow-fin-row total" style="margin-top:10px"><span>Valore del club</span><b>${fmtMoney(e.worth)}</b></div>
       </div>
       ${statsHTML}
-      <button class="dyn-btn dyn-btn-primary" id="owEndBtn">${e.fate ? 'Affronta le conseguenze' : S.season >= MAX_SEASONS ? 'Concludi la tua dinastia' : 'Torna in sala del consiglio'}</button>`;
+      <button class="dyn-btn dyn-btn-primary" id="owEndBtn">${e.fate ? 'Affronta le conseguenze' : S.season >= MAX_SEASONS ? 'Concludi la tua carriera' : 'Torna in sala del consiglio'}</button>`;
     $('owEndBtn').onclick = () => {
       if (e.fate === 'forced') { endDynasty('forced', 0); return; }
       if (e.fate === 'admin') { endDynasty('admin', 0); return; }
@@ -1242,7 +1242,7 @@
     renderBoard();
   }
 
-  /* ---------------- fine dinastia ---------------- */
+  /* ---------------- fine carriera ---------------- */
   function endDynasty(how, saleMoney) {
     S.over = true; clearSave();
     S._how = how; S._sale = saleMoney || 0;
@@ -1284,7 +1284,7 @@
           <tbody>${S.history.map((hh) => `<tr><td>${hh.season}${hh.promoted ? ' ⬆️' : hh.relegated ? ' ⬇️' : ''}</td><td>${hh.div}</td><td class="num">${hh.pos}</td><td class="num">${hh.net < 0 ? '-' : ''}${fmtMoney(Math.abs(hh.net))}</td><td class="num">${fmtMoney(hh.worth)}</td><td style="font-size:11px">${hh.trophies.length ? hh.trophies.join(', ') : '-'}</td></tr>`).join('')}</tbody></table>
         </div>
       </div>
-      <button class="dyn-btn" id="owAgainBtn">Nuova dinastia</button>
+      <button class="dyn-btn" id="owAgainBtn">Nuova carriera</button>
       <a class="dyn-back" href="index.html">Torna alla Dynasty</a>`;
     $('owAgainBtn').onclick = () => location.reload();
     show('owEndScreen');
@@ -1292,8 +1292,10 @@
 
   /* ================= RENDER ================= */
   function show(id) {
+    const el = $(id), wasHidden = el.classList.contains('hidden');
     document.querySelectorAll('.dyn-screen').forEach((s) => s.classList.add('hidden'));
-    $(id).classList.remove('hidden'); window.scrollTo(0, 0);
+    el.classList.remove('hidden');
+    if (wasHidden) window.scrollTo(0, 0); // solo al cambio schermata: un re-render della stessa schermata non deve far saltare lo scroll in cima
     const tb = $('owTopbar'); if (tb) tb.classList.remove('hidden');
     if (S) { S._screen = id; saveGame(); }
   }
