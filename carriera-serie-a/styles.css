@@ -184,10 +184,6 @@ body{
 }
 .dyn-toast.hidden{ display:none !important; }
 @keyframes toastIn{ from{ opacity:0; transform:translateX(-50%) translateY(8px); } to{ opacity:1; transform:translateX(-50%) translateY(0); } }
-.toast-more{
-  display:inline-block; margin-left:8px; font-size:11px; font-weight:900; color:var(--dyn-ink);
-  background:var(--gold); border-radius:999px; padding:2px 7px; vertical-align:middle;
-}
 
 /* ============================================================
    Componenti specifici della Modalità Proprietario
@@ -321,6 +317,14 @@ body{
 .ow-spins{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px; }
 @media(max-width:460px){ .ow-spins{ grid-template-columns:1fr; } }
 .ow-investor{ width:100%; margin-bottom:8px; }
+.ow-squad-filters{ display:flex; flex-wrap:wrap; gap:6px; margin:2px 0 8px; }
+.ow-filter-pill{
+  appearance:none; border:1px solid var(--line); background:var(--panel); color:var(--muted);
+  font:800 11.5px/1 var(--sans); padding:7px 12px; border-radius:999px; cursor:pointer; transition:border-color .12s ease;
+}
+.ow-filter-pill:hover{ border-color:var(--dyn); }
+.ow-filter-pill.on{ border-color:var(--dyn); background:rgba(201,144,47,.14); color:var(--txt); }
+.ow-filter-pill.ow-filter-sort{ margin-left:auto; }
 .ow-squadlist{
   max-height:280px; overflow-y:auto; border:1px solid var(--line); border-radius:13px; padding:4px 8px;
   background:rgba(0,0,0,.16);
@@ -336,6 +340,10 @@ body{
 .ow-player .ovr{
   width:34px; height:30px; flex:0 0 auto; display:flex; align-items:center; justify-content:center;
   border-radius:8px; font-weight:900; font-size:13px; font-family:var(--serif);
+}
+.ow-player .ovr-delta{
+  flex:0 0 auto; width:34px; text-align:right; font-size:11px; font-weight:900;
+  font-variant-numeric:tabular-nums;
 }
 .ow-player .nm{ flex:1; min-width:0; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .ow-player .nm small{ color:var(--muted); font-weight:700; margin-left:6px; }

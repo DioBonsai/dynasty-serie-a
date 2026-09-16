@@ -281,72 +281,82 @@
     for (const k of ['POR', 'DIF', 'CEN', 'ATT']) { r -= w[k]; if (r <= 0) return k; }
     return 'ATT';
   }
-  // La formazione titolare della partita: gli 11 più forti rispettando un 4-3-3
-  // (1 portiere, 4 difensori, 3 centrocampisti, 3 attaccanti). Se la rosa non ha
-  // abbastanza giocatori in un ruolo, i posti restanti li prendono i migliori a
-  // disposizione per overall, di qualunque ruolo, così si arriva comunque a 11 (o alla
-  // rosa intera se più piccola). Ricalcolata a ogni gol: si adatta subito a un colpo di
-  // gennaio o a un affare del calciomercato senza bisogno di invalidare una cache.
-  function startingXI(squad) {
+  // La formazione della singola partita: un 4-3-3 (1 portiere, 4 difensori, 3
+  // centrocampisti, 3 attaccanti) scelto sul rendimento del momento (overall × forma
+  // stagionale) MA con un margine di casualità a ogni partita, così non sono sempre
+  // esattamente gli stessi 11 — un panchinaro in un buon momento può scavalcare un
+  // titolare "di carta" quel giorno. Sopra agli 11 titolari, 1-3 subentrano dalla
+  // panchina: giocano meno (peso ridotto) ma incassano comunque una presenza e una
+  // chance di incidere. Richiamata una volta a partita (non per gol), così titolari e
+  // presenze restano coerenti nell'arco dei 90 minuti.
+  function pickMatchLineup(squad) {
+    const rated = squad.map((p) => ({ p, eff: p.ovr * (p.formSeason || 1) * (0.82 + Math.random() * 0.36) }));
     const byPos = { POR: [], DIF: [], CEN: [], ATT: [] };
-    squad.forEach((p) => { if (byPos[p.pos]) byPos[p.pos].push(p); });
-    Object.keys(byPos).forEach((k) => byPos[k].sort((a, b) => b.ovr - a.ovr));
+    rated.forEach((r) => { if (byPos[r.p.pos]) byPos[r.p.pos].push(r); });
+    Object.keys(byPos).forEach((k) => byPos[k].sort((a, b) => b.eff - a.eff));
     const need = { POR: 1, DIF: 4, CEN: 3, ATT: 3 };
-    const xi = new Set();
-    Object.keys(need).forEach((k) => byPos[k].slice(0, need[k]).forEach((p) => xi.add(p.pid)));
+    const starters = new Set();
+    Object.keys(need).forEach((k) => byPos[k].slice(0, need[k]).forEach((r) => starters.add(r.p.pid)));
     const target = Math.min(11, squad.length);
-    if (xi.size < target) {
-      squad.slice().sort((a, b) => b.ovr - a.ovr).forEach((p) => { if (xi.size < target) xi.add(p.pid); });
+    if (starters.size < target) {
+      rated.slice().sort((a, b) => b.eff - a.eff).forEach((r) => { if (starters.size < target) starters.add(r.p.pid); });
     }
-    return xi;
+    const bench = squad.filter((p) => !starters.has(p.pid));
+    const subsCount = Math.min(bench.length, 1 + rnd(3));
+    const subs = new Set(shuffle(bench.slice()).slice(0, subsCount).map((p) => p.pid));
+    return { starters, subs };
   }
-  // Un panchinaro pesa una frazione di un titolare: può sempre entrare e decidere la gara,
-  // ma è molto meno probabile che sia lui il protagonista.
-  const BENCH_FACTOR = 0.22;
-  const lineupFactor = (p, xi) => (xi.has(p.pid) ? 1 : BENCH_FACTOR);
+  // Chi ha giocato quella partita (titolare o subentrato) guadagna una presenza.
+  function registerAppearances(lineup) {
+    S.squad.forEach((p) => { if (lineup.starters.has(p.pid) || lineup.subs.has(p.pid)) p.seasonApps = (p.seasonApps || 0) + 1; });
+  }
+  // Un subentrato pesa una frazione di un titolare (meno minuti in campo), e chi non ha
+  // giocato affatto quella partita non può segnare né assistere in essa.
+  const SUB_FACTOR = 0.4;
+  const lineupFactor = (p, lineup) => lineup.starters.has(p.pid) ? 1 : lineup.subs.has(p.pid) ? SUB_FACTOR : 0;
   // Peso di un giocatore come possibile marcatore: il ruolo pesa più di tutto, ma tra
-  // giocatori dello stesso ruolo quelli più forti (i titolari) segnano di più.
-  const scorerWeight = (p, xi) => (POS_SCORE_WEIGHT[p.pos] || 1) * Math.pow(Math.max(p.ovr, 30) / 50, 1.7) * lineupFactor(p, xi) * (p.formSeason || 1);
-  function pickScorer() {
+  // giocatori dello stesso ruolo quelli più forti (e in forma migliore) segnano di più.
+  const scorerWeight = (p, lineup) => (POS_SCORE_WEIGHT[p.pos] || 1) * Math.pow(Math.max(p.ovr, 30) / 50, 1.7) * lineupFactor(p, lineup) * (p.formSeason || 1);
+  function pickScorer(lineup) {
     if (!S.squad.length) return null;
-    const xi = startingXI(S.squad);
-    const total = S.squad.reduce((a, p) => a + scorerWeight(p, xi), 0);
+    const total = S.squad.reduce((a, p) => a + scorerWeight(p, lineup), 0);
+    if (total <= 0) return null;
     let r = Math.random() * total;
-    for (const p of S.squad) { r -= scorerWeight(p, xi); if (r <= 0) return p; }
-    return S.squad[S.squad.length - 1];
+    for (const p of S.squad) { const w = scorerWeight(p, lineup); r -= w; if (r <= 0 && w > 0) return p; }
+    return null;
   }
   // Chi serve l'assist: i centrocampisti ne fanno di più di chiunque, gli attaccanti un
   // po' meno (spesso sono loro a essere serviti), i difensori raramente, i portieri quasi
   // mai. Non può essere lo stesso giocatore che ha segnato.
   const POS_ASSIST_WEIGHT = { POR: 0.03, DIF: 1.0, CEN: 3.4, ATT: 2.2 };
-  const assistWeight = (p, xi) => (POS_ASSIST_WEIGHT[p.pos] || 1) * Math.pow(Math.max(p.ovr, 30) / 50, 1.4) * lineupFactor(p, xi) * (p.formSeason || 1);
-  function pickAssister(scorerPid) {
+  const assistWeight = (p, lineup) => (POS_ASSIST_WEIGHT[p.pos] || 1) * Math.pow(Math.max(p.ovr, 30) / 50, 1.4) * lineupFactor(p, lineup) * (p.formSeason || 1);
+  function pickAssister(scorerPid, lineup) {
     const pool = S.squad.filter((p) => p.pid !== scorerPid);
     if (!pool.length) return null;
-    const xi = startingXI(S.squad);
-    const total = pool.reduce((a, p) => a + assistWeight(p, xi), 0);
+    const total = pool.reduce((a, p) => a + assistWeight(p, lineup), 0);
+    if (total <= 0) return null;
     let r = Math.random() * total;
-    for (const p of pool) { r -= assistWeight(p, xi); if (r <= 0) return p; }
-    return pool[pool.length - 1];
+    for (const p of pool) { const w = assistWeight(p, lineup); r -= w; if (r <= 0 && w > 0) return p; }
+    return null;
   }
-  // Il portiere titolare del momento: il migliore in rosa, ricalcolato ogni volta (si
-  // aggiorna da solo se ne arriva uno più forte in prestito o a titolo definitivo).
-  function currentStarterGK() {
-    const gks = S.squad.filter((p) => p.pos === 'POR').sort((a, b) => b.ovr - a.ovr);
-    return gks.length ? gks[0] : null;
+  // Il portiere che ha giocato la partita: quello titolare nella formazione di giornata.
+  function matchGK(lineup) {
+    return S.squad.find((p) => p.pos === 'POR' && lineup.starters.has(p.pid)) || null;
   }
   // ---- crescita/calo dell'overall a fine stagione ----
-  // Quanto ci si aspetta da un giocatore nel suo ruolo in una stagione piena da titolare
-  // (gol + 0.7 per assist); un panchinaro è giudicato su un'asticella proporzionalmente
-  // più bassa, non sullo stesso metro di chi gioca sempre.
+  // Quanto ci si aspetta da un giocatore nel suo ruolo in una stagione da titolare fisso
+  // (gol + 0.7 per assist): chi ha giocato meno partite viene giudicato su un'asticella
+  // proporzionalmente più bassa (le sue presenze reali su quelle della squadra), non
+  // sullo stesso metro di chi ha giocato sempre. Così un panchinaro che rende molto nelle
+  // poche gare avute può crescere anche più di un titolare che ha deluso.
   const POS_PROD_BASELINE = { POR: 0, DIF: 2.5, CEN: 6, ATT: 12 };
-  function seasonPerformanceRatio(p, xi) {
-    const starter = xi.has(p.pid);
+  function seasonPerformanceRatio(p) {
+    const appsRatio = clamp((p.seasonApps || 0) / Math.max(1, gp()), 0.05, 1);
     if (p.pos === 'POR') {
-      const expectedCS = gp() * 0.28 * (starter ? 1 : BENCH_FACTOR);
+      const expectedCS = gp() * 0.28 * appsRatio;
       return ((p.seasonCleanSheets || 0) + 0.5) / (expectedCS + 0.5);
     }
-    const baseline = (POS_PROD_BASELINE[p.pos] || 4) * (starter ? 1 : BENCH_FACTOR);
+    const baseline = (POS_PROD_BASELINE[p.pos] || 4) * appsRatio;
     const production = (p.seasonGoals || 0) + (p.seasonAssists || 0) * 0.7;
     return (production + 0.5) / (baseline + 0.5);
   }
@@ -364,8 +374,8 @@
     if (age <= 32) return -1.2;
     return -2.6 - (age - 32) * 0.5;
   }
-  function seasonOvrDelta(p, xi) {
-    const ratio = seasonPerformanceRatio(p, xi);
+  function seasonOvrDelta(p) {
+    const ratio = seasonPerformanceRatio(p);
     // sopra 1 = stagione da incorniciare, sotto 1 = deludente; pesa di più verso l'alto
     // (le esplosioni improvvise fanno più notizia dei cali) ma può affondare parecchio.
     const perf = clamp((ratio - 1) * 3.5, -4.5, 7);
@@ -387,25 +397,25 @@
   // aggiorna le statistiche stagionali di marcatore e assistman, l'80% dei gol con
   // assist); per l'avversario, se è un club di Serie A con una rosa reale nota la usa,
   // altrimenti (categorie inferiori, club senza dati) genera un nome plausibile.
-  function genGoals(count, isUs, oppClub) {
+  function genGoals(count, isUs, oppClub, lineup) {
     const mins = []; for (let i = 0; i < count; i++) mins.push(1 + rnd(90));
     mins.sort((a, b) => a - b);
     const oppRoster = !isUs && oppClub ? (SERIE_A_ROSTERS[oppClub] || SERIE_B_ROSTERS[oppClub]) : null;
     return mins.map((min) => {
       if (!isUs) { const rp = oppRoster ? pickRealScorer(oppRoster) : null; return { min, name: rp ? rp.n : genName() }; }
-      const p = pickScorer();
+      const p = pickScorer(lineup);
       if (p) {
         p.seasonGoals = (p.seasonGoals || 0) + 1;
-        if (Math.random() < 0.8) { const a = pickAssister(p.pid); if (a) a.seasonAssists = (a.seasonAssists || 0) + 1; }
+        if (Math.random() < 0.8) { const a = pickAssister(p.pid, lineup); if (a) a.seasonAssists = (a.seasonAssists || 0) + 1; }
       }
       return { min, name: p ? p.n : 'Autorete' };
     });
   }
-  // Un clean sheet va al portiere titolare del momento ogni volta che la squadra non
-  // subisce gol in una partita.
-  function registerCleanSheet(ga) {
+  // Un clean sheet va al portiere che ha giocato quella partita, ogni volta che la
+  // squadra non subisce gol.
+  function registerCleanSheet(ga, lineup) {
     if (ga !== 0) return;
-    const p = currentStarterGK();
+    const p = matchGK(lineup);
     if (p) p.seasonCleanSheets = (p.seasonCleanSheets || 0) + 1;
   }
   // Raggruppa i gol per marcatore per una riga compatta tipo "Rossi 12', 55' · Bianchi 78'".
@@ -443,11 +453,11 @@
     if (premium && Math.random() < 0.09) ovr += 5 + rnd(4);   // lo scout scopre un gioiello
     ovr = clamp(ovr, 40, 94);
     const age = premium && Math.random() < 0.35 ? 18 + rnd(5) : 19 + rnd(13);
-    return { n: genName(), ovr, age, wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0 };
+    return { n: genName(), ovr, age, wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 };
   }
   // Svincolati: nessun costo di cartellino, rating scarso per il livello, stipendi modesti.
   // Servono a portare un club in difficoltà al minimo di 16 giocatori, non a vincere partite.
-  const freeAgent = () => { const d = divOf(); const ovr = clamp(d.avg - 13 + rnd(6), 40, 94); return { n: genName(), ovr, age: 24 + rnd(9), wage: roundWage(wageFor(ovr) * 0.7), yrs: 1 + rnd(2), pid: newPid(), pos: randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0 }; };
+  const freeAgent = () => { const d = divOf(); const ovr = clamp(d.avg - 13 + rnd(6), 40, 94); return { n: genName(), ovr, age: 24 + rnd(9), wage: roundWage(wageFor(ovr) * 0.7), yrs: 1 + rnd(2), pid: newPid(), pos: randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 }; };
   const MIN_SQUAD = 16;
   const playerValue = (p) => p.wage * 52 * (p.ovr >= 85 ? 9 : p.ovr >= 78 ? 7 : p.ovr >= 68 ? 5 : 3.5) * (p.age <= 23 ? 1.4 : p.age >= 31 ? 0.6 : 1);
   const wageBill = () => S.squad.reduce((a, p) => a + p.wage, 0) * 52;
@@ -461,7 +471,7 @@
     if (!S || !S.squad) return;
     if (S.pidNext == null) S.pidNext = 1;
     if (!S.offers) S.offers = [];
-    S.squad.forEach((p) => { if (p.yrs == null) p.yrs = 2 + rnd(2); if (p.pid == null) p.pid = newPid(); if (!p.pos) p.pos = randPos(); if (p.seasonGoals == null) p.seasonGoals = 0; if (p.seasonAssists == null) p.seasonAssists = 0; if (p.seasonCleanSheets == null) p.seasonCleanSheets = 0; });
+    S.squad.forEach((p) => { if (p.yrs == null) p.yrs = 2 + rnd(2); if (p.pid == null) p.pid = newPid(); if (!p.pos) p.pos = randPos(); if (p.seasonGoals == null) p.seasonGoals = 0; if (p.seasonAssists == null) p.seasonAssists = 0; if (p.seasonCleanSheets == null) p.seasonCleanSheets = 0; if (p.seasonApps == null) p.seasonApps = 0; });
   }
   const finalYear = (p) => (p.yrs || 0) <= 1;   // ultimo anno di contratto -> rinnova o lo perdi a zero
   // Cosa chiede per rinnovare: il suo stipendio di mercato per il suo rating (spesso
@@ -594,25 +604,33 @@
   }
 
   /* ---------------- avvio + acquisizione ---------------- */
+  // Non si sceglie più un club con un nome già dato: si sceglie una SITUAZIONE di
+  // partenza (che tipo di presidenza sarà). Il nome del club lo decide chi gioca, nel
+  // campo qui sopra, pre-compilato con un suggerimento a caso.
+  const SITUATIONS = [
+    { key: 'gigante', title: 'Gigante in declino', blurb: 'Una piazza che sogna ancora la Serie A: tanta tifoseria, casse quasi vuote.', strRange: [46, 54], budgetRange: [1.6e6, 2.3e6], stadiumTier: 1, stadiumChance: 0.7, fanbaseRange: [1.15, 1.35] },
+    { key: 'piccola', title: 'Piccola realtà solida', blurb: 'Pochi tifosi ma conti sempre in ordine: un progetto costruito con pazienza.', strRange: [42, 50], budgetRange: [2.8e6, 3.9e6], stadiumTier: 0, stadiumChance: 0, fanbaseRange: [0.85, 1.0] },
+    { key: 'matricola', title: 'Matricola ambiziosa', blurb: 'Presidente facoltoso, fame di categoria superiore: il budget più alto sul tavolo.', strRange: [44, 52], budgetRange: [3.5e6, 4.6e6], stadiumTier: 0, stadiumChance: 0.2, fanbaseRange: [0.9, 1.05] },
+    { key: 'provincia', title: 'Club di provincia stabile', blurb: 'Nessun lusso, ma né debiti né sorprese: si parte alla pari con tutti.', strRange: [43, 51], budgetRange: [2.2e6, 2.9e6], stadiumTier: 0, stadiumChance: 0, fanbaseRange: [0.95, 1.1] },
+  ];
   let takeovers = null, selTakeover = -1;
+  // Filtro/ordinamento della lista rosa in sala del consiglio: solo preferenza di vista,
+  // non tocca lo stato di gioco.
+  let squadRoleFilter = 'ALL', squadSortDesc = true;
   function genTakeovers() {
-    const pool = shuffle(POOLS[0].slice()).slice(0, 4);
-    return pool.map((c) => {
-      const fallen = c.s >= 50;   // i nomi di Eccellenza più blasonati portano una tifoseria dormiente più grande
-      return {
-        club: c.n, str: c.s,
-        budget: (fallen ? 1.8e6 : 2.6e6) + rnd(13) * 1e5,
-        stadiumTier: fallen && Math.random() < 0.6 ? 1 : 0,
-        fanbase: fallen ? 1.15 + Math.random() * 0.2 : 0.9 + Math.random() * 0.18,
-        blurb: fallen ? 'Un gigante decaduto. Tanta tifoseria, casse vuote.' : 'Una piccola ben gestita. Più cassa, meno tifosi.',
-      };
-    });
+    return SITUATIONS.map((s) => ({
+      key: s.key, title: s.title, blurb: s.blurb,
+      str: s.strRange[0] + rnd(s.strRange[1] - s.strRange[0] + 1),
+      budget: s.budgetRange[0] + Math.random() * (s.budgetRange[1] - s.budgetRange[0]),
+      stadiumTier: Math.random() < s.stadiumChance ? s.stadiumTier : 0,
+      fanbase: s.fanbaseRange[0] + Math.random() * (s.fanbaseRange[1] - s.fanbaseRange[0]),
+    }));
   }
   function renderTakeovers() {
     const grid = $('takeoverGrid');
     grid.innerHTML = takeovers.map((t, i) => `
       <button type="button" class="ow-takeover ${selTakeover === i ? 'on' : ''}" data-i="${i}">
-        <b>${t.club}</b>
+        <b>${t.title}</b>
         <small>${t.blurb}</small>
         <span class="ow-tk-row"><span>Budget</span><b>${fmtMoney(t.budget)}</b></span>
         <span class="ow-tk-row"><span>Stadio</span><b>${STADIUM[t.stadiumTier].cap.toLocaleString('it-IT')} posti</b></span>
@@ -625,9 +643,10 @@
   }
   function boot() {
     takeovers = genTakeovers(); renderTakeovers();
-    $('owRerollBtn').addEventListener('click', () => { takeovers = genTakeovers(); selTakeover = -1; renderTakeovers(); toast('Nuovi club sul tavolo.'); });
+    if (!$('owClubName').value) $('owClubName').value = pick(POOLS[0]).n;   // suggerimento a caso, modificabile
+    $('owRerollBtn').addEventListener('click', () => { takeovers = genTakeovers(); selTakeover = -1; renderTakeovers(); toast('Nuove condizioni di partenza sul tavolo.'); });
     $('owStartBtn').addEventListener('click', () => {
-      if (selTakeover < 0) { toast('Scegli prima un club da comprare.'); return; }
+      if (selTakeover < 0) { toast('Scegli prima una situazione di partenza.'); return; }
       const go = () => startDynasty(($('owName').value || '').trim() || 'Il Presidente', takeovers[selTakeover], ($('owClubName').value || '').trim());
       if (!hasSave()) { go(); return; }
       overlay(`
@@ -652,9 +671,9 @@
   function startDynasty(owner, t, customClub) {
     clearSave();
     const squad = [];
-    for (let i = 0; i < 16; i++) { const ovr = clamp(gaussInt(t.str - 1, 3.5), 40, 55); squad.push({ n: genName(), ovr, age: 19 + rnd(12), wage: wageFor(ovr), yrs: 1 + rnd(3), pos: randPos(squad), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0 }); }
+    for (let i = 0; i < 16; i++) { const ovr = clamp(gaussInt(t.str - 1, 3.5), 40, 55); squad.push({ n: genName(), ovr, age: 19 + rnd(12), wage: wageFor(ovr), yrs: 1 + rnd(3), pos: randPos(squad), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 }); }
     S = {
-      owner, club: (customClub || '').slice(0, 24) || t.club, div: 0, season: 1,
+      owner, club: (customClub || '').slice(0, 24) || pick(POOLS[0]).n, div: 0, season: 1,
       budget: Math.round(t.budget), fanbase: Math.round(t.fanbase * 100) / 100,
       stadiumTier: t.stadiumTier, stadiumSpent: 0.6e6 + (t.stadiumTier ? STADIUM[1].cost : 0), ticket: 1,
       squad, manager: (function () { const r = clamp(DIVS[0].mgrBase - 2 + rnd(8), 45, 92); return { n: genName(), rating: r, salary: mgrSalaryFor(r) }; })(),
@@ -688,7 +707,10 @@
     const broke = S.budget < bill;
     const worth = computeWorth(); S.peakWorth = Math.max(S.peakWorth, worth);
     const next = STADIUM[S.stadiumTier + 1];
-    const squadRows = S.squad.slice().sort((a, b) => b.ovr - a.ovr).map((p) => {
+    const squadFiltered = S.squad.slice()
+      .filter((p) => squadRoleFilter === 'ALL' || p.pos === squadRoleFilter)
+      .sort((a, b) => squadSortDesc ? b.ovr - a.ovr : a.ovr - b.ovr);
+    const squadRows = squadFiltered.length ? squadFiltered.map((p) => {
       const fy = !p.loan && finalYear(p);
       return `
       <div class="ow-player${fy ? ' final' : ''}"><span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span>
@@ -698,7 +720,7 @@
         <span class="wg">${fmtWk(p.wage)}</span>
         ${fy ? `<button class="ow-renew" data-renew="${p.pid}" title="Offri un nuovo contratto">Rinnova</button>` : ''}
         ${p.loan ? '' : `<button class="ow-x" data-rel="${p.pid}" title="Vendi">💷</button>`}</div>`;
-    }).join('');
+    }).join('') : '<div class="ow-sub" style="margin:10px 0">Nessun giocatore in questo ruolo.</div>';
     const estRevenue = estSeasonRevenue();
     body.innerHTML = `
       <div class="ow-stickybar">
@@ -769,6 +791,11 @@
         <div class="ow-sub" style="margin:0 0 8px">${S.spinsBought ? 'Affaticamento scout: i prezzi sono saliti perché hai già fatto ' + S.spinsBought + ' spin quest\'estate.' : 'Ogni spin di questa estate costa più del precedente.'}</div>
         <button class="dyn-btn ow-investor" id="freeAgentBtn">🖊️ Ingaggia uno svincolato · Gratis</button>
         ${!S.investorUsed ? `<button class="dyn-btn ow-investor" id="investorBtn">💼 Bonus investitore · +${fmtMoney(d.investor)}</button>` : ''}
+        <div class="ow-squad-filters">
+          ${['ALL', 'POR', 'DIF', 'CEN', 'ATT'].map((k) => `<button class="ow-filter-pill ${squadRoleFilter === k ? 'on' : ''}" data-role="${k}">${k === 'ALL' ? 'Tutti' : k}</button>`).join('')}
+          <button class="ow-filter-pill ow-filter-sort" id="squadSortBtn" title="Ordina per overall">OVR ${squadSortDesc ? '▼' : '▲'}</button>
+        </div>
+        ${squadRoleFilter !== 'ALL' ? `<div class="ow-sub" style="margin:-4px 0 6px">${squadFiltered.length} di ${S.squad.length} giocatori</div>` : ''}
         <div class="ow-squadlist">${squadRows}</div>
       </div>
       <button class="dyn-btn dyn-btn-primary" id="startSeasonBtn">Inizia Stagione ${S.season} · ${d.name}</button>
@@ -868,6 +895,9 @@
       S.investorUsed = true; S.budget += divOf().investor;
       toast('Un investitore stacca un assegno: +' + fmtMoney(divOf().investor)); renderBoard(); saveGame();
     });
+    body.querySelectorAll('[data-role]').forEach((el) => el.addEventListener('click', () => { squadRoleFilter = el.dataset.role; renderBoard(); }));
+    const sortBtn = $('squadSortBtn');
+    if (sortBtn) sortBtn.addEventListener('click', () => { squadSortDesc = !squadSortDesc; renderBoard(); });
     $('startSeasonBtn').addEventListener('click', startSeason);
     $('sellBtn').addEventListener('click', confirmSell);
     $('resignBtn').addEventListener('click', confirmResign);
@@ -965,7 +995,7 @@
     // Azzera le statistiche (valgono per la stagione in corso) e tira una "forma stagionale":
     // la maggior parte dei giocatori resta vicina alla norma, ma ogni tanto qualcuno esplode
     // (fino quasi al doppio della sua resa attesa) o vive un'annata opaca (anche la metà).
-    S.squad.forEach((p) => { p.seasonGoals = 0; p.seasonAssists = 0; p.seasonCleanSheets = 0; p.formSeason = clamp(1 + gaussInt(0, 28) / 100, 0.45, 1.9); });
+    S.squad.forEach((p) => { p.seasonGoals = 0; p.seasonAssists = 0; p.seasonCleanSheets = 0; p.seasonApps = 0; p.formSeason = clamp(1 + gaussInt(0, 28) / 100, 0.45, 1.9); });
     S.cupMoney = 0; S.euroMoney = S.euro ? EURO_COMPS[S.euroComp].entry : 0;   // montepremi di partecipazione alla coppa europea
     S.opps = rivals().map((o) => ({ name: o.n, s: o.s, pts: seasonPtsFor(o.s), gf: 0, ga: 0 }));
     S.opps.forEach((o) => { o.gf = Math.round(gp() * (o.s - (divOf().avg - 12)) / 22); o.ga = Math.round(gp() * ((divOf().avg + 10) - o.s) / 22); });
@@ -987,8 +1017,10 @@
     if (res === 'W') S.wins++;
     S.last5.push(res === 'W' ? 1 : res === 'L' ? -1 : 0); if (S.last5.length > 5) S.last5.shift();
     S.form = clamp(S.last5.reduce((a, b) => a + b, 0) * 0.5, -2.5, 2.5);
-    const goalsFor = genGoals(gf, true), goalsAgainst = genGoals(ga, false, opp.name);
-    registerCleanSheet(ga);
+    const lineup = pickMatchLineup(S.squad);
+    registerAppearances(lineup);
+    const goalsFor = genGoals(gf, true, null, lineup), goalsAgainst = genGoals(ga, false, opp.name);
+    registerCleanSheet(ga, lineup);
     const row = { mw: fx.mw, opp: opp.name, home: fx.home, gf, ga, res, goalsFor, goalsAgainst };
     S.results.push(row); logMatch(row);
     maybeCupRound();
@@ -1024,8 +1056,10 @@
       if (key === 'nat') S.cupMoney += d.cupBase * (i + 1);
       else S.euroMoney += EURO_COMPS[S.euroComp].roundWin;
     }
-    logCup(cup.name, cup.rounds[i], won, gf, ga, genGoals(gf, true), genGoals(ga, false, oppName), oppName);
-    registerCleanSheet(ga);
+    const cupLineup = pickMatchLineup(S.squad);
+    registerAppearances(cupLineup);
+    logCup(cup.name, cup.rounds[i], won, gf, ga, genGoals(gf, true, null, cupLineup), genGoals(ga, false, oppName), oppName);
+    registerCleanSheet(ga, cupLineup);
     if (!won) cup.out = true; else if (cup.at >= cup.rounds.length) cup.won = true;
     renderCups();
   }
@@ -1118,8 +1152,10 @@
         // manteniamo il risultato coerente con l'esito (parità significa rigori)
         if (won && gf < ga) { const t = gf; gf = ga; ga = t; }
         else if (!won && gf > ga) { const t = gf; gf = ga; ga = t; }
-        rounds.push({ stage, opp: oppName, gf, ga, won, pens: gf === ga, goalsFor: genGoals(gf, true), goalsAgainst: genGoals(ga, false, oppName) });
-        registerCleanSheet(ga);
+        const poLineup = pickMatchLineup(S.squad);
+        registerAppearances(poLineup);
+        rounds.push({ stage, opp: oppName, gf, ga, won, pens: gf === ga, goalsFor: genGoals(gf, true, null, poLineup), goalsAgainst: genGoals(ga, false, oppName) });
+        registerCleanSheet(ga, poLineup);
         return won;
       };
       let won = false;
@@ -1205,11 +1241,10 @@
     // subito quanto ciascuno è cresciuto o sceso. Il ritiro (36+ dopo il compleanno di
     // fine stagione) viene solo marcato: la rimozione vera avviene entrando in quella
     // successiva, per non far sparire un giocatore dalle sue stesse statistiche finali. -----
-    const xiEnd = startingXI(S.squad);
     S.squad.forEach((p) => {
       p.age++;
       const before = p.ovr;
-      p.ovr = clamp(p.ovr + seasonOvrDelta(p, xiEnd), 40, 94);
+      p.ovr = clamp(p.ovr + seasonOvrDelta(p), 40, 94);
       p._ovrDelta = p.ovr - before;
       p._retiring = p.age >= 36;
     });
@@ -1249,12 +1284,14 @@
             ${(usSc || themSc) ? `<div class="mrow-scorers">${usSc ? '<div class="sc us">⚽ ' + usSc + '</div>' : ''}${themSc ? '<div class="sc them">🥅 ' + themSc + '</div>' : ''}</div>` : ''}
           </div>`;
         }).join('')}` : '';
-    // Giocatori di movimento: marcatori + assistman. I portieri hanno una statistica loro:
-    // i clean sheet, molto più significativi di un gol che quasi non segnano mai.
-    const scorers = S.squad.filter((p) => p.pos !== 'POR' && (p.seasonGoals > 0 || p.seasonAssists > 0))
-      .sort((a, b) => b.seasonGoals - a.seasonGoals || b.seasonAssists - a.seasonAssists || b.ovr - a.ovr);
-    const keepers = S.squad.filter((p) => p.pos === 'POR').sort((a, b) => (b.seasonCleanSheets || 0) - (a.seasonCleanSheets || 0) || b.ovr - a.ovr);
-    const gkStarter = currentStarterGK();
+    // Giocatori di movimento: marcatori, assistman e chiunque abbia comunque messo
+    // piede in campo (anche solo da subentrato), non solo chi ha segnato o assistito. I
+    // portieri hanno una statistica loro: i clean sheet, molto più significativi di un
+    // gol che quasi non segnano mai.
+    const scorers = S.squad.filter((p) => p.pos !== 'POR' && (p.seasonGoals > 0 || p.seasonAssists > 0 || p.seasonApps > 0))
+      .sort((a, b) => b.seasonGoals - a.seasonGoals || b.seasonAssists - a.seasonAssists || (b.seasonApps || 0) - (a.seasonApps || 0) || b.ovr - a.ovr);
+    const keepers = S.squad.filter((p) => p.pos === 'POR').sort((a, b) => (b.seasonApps || 0) - (a.seasonApps || 0) || (b.seasonCleanSheets || 0) - (a.seasonCleanSheets || 0) || b.ovr - a.ovr);
+    const gkStarterPid = keepers.length ? keepers[0].pid : null;   // più presenze in stagione = titolare di fatto
     const topScorer = scorers.find((p) => p.seasonGoals > 0);
     // La variazione di overall della stagione appena chiusa: verde/su se è cresciuto,
     // rosso/giù se è calato, grigio se è rimasto stabile.
@@ -1262,28 +1299,29 @@
       const d = p._ovrDelta || 0;
       const col = d > 0 ? 'var(--good)' : d < 0 ? 'var(--bad)' : 'var(--muted)';
       const arrow = d > 0 ? '▲' : d < 0 ? '▼' : '—';
-      return `<span class="wg" style="font-size:12px;color:${col}">${arrow} ${Math.abs(d)}</span>`;
+      return `<span class="ovr-delta" style="color:${col}">${arrow}${Math.abs(d)}</span>`;
     };
+    const appsHTML = (p) => `<span class="wg" style="font-size:12px" title="Presenze">🎽 ${p.seasonApps || 0}</span>`;
     const statsHTML = `
       <div class="ow-sec">
         <div class="ow-sec-title">📊 Statistiche giocatori</div>
         ${scorers.length ? `
           <div class="ow-sub">Marcatori e assist di ${S.club}${topScorer ? ' · capocannoniere ' + topScorer.n + ' (' + topScorer.seasonGoals + ')' : ''}</div>
           <div class="ow-squadlist" style="max-height:none">${scorers.map((p) => `
-            <div class="ow-player"><span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span>
+            <div class="ow-player">${ovrDeltaHTML(p)}<span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span>
               <span class="postag postag-${p.pos}">${p.pos}</span>
               <span class="nm">${p.n}</span>
               <span class="wg" style="color:var(--gold);font-size:13px">⚽ ${p.seasonGoals || 0}</span>
               <span class="wg" style="font-size:13px">🅰️ ${p.seasonAssists || 0}</span>
-              ${ovrDeltaHTML(p)}</div>`).join('')}
+              ${appsHTML(p)}</div>`).join('')}
           </div>` : '<div class="ow-sub">Nessun marcatore o assistman di rilievo questa stagione.</div>'}
         ${keepers.length ? `
           <div class="ow-sub" style="margin-top:10px">Portieri</div>
           <div class="ow-squadlist" style="max-height:none">${keepers.map((p) => `
-            <div class="ow-player"><span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span>
-              <span class="nm">${p.n}<small>${gkStarter && p.pid === gkStarter.pid ? 'Titolare' : 'Riserva'}</small></span>
+            <div class="ow-player">${ovrDeltaHTML(p)}<span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span>
+              <span class="nm">${p.n}<small>${p.pid === gkStarterPid ? 'Titolare' : 'Riserva'}</small></span>
               <span class="wg" style="color:var(--good);font-size:13px">🧤 ${p.seasonCleanSheets || 0} clean sheet</span>
-              ${ovrDeltaHTML(p)}</div>`).join('')}
+              ${appsHTML(p)}</div>`).join('')}
           </div>` : ''}
       </div>`;
     body.innerHTML = `
@@ -1493,21 +1531,15 @@
   /* ---------------- overlay / toast ---------------- */
   function overlay(html) { $('owOverlayModal').innerHTML = html; $('owOverlay').classList.remove('hidden'); }
   function closeOverlay() { $('owOverlay').classList.add('hidden'); }
-  // I toast si accodano invece di sovrascriversi: se succedono tre cose in fila (un
-  // prestito che rientra, un contratto in scadenza, un ritiro) le vedi una alla volta,
-  // ciascuna ferma abbastanza a lungo da poterla leggere, invece che l'ultima soltanto.
-  let toastT = null, toastQueue = [], toastShowing = false;
-  function toast(msg) { toastQueue.push(msg); if (!toastShowing) showNextToast(); }
-  function showNextToast() {
-    if (!toastQueue.length) { toastShowing = false; return; }
-    toastShowing = true;
-    const msg = toastQueue.shift();
+  // Se arriva un nuovo toast mentre uno è ancora visibile, lo sostituisce subito (niente
+  // coda che rallenta): resta comunque a schermo abbastanza a lungo da poterlo leggere.
+  let toastT = null;
+  function toast(msg) {
     const t = $('owToast');
-    const more = toastQueue.length ? ' <span class="toast-more">+' + toastQueue.length + '</span>' : '';
-    t.innerHTML = msg + more;
+    t.innerHTML = msg;
     t.classList.remove('hidden');
     clearTimeout(toastT);
-    toastT = setTimeout(() => { t.classList.add('hidden'); setTimeout(showNextToast, 260); }, 3800);
+    toastT = setTimeout(() => t.classList.add('hidden'), 3800);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
