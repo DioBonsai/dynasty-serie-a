@@ -202,11 +202,13 @@
   // Stessi colori per ruolo dei tag POR/DIF/CEN/ATT già usati nella rosa (verde, azzurro,
   // bronzo, arancione), non quelli di qualità dell'overall: sul campo il colore identifica
   // subito il reparto, a colpo d'occhio.
+  // Anello colorato + alone scuro (li stacca dal verde del campo) + ombra portata più
+  // marcata, per farli risaltare bene anche su un campo scuro.
   const ROLE_BADGE = {
-    POR: 'color:#0a3d2a;box-shadow:0 0 0 2px var(--good),0 3px 7px rgba(0,0,0,.4)',
-    DIF: 'color:#0a3350;box-shadow:0 0 0 2px #6fb3ff,0 3px 7px rgba(0,0,0,.4)',
-    CEN: 'color:#3a2405;box-shadow:0 0 0 2px var(--dyn),0 3px 7px rgba(0,0,0,.4)',
-    ATT: 'color:#4a0505;box-shadow:0 0 0 2px var(--bad),0 3px 7px rgba(0,0,0,.4)',
+    POR: 'color:#0a3d2a;box-shadow:0 0 0 2px var(--good),0 0 0 5px rgba(0,0,0,.4),0 5px 12px rgba(0,0,0,.7)',
+    DIF: 'color:#0a3350;box-shadow:0 0 0 2px #6fb3ff,0 0 0 5px rgba(0,0,0,.4),0 5px 12px rgba(0,0,0,.7)',
+    CEN: 'color:#3a2405;box-shadow:0 0 0 2px var(--dyn),0 0 0 5px rgba(0,0,0,.4),0 5px 12px rgba(0,0,0,.7)',
+    ATT: 'color:#4a0505;box-shadow:0 0 0 2px var(--bad),0 0 0 5px rgba(0,0,0,.4),0 5px 12px rgba(0,0,0,.7)',
   };
   function pitchRowHTML(list, count) {
     const chips = [];
