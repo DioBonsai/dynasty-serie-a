@@ -37,7 +37,9 @@
     if (n >= 1e3) return neg + '€' + Math.round(n / 1e3) + 'k';
     return neg + '€' + n;
   }
-  const fmtWk = (w) => fmtMoney(w) + '/sett';
+  // p.wage è sempre lo stipendio SETTIMANALE (usato in tutte le formule economiche); qui
+  // lo mostriamo però sempre in €/anno, come richiesto, per coerenza in tutta l'interfaccia.
+  const fmtYr = (w) => fmtMoney(w * 52) + '/anno';
 
   /* ---------------- la piramide ---------------- */
   // Cinque categorie, dal basso in alto. teams determina il numero di giornate ((teams-1)*2).
@@ -206,6 +208,17 @@
     'Aleksandar', 'Vladimir', 'Andrei', 'Radu',
     'Erik', 'Jonas', 'Nils', 'Anders', 'Magnus', 'Henrik', 'Lars', 'Sven', 'Oscar', 'Viktor',
     'Kevin', 'Michael', 'Lukas', 'Maximilian', 'Julian', 'Niklas', 'Daan', 'Sem', 'Wout', 'Ruud',
+    'James', 'William', 'Thomas', 'Charlie', 'Jack', 'Harry', 'George', 'Oliver', 'Jacob', 'Ethan',
+    'Ryan', 'Connor', 'Callum', 'Liam', 'Owen', 'Reece',
+    'Emre', 'Cenk', 'Burak', 'Kerem', 'Arda', 'Ozan', 'Baris', 'Umut', 'Kaan',
+    'Nikos', 'Dimitris', 'Kostas', 'Panagiotis', 'Giorgos', 'Christos', 'Vassilis',
+    'Piotr', 'Krzysztof', 'Tomasz', 'Wojciech', 'Jakub', 'Marek', 'Pavel', 'Petr', 'Tomas', 'Ondrej',
+    'Giorgi', 'Levan', 'Khvicha', 'Saba', 'Zurab',
+    'Takumi', 'Kaoru', 'Hidemasa', 'Ritsu', 'Daizen', 'Minjae', 'Seunghyun',
+    'Nahuel', 'Facundo', 'Franco', 'Agustin', 'Santiago', 'Nicolas', 'Ezequiel', 'Jonathan', 'Yerry', 'Duvan', 'Radamel',
+    'Wilfried', 'Serge', 'Franck', 'Habib', 'Souleymane', 'Hamari', 'Alassane',
+    'Rasmus', 'Mikkel', 'Casper', 'Jesper', 'Simon', 'Andreas', 'Fredrik',
+    'Ahmed', 'Hassan', 'Yusuf', 'Omar', 'Ali', 'Tarik', 'Elias', 'Noah', 'Gabriel', 'Matheus',
   ];
   const LAST = [
     'Rossi', 'Russo', 'Ferrari', 'Esposito', 'Bianchi', 'Romano', 'Colombo', 'Ricci', 'Marino', 'Greco',
@@ -222,6 +235,16 @@
     'Nagy', 'Kowalski', 'Nowak',
     'Jansen', 'Andersen', 'Nielsen', 'Hansen', 'Larsen', 'Karlsson', 'Eriksson', 'Johansson', 'Berg', 'Lund',
     'Muller', 'Schmidt', 'Weber', 'Wagner', 'Becker', 'Hoffmann', 'Bakker', 'Visser',
+    'Smith', 'Jones', 'Taylor', 'Brown', 'Wilson', 'Evans', 'Thomas', 'Roberts', 'Walker', 'Wright',
+    'White', 'Green', 'Hall', 'Wood', 'Clarke', 'Turner', 'Hill', 'Ward', 'Baker', 'Cooper',
+    'Yilmaz', 'Demir', 'Kaya', 'Celik', 'Sahin', 'Aydin', 'Ozturk', 'Arslan',
+    'Papadopoulos', 'Georgiou', 'Ioannou', 'Nikolaou',
+    'Kaminski', 'Wojcik', 'Lewandowski', 'Zielinski', 'Novotny', 'Dvorak', 'Prochazka', 'Svoboda',
+    'Kvaratskhelia', 'Mamardashvili', 'Sarkisyan', 'Petrosyan',
+    'Tanaka', 'Sato', 'Suzuki', 'Kim', 'Lee', 'Park',
+    'Acosta', 'Benitez', 'Cabrera', 'Duarte', 'Espinoza', 'Flores', 'Herrera', 'Medina', 'Paredes', 'Rojas', 'Vidal', 'Zapata',
+    'Mbeki', 'Diakite', 'Coulibaly', 'Keita', 'Konate', 'Fofana', 'Balde', 'Mane', 'Adekunle', 'Nwosu', 'Chukwu',
+    'Solberg', 'Halvorsen', 'Pedersen', 'Olsen', 'Svensson', 'Lindqvist', 'Makinen', 'Virtanen',
   ];
   const genName = () => pick(FIRST) + ' ' + pick(LAST);
 
@@ -717,7 +740,7 @@
         <span class="postag postag-${p.pos}">${p.pos}</span>
         <span class="nm">${p.n}<small>età ${p.age}</small></span>
         ${p.loan ? '<span class="yy loan" title="Torna al suo club a fine stagione">prestito</span>' : `<span class="yy${fy ? ' fy' : ''}" title="Anni di contratto rimasti">${p.yrs}a</span>`}
-        <span class="wg">${fmtWk(p.wage)}</span>
+        <span class="wg">${fmtYr(p.wage)}</span>
         ${fy ? `<button class="ow-renew" data-renew="${p.pid}" title="Offri un nuovo contratto">Rinnova</button>` : ''}
         ${p.loan ? '' : `<button class="ow-x" data-rel="${p.pid}" title="Vendi">💷</button>`}</div>`;
     }).join('') : '<div class="ow-sub" style="margin:10px 0">Nessun giocatore in questo ruolo.</div>';
@@ -820,8 +843,8 @@
         <div class="ow-spin-card">
           <div class="big" style="color:${ovrTier(p.ovr).c}">${p.ovr}</div>
           <div class="nm">${p.n}</div>
-          <div class="meta">età ${p.age} · guadagna <b>${fmtWk(p.wage)}</b>, ${p.yrs} ann${p.yrs === 1 ? 'o' : 'i'} rimasti</div>
-          <div class="meta">Chiede <b>${fmtWk(nw)}</b> per <b>${ny} anni</b> · ${fmtMoney(nw * 52)}/anno</div>
+          <div class="meta">età ${p.age} · guadagna <b>${fmtYr(p.wage)}</b>, ${p.yrs} ann${p.yrs === 1 ? 'o' : 'i'} rimasti</div>
+          <div class="meta">Chiede <b>${fmtYr(nw)}</b> per <b>${ny} anni</b></div>
           <div class="meta">Hai <b>${fmtMoney(freeToSpend())}</b> liberi dopo gli stipendi</div>
         </div>
         <div class="dyn-modal-actions">
@@ -878,7 +901,7 @@
         <div class="ow-spin-card">
           <div class="big" style="color:${ovrTier(p.ovr).c}">${p.ovr}</div>
           <div class="nm">${p.n} <span class="postag postag-${p.pos}" style="vertical-align:middle">${p.pos}</span></div>
-          <div class="meta">${POS_LABEL[p.pos]} · età ${p.age} · ${fmtWk(p.wage)}</div>
+          <div class="meta">${POS_LABEL[p.pos]} · età ${p.age} · ${fmtYr(p.wage)}</div>
         </div>
         <div class="dyn-modal-actions">
           <button class="dyn-btn dyn-btn-primary" id="ovFaOk">OK</button>
@@ -927,7 +950,7 @@
   function doSpin(premium) {
     const cost = spinCostNow(premium);
     if (S.budget < cost) { toast('Budget non sufficiente.'); return; }
-    spendGuard(cost, premium ? 'Uno spin di lusso' : 'Uno spin', 'I soldi dello spin si spendono anche se rifiuti il giocatore.', () => runSpin(premium, cost));
+    spendGuard(cost, premium ? 'Uno spin di lusso' : 'Uno spin', 'Se rifiuti il giocatore ti torna solo il 40% dello spin.', () => runSpin(premium, cost));
   }
   function runSpin(premium, cost) {
     const d = divOf();
@@ -940,7 +963,7 @@
       <div class="ow-spin-card">
         <div class="big" style="color:${ovrTier(p.ovr).c}">${p.ovr}</div>
         <div class="nm">${p.n} <span class="postag postag-${p.pos}" style="vertical-align:middle">${p.pos}</span></div>
-        <div class="meta">${POS_LABEL[p.pos]} · età ${p.age} · chiede <b>${fmtWk(p.wage)}</b> (${fmtMoney(p.wage * 52)}/anno)</div>
+        <div class="meta">${POS_LABEL[p.pos]} · età ${p.age} · chiede <b>${fmtYr(p.wage)}</b></div>
         <div class="meta">Hai <b>${fmtMoney(freeToSpend())}</b> liberi dopo gli stipendi</div>
         ${p.ovr >= d.avg + 7 ? '<div class="gem">⭐ Un colpo da titoli di giornale per questo livello</div>' : ''}
       </div>
@@ -953,7 +976,13 @@
       if (p.ovr >= d.avg + 7) S.sent = clamp(S.sent + 2, 0, 100);
       S._spin = null; closeOverlay(); toast(p.n + ' firma.'); renderBoard(); saveGame();
     };
-    $('ovPass').onclick = () => { S._spin = null; closeOverlay(); toast('Passi. I soldi dello spin sono spesi.'); renderBoard(); saveGame(); };
+    $('ovPass').onclick = () => {
+      const refund = Math.round(cost * 0.4);
+      S.budget += refund;
+      S._spin = null; closeOverlay();
+      toast('Passi. Lo scout ti restituisce ' + fmtMoney(refund) + ' (40% dello spin).');
+      renderBoard(); saveGame();
+    };
   }
   function confirmSell() {
     const worth = computeWorth();
@@ -990,7 +1019,7 @@
     if (S.budget < wageBill() + S.manager.salary) { toast('Ti mancano ' + fmtMoney(wageBill() + S.manager.salary - S.budget) + ' per il monte ingaggi. Vendi giocatori o trova soldi.'); renderBoard(); return; }
     S.budget -= wageBill() + S.manager.salary;
     S.sent = clamp(S.sent + TICKETS[S.ticket].sent, 0, 100);
-    S.seasonActive = true; S.winterDone = false; S.janSpinUsed = false;
+    S.seasonActive = true; S.winterDone = false; S._janCands = null; S._janMgrCands = null;
     S.played = 0; S.pts = 0; S.gf = 0; S.ga = 0; S.wins = 0; S.results = []; S.last5 = []; S.form = 0;
     // Azzera le statistiche (valgono per la stagione in corso) e tira una "forma stagionale":
     // la maggior parte dei giocatori resta vicina alla norma, ma ogni tanto qualcuno esplode
@@ -1064,68 +1093,76 @@
     renderCups();
   }
 
-  /* ---------------- mercato di gennaio ---------------- */
+  /* ---------------- mercato di gennaio (ricostruito da zero) ---------------- */
+  // A metà stagione si aprono due candidati (niente scout da pagare a parte: eccoli
+  // subito). Per ciascuno due strade, indipendenti l'una dall'altra:
+  //  - Prestito fino a giugno: niente cartellino, solo il 60% del suo stipendio annuo
+  //    con un ulteriore 15% di sconto. Gioca per te, entra nelle statistiche finali, ma
+  //    a fine stagione torna al suo club — non resta in rosa.
+  //  - Acquisto a titolo definitivo: stesso costo del prestito PIÙ un cartellino, tanto
+  //    più caro quanto più il giocatore è forte (overall) e giovane (età). Resta in
+  //    rosa per sempre, come un acquisto normale.
+  // Si può decidere per entrambi i candidati (o per nessuno): non è un "uno o l'altro".
+  const janLoanCost = (p) => Math.round(p.wage * 52 * 0.6 * 0.85);   // 60% dello stipendio, scontato del 15%
+  const janTransferFee = (p) => Math.round(playerValue(p) * 0.6);
   function openWinter() {
     S._pause = true;
-    const d = divOf(), janCost = Math.round(d.spin * 1.4);
-    const cands = [genManager(2), genManager(5)];
-    S._winterCands = cands;
+    if (!S._janCands) S._janCands = [spinPlayer(false), spinPlayer(false)];
+    if (!S._janMgrCands) S._janMgrCands = [genManager(2), genManager(5)];
+    renderWinterOverlay();
+  }
+  function renderWinterOverlay() {
+    const d = divOf();
+    const cands = S._janCands || [];
+    const mgrCands = S._janMgrCands || [];
+    const cardHTML = (p, i) => {
+      const loanCost = janLoanCost(p), buyTotal = loanCost + janTransferFee(p);
+      return `
+      <div class="ow-jan-card">
+        <div class="ow-jan-head">
+          <span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span>
+          <span class="postag postag-${p.pos}">${p.pos}</span>
+          <span class="nm">${p.n}<small>${POS_LABEL[p.pos]} · età ${p.age} · chiede ${fmtYr(p.wage)}</small></span>
+        </div>
+        <div class="ow-jan-actions">
+          <button class="dyn-mini" data-jan-loan="${i}" ${S.budget < loanCost ? 'disabled' : ''}>🏷️ Prestito · ${fmtMoney(loanCost)}</button>
+          <button class="dyn-mini" data-jan-buy="${i}" ${S.budget < buyTotal ? 'disabled' : ''}>💰 Acquisto · ${fmtMoney(buyTotal)}</button>
+        </div>
+      </div>`;
+    };
     overlay(`
       <h2>❄️ Il mercato di gennaio</h2>
       <p>A metà strada. ${ord(currentPos())} in ${d.name}. Budget ${fmtMoney(S.budget)}.</p>
-      ${!S.janSpinUsed ? `<button class="dyn-btn" id="ovJan" ${S.budget < janCost ? 'disabled' : ''}>🎰 Spin di gennaio · ${fmtMoney(janCost)}</button>` : ''}
-      <div class="ow-sub" style="margin:10px 0 6px;text-align:left">Esonera ${S.manager.n} (30% di buonuscita) e nomina:</div>
-      ${cands.map((m, i) => `<div class="ow-mgr cand"><span class="ovr">${m.rating}</span><span class="nm">${m.n}<small>${fmtMoney(m.salary)}/anno, metà pagata subito</small></span><button class="dyn-mini" data-wh="${i}">Assumi</button></div>`).join('')}
+      ${cands.length ? cands.map(cardHTML).join('') : '<div class="ow-sub">Nessun altro candidato in questa finestra.</div>'}
+      <div class="ow-sub" style="margin:12px 0 6px;text-align:left">Esonera ${S.manager.n} (30% di buonuscita) e nomina:</div>
+      ${mgrCands.map((m, i) => `<div class="ow-mgr cand"><span class="ovr">${m.rating}</span><span class="nm">${m.n}<small>${fmtMoney(m.salary)}/anno, metà pagata subito</small></span><button class="dyn-mini" data-wh="${i}">Assumi</button></div>`).join('')}
       <div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovPlayOn">Continua così</button></div>`);
-    $('ovPlayOn').onclick = () => { S.winterDone = true; S._pause = false; closeOverlay(); saveGame(); if (S.played >= gp()) endSeason(); };
-    const jan = $('ovJan');
-    if (jan) jan.onclick = () => {
-      if (S.budget < janCost) return;
-      S.budget -= janCost; S.janSpinUsed = true;
-      showJanCandidate(spinPlayer(false));
-    };
+    $('ovPlayOn').onclick = () => { S.winterDone = true; S._pause = false; S._janCands = null; S._janMgrCands = null; closeOverlay(); saveGame(); if (S.played >= gp()) endSeason(); };
+    document.querySelectorAll('#owOverlayModal [data-jan-loan]').forEach((el) => el.addEventListener('click', () => {
+      const i = +el.dataset.janLoan, p = S._janCands[i]; if (!p) return;
+      const cost = janLoanCost(p);
+      if (S.budget < cost) { toast('Non puoi coprire il suo stipendio.'); return; }
+      S.budget -= cost; p.loan = true; S.squad.push(p);
+      S._janCands.splice(i, 1);
+      toast(p.n + ' arriva in prestito fino a fine stagione.');
+      saveGame(); renderWinterOverlay();
+    }));
+    document.querySelectorAll('#owOverlayModal [data-jan-buy]').forEach((el) => el.addEventListener('click', () => {
+      const i = +el.dataset.janBuy, p = S._janCands[i]; if (!p) return;
+      const cost = janLoanCost(p) + janTransferFee(p);
+      if (S.budget < cost) { toast('Non hai abbastanza per acquistarlo a titolo definitivo.'); return; }
+      S.budget -= cost; S.squad.push(p);
+      S._janCands.splice(i, 1);
+      toast(p.n + ' firma a titolo definitivo.');
+      saveGame(); renderWinterOverlay();
+    }));
     document.querySelectorAll('#owOverlayModal [data-wh]').forEach((el) => el.addEventListener('click', () => {
-      const m = S._winterCands[+el.dataset.wh]; if (!m) return;
+      const m = S._janMgrCands[+el.dataset.wh]; if (!m) return;
       const cost = Math.round(S.manager.salary * 0.3) + Math.round(m.salary * 0.5);
       if (S.budget < cost) { toast('Non puoi permetterti il cambio (buonuscita + metà stipendio).'); return; }
       S.budget -= cost; S.manager = m; toast(m.n + ' prende il timone a stagione in corso.');
-      closeOverlay(); openWinter();
+      saveGame(); renderWinterOverlay();
     }));
-  }
-  // Card del colpo di gennaio: prestito (economico, il giocatore torna al suo club a fine
-  // stagione), acquisto (come un normale colpo di mercato: mezza stagione di stipendio più
-  // un cartellino, resta in rosa) o cambia per pescare un altro candidato senza costo extra.
-  function showJanCandidate(p) {
-    const half = Math.round(p.wage * 26);
-    const buyFee = Math.round(playerValue(p) * 0.6);
-    const buyTotal = half + buyFee;
-    overlay(`
-      <h2>🎰 Colpo di gennaio</h2>
-      <div class="ow-spin-card">
-        <div class="big" style="color:${ovrTier(p.ovr).c}">${p.ovr}</div>
-        <div class="nm">${p.n} <span class="postag postag-${p.pos}" style="vertical-align:middle">${p.pos}</span></div>
-        <div class="meta">${POS_LABEL[p.pos]} · età ${p.age} · chiede <b>${fmtWk(p.wage)}</b></div>
-      </div>
-      <div class="dyn-modal-actions">
-        <button class="dyn-btn dyn-btn-primary" id="ovLoan">🏷️ Prestito fino a giugno · ${fmtMoney(half)}</button>
-        <button class="dyn-btn" id="ovBuy">💰 Acquisto a titolo definitivo · ${fmtMoney(buyTotal)}</button>
-        <button class="dyn-btn" id="ovSwitch">🔄 Cambia giocatore</button>
-        <button class="dyn-btn" id="ovPass">Passa</button>
-      </div>`);
-    $('ovLoan').onclick = () => {
-      if (S.budget < half) { toast('Non puoi coprire il suo stipendio.'); return; }
-      S.budget -= half; p.loan = true; S.squad.push(p);
-      toast(p.n + ' arriva in prestito fino a fine stagione.');
-      closeOverlay(); openWinter();
-    };
-    $('ovBuy').onclick = () => {
-      if (S.budget < buyTotal) { toast('Non hai abbastanza per acquistarlo a titolo definitivo.'); return; }
-      S.budget -= buyTotal; S.squad.push(p);
-      toast(p.n + ' firma a titolo definitivo.');
-      closeOverlay(); openWinter();
-    };
-    $('ovSwitch').onclick = () => { showJanCandidate(spinPlayer(false)); };
-    $('ovPass').onclick = () => { toast('Passi su di lui.'); closeOverlay(); openWinter(); };
   }
 
   /* ---------------- fine stagione ---------------- */
@@ -1301,27 +1338,30 @@
       const arrow = d > 0 ? '▲' : d < 0 ? '▼' : '—';
       return `<span class="ovr-delta" style="color:${col}">${arrow}${Math.abs(d)}</span>`;
     };
-    const appsHTML = (p) => `<span class="wg" style="font-size:12px" title="Presenze">🎽 ${p.seasonApps || 0}</span>`;
+    // Righe su due livelli: sopra overall+ruolo+nome COMPLETO (senza troncarlo), sotto le
+    // statistiche più piccole. Coi tanti dati per riga (delta, overall, ruolo, nome, gol,
+    // assist, presenze) su una riga sola il cognome finiva quasi sempre tagliato.
+    const statRowHTML = (leftHTML, statsInner) => `
+      <div class="ow-stat-row">
+        <div class="ow-stat-row-top">${leftHTML}</div>
+        <div class="ow-stat-row-bottom">${statsInner}</div>
+      </div>`;
     const statsHTML = `
       <div class="ow-sec">
         <div class="ow-sec-title">📊 Statistiche giocatori</div>
         ${scorers.length ? `
           <div class="ow-sub">Marcatori e assist di ${S.club}${topScorer ? ' · capocannoniere ' + topScorer.n + ' (' + topScorer.seasonGoals + ')' : ''}</div>
-          <div class="ow-squadlist" style="max-height:none">${scorers.map((p) => `
-            <div class="ow-player">${ovrDeltaHTML(p)}<span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span>
-              <span class="postag postag-${p.pos}">${p.pos}</span>
-              <span class="nm">${p.n}</span>
-              <span class="wg" style="color:var(--gold);font-size:13px">⚽ ${p.seasonGoals || 0}</span>
-              <span class="wg" style="font-size:13px">🅰️ ${p.seasonAssists || 0}</span>
-              ${appsHTML(p)}</div>`).join('')}
+          <div class="ow-squadlist" style="max-height:none">${scorers.map((p) => statRowHTML(
+            `${ovrDeltaHTML(p)}<span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span><span class="postag postag-${p.pos}">${p.pos}</span><span class="nm">${p.n}</span>`,
+            `<span style="color:var(--gold)">⚽ ${p.seasonGoals || 0}</span><span>👟 ${p.seasonAssists || 0}</span><span title="Presenze">🎽 ${p.seasonApps || 0}</span>`
+          )).join('')}
           </div>` : '<div class="ow-sub">Nessun marcatore o assistman di rilievo questa stagione.</div>'}
         ${keepers.length ? `
           <div class="ow-sub" style="margin-top:10px">Portieri</div>
-          <div class="ow-squadlist" style="max-height:none">${keepers.map((p) => `
-            <div class="ow-player">${ovrDeltaHTML(p)}<span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span>
-              <span class="nm">${p.n}<small>${p.pid === gkStarterPid ? 'Titolare' : 'Riserva'}</small></span>
-              <span class="wg" style="color:var(--good);font-size:13px">🧤 ${p.seasonCleanSheets || 0} clean sheet</span>
-              ${appsHTML(p)}</div>`).join('')}
+          <div class="ow-squadlist" style="max-height:none">${keepers.map((p) => statRowHTML(
+            `${ovrDeltaHTML(p)}<span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span><span class="nm">${p.n}<small>${p.pid === gkStarterPid ? 'Titolare' : 'Riserva'}</small></span>`,
+            `<span style="color:var(--good)">🧤 ${p.seasonCleanSheets || 0} clean sheet</span><span title="Presenze">🎽 ${p.seasonApps || 0}</span>`
+          )).join('')}
           </div>` : ''}
       </div>`;
     body.innerHTML = `
