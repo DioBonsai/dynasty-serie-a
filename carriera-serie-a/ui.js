@@ -278,10 +278,16 @@
   }
   // Panchina: tutta la rosa che non è fra i titolari del modulo scelto, ordinata per ruolo
   // e overall. Ogni riga è cliccabile come i giocatori in campo, per lo scambio.
+  // Panchina "vera": non tutta la rosa rimasta, solo i migliori candidati a subentrare per
+  // ruolo (1 portiere, 2 difensori, 2 centrocampisti, 2 attaccanti), come una vera lista
+  // convocati — altrimenti con una rosa piena si riempirebbe di 15+ giocatori.
+  const BENCH_QUOTA = { POR: 1, DIF: 2, CEN: 2, ATT: 2 };
   function benchHTML(xiPids) {
     const xiSet = new Set(xiPids.filter((x) => x != null));
     const order = { POR: 0, DIF: 1, CEN: 2, ATT: 3 };
-    const bench = S.squad.filter((p) => !xiSet.has(p.pid)).sort((a, b) => (order[a.pos] - order[b.pos]) || (b.ovr - a.ovr));
+    const available = S.squad.filter((p) => !xiSet.has(p.pid)).sort((a, b) => (order[a.pos] - order[b.pos]) || (b.ovr - a.ovr));
+    const bench = [];
+    Object.keys(BENCH_QUOTA).forEach((role) => { bench.push(...available.filter((p) => p.pos === role).slice(0, BENCH_QUOTA[role])); });
     if (!bench.length) return '<div class="ow-sub" style="margin-top:8px">Nessun altro giocatore in panchina.</div>';
     return `
       <div class="ow-bench-title">🔁 Panchina — tocca un giocatore e poi uno in campo per scambiarli</div>

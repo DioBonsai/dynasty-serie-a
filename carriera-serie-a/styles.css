@@ -523,7 +523,7 @@ body{
   margin-bottom:2px; border:1px solid rgba(255,255,255,.14);
   background:
     repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 15%, transparent 15% 30%),
-    linear-gradient(180deg, #1f7a44, #15532e 70%, #123f24);
+    linear-gradient(180deg, #175c35, #0f3f23 70%, #0c3019);
 }
 .ow-pitch::before{
   content:""; position:absolute; left:50%; top:50%; width:74px; height:74px;
@@ -547,20 +547,25 @@ body{
 .ow-pitch-chip.empty{ cursor:default; }
 .ow-pitch-chip.empty .ovr{ background:rgba(255,255,255,.22); color:rgba(255,255,255,.55); box-shadow:none; }
 .ow-pitch-chip.empty .nm{ color:rgba(255,255,255,.45); }
-.ow-pitch-chip.sel .ovr{ box-shadow:0 0 0 3px var(--gold), 0 0 14px rgba(255,210,74,.85) !important; }
+/* selezione: un quadrato ben visibile intorno a tutta la casella, non solo un anello sul cerchio */
+.ow-pitch-chip.sel{
+  outline:3px solid var(--gold); outline-offset:4px; border-radius:10px;
+  background:rgba(255,210,74,.14); box-shadow:0 0 16px rgba(255,210,74,.5);
+}
 
 /* ---------- panchina (scambio titolari) ---------- */
 .ow-bench-title{ font-size:11px; font-weight:800; color:var(--muted); margin:12px 0 8px; text-transform:uppercase; letter-spacing:.04em; }
 .ow-bench-list{ display:flex; flex-wrap:wrap; gap:7px; }
 .ow-bench-chip{
-  display:flex; align-items:center; gap:6px; background:var(--panel); border:1px solid var(--line);
-  border-radius:10px; padding:6px 10px 6px 6px; cursor:pointer; transition:border-color .12s ease;
+  display:flex; align-items:center; gap:8px; background:var(--panel); border:1px solid var(--line);
+  border-radius:10px; padding:6px 10px 6px 6px; cursor:pointer; transition:border-color .12s ease,outline-color .12s ease;
 }
 .ow-bench-chip:hover{ border-color:var(--dyn); }
-.ow-bench-chip.sel{ border-color:var(--gold); box-shadow:0 0 0 1px var(--gold); }
+.ow-bench-chip.sel{ outline:3px solid var(--gold); outline-offset:2px; border-color:var(--gold); }
 .ow-bench-chip .ovr{
-  width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center;
-  font-weight:900; font-size:10.5px; font-family:var(--serif); flex:0 0 auto;
+  width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+  background:rgba(255,255,255,.94); font-weight:900; font-size:11px; font-family:var(--serif); flex:0 0 auto;
+  box-shadow:0 2px 5px rgba(0,0,0,.35);
 }
 .ow-bench-chip .nm{ font-size:11.5px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px; }
 
