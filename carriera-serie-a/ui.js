@@ -183,7 +183,7 @@
     POR: 'color:#0a3d2a;box-shadow:0 0 0 2px var(--good),0 3px 7px rgba(0,0,0,.4)',
     DIF: 'color:#0a3350;box-shadow:0 0 0 2px #6fb3ff,0 3px 7px rgba(0,0,0,.4)',
     CEN: 'color:#3a2405;box-shadow:0 0 0 2px var(--dyn),0 3px 7px rgba(0,0,0,.4)',
-    ATT: 'color:#4a1a00;box-shadow:0 0 0 2px #ff9d6a,0 3px 7px rgba(0,0,0,.4)',
+    ATT: 'color:#4a0505;box-shadow:0 0 0 2px var(--bad),0 3px 7px rgba(0,0,0,.4)',
   };
   function pitchRowHTML(list, count) {
     const chips = [];
