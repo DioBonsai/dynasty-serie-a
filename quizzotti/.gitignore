@@ -1,0 +1,14 @@
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
+
+# Progetto non correlato annidato per errore in questa cartella - non tracciato qui
+la-stalla/
+la-stalla.zip
+
+# Backup manuali locali pre-git
+QUIZZOTTI_backup_*/
+
+# Config locale dello strumento Claude Code, non parte del progetto
+.claude/

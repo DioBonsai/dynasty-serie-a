@@ -557,12 +557,21 @@
     $('owRerollBtn').addEventListener('click', () => { takeovers = genTakeovers(); selTakeover = -1; renderTakeovers(); toast('Nuovi club sul tavolo.'); });
     $('owStartBtn').addEventListener('click', () => {
       if (selTakeover < 0) { toast('Scegli prima un club da comprare.'); return; }
-      if (hasSave() && !confirm('Iniziare una nuova dinastia? La carriera salvata andrà persa.')) return;
-      startDynasty(($('owName').value || '').trim() || 'Il Presidente', takeovers[selTakeover], ($('owClubName').value || '').trim());
+      const go = () => startDynasty(($('owName').value || '').trim() || 'Il Presidente', takeovers[selTakeover], ($('owClubName').value || '').trim());
+      if (!hasSave()) { go(); return; }
+      overlay(`
+        <h2>Iniziare una nuova carriera?</h2>
+        <p>La carriera salvata andrà persa.</p>
+        <div class="dyn-modal-actions">
+          <button class="dyn-btn dyn-btn-primary" id="ovConfirmNew">Sì, ricomincia</button>
+          <button class="dyn-btn" id="ovCancelNew">Annulla</button>
+        </div>`);
+      $('ovConfirmNew').onclick = () => { closeOverlay(); go(); };
+      $('ovCancelNew').onclick = closeOverlay;
     });
     $('owContinueBtn').addEventListener('click', resumeDynasty);
     $('owHomeBtn').addEventListener('click', () => { saveGame(); location.href = 'index.html'; });
-    if (hasSave()) { $('owContinueBtn').classList.remove('hidden'); $('owStartBtn').textContent = 'Inizia una nuova dinastia'; $('owStartBtn').className = 'dyn-btn'; }
+    if (hasSave()) { $('owContinueBtn').classList.remove('hidden'); $('owStartBtn').textContent = 'Inizia una nuova carriera'; $('owStartBtn').className = 'dyn-btn'; }
     window.addEventListener('pagehide', saveGame);
     $('owNextBtn').addEventListener('click', () => simMatch());
     $('owSimBtn').addEventListener('click', simToEnd);

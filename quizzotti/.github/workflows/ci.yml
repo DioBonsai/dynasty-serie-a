@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    name: Test, lint e verifica chrome condiviso
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Imposta Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Installa le dipendenze
+        run: npm ci
+
+      - name: Esegui i test automatici
+        run: npm test
+
+      - name: Verifica coerenza header/menu/footer condivisi
+        run: npm run chrome:check
+
+      - name: Lint JavaScript
+        run: npm run lint
+
+      - name: Lint CSS
+        run: npm run lint:css

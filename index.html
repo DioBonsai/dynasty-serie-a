@@ -1,115 +1,152 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Presidente · Serie A</title>
-<meta name="description" content="Compra un club di Eccellenza e costruisci un impero. Ingaggia giocatori con gli spin, gestisci il monte ingaggi, fai crescere lo stadio e scala cinque categorie fino alla Serie A." />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+<title>Quizzotti &amp; Presidente · Serie A</title>
+<meta name="description" content="Scegli la tua esperienza calcistica: i quiz gratuiti di Quizzotti o la carriera da presidente di Presidente · Serie A.">
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,600;0,700;0,900;1,600;1,800&family=Inter:wght@400;500;600;700;800;900&display=swap" />
-<link rel="stylesheet" href="styles.css" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,700;0,900;1,700&family=Inter:wght@400;500;600;700;800&display=swap" />
+<style>
+  *{ box-sizing:border-box; }
+  :root{
+    --bg:#07070a;
+    --txt:#f4ebdd;
+    --muted:#a89680;
+    --gold:#d4af37;
+    --line:#2a2218;
+    --sans:'Inter',system-ui,sans-serif;
+    --serif:'Fraunces','Georgia',serif;
+  }
+  html,body{ height:100%; margin:0; }
+  body{
+    font-family:var(--sans);
+    color:var(--txt);
+    background:
+      radial-gradient(1100px 620px at 85% -10%, rgba(212,175,55,.14) 0%, transparent 58%),
+      radial-gradient(900px 600px at -10% 108%, rgba(22,227,122,.10) 0%, transparent 55%),
+      var(--bg);
+    min-height:100%;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    padding:32px 16px;
+    gap:40px;
+  }
+  .hub-head{ text-align:center; max-width:560px; }
+  .hub-head h1{
+    font-family:var(--serif);
+    font-weight:900;
+    font-size:clamp(28px,6vw,44px);
+    margin:0 0 10px;
+    letter-spacing:.01em;
+  }
+  .hub-head p{
+    color:var(--muted);
+    font-size:15px;
+    line-height:1.5;
+    margin:0;
+  }
+  .hub-grid{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:20px;
+    width:100%;
+    max-width:820px;
+  }
+  @media (min-width:680px){
+    .hub-grid{ grid-template-columns:1fr 1fr; }
+  }
+  .hub-card{
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    justify-content:flex-end;
+    min-height:280px;
+    border-radius:20px;
+    padding:28px 24px;
+    text-decoration:none;
+    color:var(--txt);
+    border:1px solid var(--line);
+    overflow:hidden;
+    isolation:isolate;
+    transition:transform .15s ease, border-color .15s ease;
+  }
+  .hub-card:hover{ transform:translateY(-4px); }
+  .hub-card::before{
+    content:'';
+    position:absolute; inset:0; z-index:-1;
+  }
+  .hub-card.quizzotti::before{
+    background:linear-gradient(160deg,#141414 0%,#0a0a0a 60%,#050505 100%);
+  }
+  .hub-card.quizzotti{ border-color:#3a3220; }
+  .hub-card.quizzotti:hover{ border-color:var(--gold); }
+  .hub-card.carriera::before{
+    background:linear-gradient(160deg,#221a13 0%,#170e05 60%,#0b0906 100%);
+  }
+  .hub-card.carriera{ border-color:#3c2c1a; }
+  .hub-card.carriera:hover{ border-color:#c9902f; }
+  .hub-eyebrow{
+    font-size:11px;
+    font-weight:800;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    opacity:.7;
+    margin-bottom:8px;
+  }
+  .hub-card h2{
+    font-family:var(--serif);
+    font-size:26px;
+    font-weight:900;
+    margin:0 0 8px;
+  }
+  .hub-card p{
+    font-size:14px;
+    line-height:1.5;
+    color:var(--muted);
+    margin:0 0 16px;
+  }
+  .hub-cta{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    font-weight:800;
+    font-size:14px;
+  }
+  .quizzotti .hub-cta{ color:var(--gold); }
+  .carriera .hub-cta{ color:#e7b559; }
+  footer{
+    color:var(--muted);
+    font-size:12px;
+    text-align:center;
+  }
+</style>
 </head>
-<body class="dyn">
-
-<!-- Stemma riutilizzabile: scudo con la stella dello Scudetto, in gradiente bronzo/oro. -->
-<svg width="0" height="0" style="position:absolute">
-  <defs>
-    <linearGradient id="crestGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#f0c869" />
-      <stop offset=".55" stop-color="#c9902f" />
-      <stop offset="1" stop-color="#7a4f16" />
-    </linearGradient>
-  </defs>
-</svg>
-
-<!-- Barra home / indietro: rivelata da show() su ogni schermata di gioco, resta nascosta sulla schermata iniziale. -->
-<div id="owTopbar" class="dyn-topbar hidden">
-  <button id="owHomeBtn" class="dyn-home" type="button">
-    <svg class="dyn-home-crest" viewBox="0 0 40 46" aria-hidden="true"><path d="M20 2 L37 9 V22 C37 33 30 41 20 44 C10 41 3 33 3 22 V9 Z" fill="url(#crestGrad)" fill-opacity=".22" stroke="url(#crestGrad)" stroke-width="2.4" /><path d="M20 14 L22.4 19.4 L28.2 20 L23.8 23.9 L25.1 29.6 L20 26.6 L14.9 29.6 L16.2 23.9 L11.8 20 L17.6 19.4 Z" fill="url(#crestGrad)" /></svg>
-    <span>Presidente</span>
-  </button>
-</div>
-
-<!-- ============ SETUP: nome + acquisizione ============ -->
-<main id="owSetupScreen" class="dyn-screen">
-  <div class="dyn-wrap dyn-setup">
-    <svg class="setup-crest" viewBox="0 0 120 138" aria-hidden="true">
-      <path d="M60 4 L112 26 V64 C112 96 90 120 60 134 C30 120 8 96 8 64 V26 Z" fill="none" stroke="url(#crestGrad)" stroke-width="3.5" />
-      <path d="M60 4 L112 26 V64 C112 96 90 120 60 134 C30 120 8 96 8 64 V26 Z" fill="url(#crestGrad)" fill-opacity=".08" />
-      <path d="M60 40 L67 60 L88 61 L71 74 L77 95 L60 83 L43 95 L49 74 L32 61 L53 60 Z" fill="url(#crestGrad)" />
-    </svg>
-    <div class="dyn-kicker">Modalità Proprietario</div>
-    <h1 class="dyn-h1">Compra il <em>Club</em></h1>
-    <p class="dyn-sub">Compra una squadra di Eccellenza con un budget modesto. Ingaggia giocatori con gli spin, gestisci il monte ingaggi, assumi l'allenatore, scegli lo sponsor, fai crescere lo stadio e tieni i tifosi dalla tua parte. Scala cinque categorie fino alla Serie A, e vendi quando il prezzo è giusto.</p>
-    <label class="dyn-field">
-      <span>Nome proprietario</span>
-      <input id="owName" type="text" maxlength="18" placeholder="Il tuo nome" autocomplete="off" />
-    </label>
-    <label class="dyn-field">
-      <span>Nome del club (opzionale)</span>
-      <input id="owClubName" type="text" maxlength="24" placeholder="Lascia vuoto per il nome originale" autocomplete="off" />
-    </label>
-    <div class="dyn-aggr-label" style="text-align:center;margin:6px 0 8px">Scegli la tua acquisizione</div>
-    <div id="takeoverGrid" class="ow-takeovers"></div>
-    <button id="owRerollBtn" class="dyn-btn" style="margin-top:2px">🔄 Nuovi club in vendita</button>
-    <button id="owContinueBtn" class="dyn-btn dyn-btn-primary hidden">Continua la dinastia</button>
-    <button id="owStartBtn" class="dyn-btn dyn-btn-primary">Compra il club</button>
+<body>
+  <div class="hub-head">
+    <h1>Due mondi, un solo pallone</h1>
+    <p>Scegli come vuoi giocare: metti alla prova la tua cultura calcistica con i quiz di Quizzotti, oppure siediti in poltrona e costruisci la tua dinastia da presidente in Presidente&nbsp;·&nbsp;Serie&nbsp;A.</p>
   </div>
-</main>
 
-<!-- ============ SALA DEL CONSIGLIO (pre-stagione) ============ -->
-<main id="owBoardScreen" class="dyn-screen hidden">
-  <div class="dyn-wrap" id="boardBody"></div>
-</main>
+  <div class="hub-grid">
+    <a class="hub-card quizzotti" href="quizzotti/index.html">
+      <div class="hub-eyebrow">Quiz &amp; minigiochi</div>
+      <h2>Quizzotti</h2>
+      <p>10 minigiochi gratuiti ispirati ai grandi format TV: Chi Vuol Essere Milionario, Jeopardy, Taboo, L'Eredità e altri, tutti a tema calcio.</p>
+      <span class="hub-cta">Entra in Quizzotti →</span>
+    </a>
 
-<!-- ============ STAGIONE ============ -->
-<main id="owSeasonScreen" class="dyn-screen hidden">
-  <div class="dyn-wrap">
-    <div class="dyn-hud">
-      <div class="dyn-hud-cell"><span>Stagione</span><b id="hudSeason">1/20</b></div>
-      <div class="dyn-hud-cell"><span>Giocate</span><b id="hudPlayed">0/46</b></div>
-      <div class="dyn-hud-cell"><span>Posizione</span><b id="hudPos">-</b></div>
-      <div class="dyn-hud-cell"><span>Punti</span><b id="hudPts">0</b></div>
-    </div>
-    <div class="ow-subhud">
-      <span class="ow-div-chip" id="owDivChip">-</span>
-      <div class="ow-subcells">
-        <div class="cell" id="owBudgetChip"><span>Budget</span><b>-</b></div>
-        <div class="cell" id="owProjChip"><span>Piazzamento previsto</span><b>-</b></div>
-        <div class="cell" id="owWorthChip"><span>Valore del club</span><b>-</b></div>
-      </div>
-    </div>
-    <div class="dyn-cups" id="owCups"></div>
-    <div class="dyn-manage-row">
-      <button id="owTableBtn" class="dyn-mini">📊 Classifica</button>
-      <button id="owClubBtn" class="dyn-mini">🏦 Il mio club</button>
-    </div>
-    <div id="owLog" class="dyn-log"></div>
-    <div class="dyn-season-actions">
-      <button id="owNextBtn" class="dyn-btn dyn-btn-primary">Gioca prossima partita</button>
-      <button id="owSimBtn" class="dyn-btn">Simula fino a fine stagione</button>
-    </div>
+    <a class="hub-card carriera" href="carriera-serie-a/index.html">
+      <div class="hub-eyebrow">Gestionale di carriera</div>
+      <h2>Presidente · Serie A</h2>
+      <p>Rileva un club, gestisci il mercato e guida la tua squadra stagione dopo stagione nella tua dinastia da presidente.</p>
+      <span class="hub-cta">Entra in Presidente →</span>
+    </a>
   </div>
-</main>
 
-<!-- ============ FINE STAGIONE ============ -->
-<main id="owSeasonEndScreen" class="dyn-screen hidden">
-  <div class="dyn-wrap" id="owSeasonEndBody"></div>
-</main>
-
-<!-- ============ FINE DINASTIA ============ -->
-<main id="owEndScreen" class="dyn-screen hidden">
-  <div class="dyn-wrap" id="owEndBody"></div>
-</main>
-
-<!-- ============ OVERLAY + TOAST ============ -->
-<div id="owOverlay" class="dyn-overlay hidden">
-  <div class="dyn-modal" id="owOverlayModal"></div>
-</div>
-
-<div id="owToast" class="dyn-toast hidden"></div>
-
-<script src="owner.js"></script>
+  <footer>Quizzotti &amp; Presidente · Serie A</footer>
 </body>
 </html>

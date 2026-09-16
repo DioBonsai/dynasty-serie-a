@@ -1,0 +1,1238 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <title>Derby delle Parole · Quizzotti</title>
+    <meta name="description" content="Indovina la parola calcistica misteriosa a partire dalla definizione, lettera dopo lettera, come nel gioco TV.">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Derby delle Parole · Quizzotti">
+    <meta property="og:description" content="Indovina la parola calcistica misteriosa a partire dalla definizione, lettera dopo lettera, come nel gioco TV.">
+    <meta property="og:image" content="logo1.png">
+    <meta property="og:locale" content="it_IT">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Derby delle Parole · Quizzotti">
+    <meta name="twitter:description" content="Indovina la parola calcistica misteriosa a partire dalla definizione, lettera dopo lettera, come nel gioco TV.">
+    <meta name="twitter:image" content="logo1.png">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="assets/theme.css?v=0d991ead">
+    <script src="assets/profile.js?v=fc453328"></script>
+    <style>
+        /* ========== STILI GLOBALI (da index) ========== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Montserrat', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        :root {
+            --primary-black: #0a0a0a;
+            --secondary-black: #1a1a1a;
+            --dark-black: #050505;
+            --light-black: #222222;
+            --primary-gold: #d4af37;
+            --secondary-gold: #ffd700;
+            --light-gold: #f5e6a4;
+            --accent-gold: #c9a227;
+            --primary-green: #16e37a;
+            --secondary-green: #39ff8a;
+            --accent-green: #0f9d57;
+            --text-light: #f8f8f8;
+            --text-gray: #cccccc;
+            --shadow-heavy: 0 10px 30px rgba(0, 0, 0, 0.5);
+            --shadow-medium: 0 5px 15px rgba(0, 0, 0, 0.3);
+            --shadow-light: 0 2px 8px rgba(0, 0, 0, 0.2);
+
+            --pitch-green-light: var(--light-black);
+            --pitch-green-dark: var(--primary-black);
+            --line-white: var(--primary-gold);
+            --accent-red: #8b1a1a;
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--dark-black) 0%, var(--primary-black) 100%);
+            color: var(--text-light);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            overflow-x: hidden;
+        }
+
+        /* Sfondo verde erba con gradiente (originale del gioco) */
+        body::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at center, var(--pitch-green-light) 0%, var(--pitch-green-dark) 100%);
+            opacity: 0.8;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        body::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(255,255,255,0.1) 2px, transparent 2px),
+                linear-gradient(90deg, rgba(255,255,255,0.1) 2px, transparent 2px);
+            background-size: 100px 100px;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        /* ----- HEADER (identico a index) ----- */
+        header {
+            background: linear-gradient(to right, var(--primary-black), var(--light-black));
+            padding: 10px 12px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: var(--shadow-heavy);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            border-bottom: 2px solid var(--primary-gold);
+            width: 100%;
+            gap: 8px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+            flex: 1 1 auto;
+        }
+
+        .logo h1 {
+            font-size: 22px;
+            background: linear-gradient(to right, var(--secondary-gold), var(--light-gold));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            margin: 0;
+            line-height: 1.2;
+        }
+
+        .logo-icon {
+            height: 70px;
+            width: auto;
+            filter: drop-shadow(0 0 8px rgba(212, 175, 55, 0.6));
+            animation: pulse 2s infinite alternate;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            100% { transform: scale(1.1); }
+        }
+
+        /* Menu desktop nascosto su mobile */
+        nav ul {
+            display: none;
+            list-style: none;
+        }
+
+        /* Pulsante menu mobile */
+        .mobile-menu-toggle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(to right, var(--light-black), var(--secondary-black));
+            color: var(--secondary-gold);
+            border: 2px solid var(--primary-gold);
+            border-radius: 12px;
+            padding: 12px 16px;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: var(--shadow-medium);
+            transition: all 0.3s ease;
+            min-width: 52px;
+            min-height: 52px;
+            border-radius: 14px;
+        }
+
+        .mobile-menu-toggle:active {
+            background: linear-gradient(to right, var(--secondary-black), var(--light-black));
+            transform: scale(0.96);
+        }
+
+        /* Selettore giochi a tendina - mobile a tutta larghezza */
+        .game-selector-container {
+            position: relative;
+            width: 100%;
+            order: 3;
+            margin-top: 6px;
+        }
+
+        .game-selector {
+            background: linear-gradient(to right, var(--light-black), var(--secondary-black));
+            color: var(--secondary-gold);
+            border: 2px solid var(--primary-gold);
+            border-radius: 16px;
+            padding: 14px 18px;
+            font-size: 17px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            width: 100%;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            min-height: 58px;
+        }
+
+        .game-selector span {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .game-selector i {
+            transition: transform 0.3s ease;
+            font-size: 18px;
+        }
+
+        .game-selector.active i {
+            transform: rotate(180deg);
+        }
+
+        .game-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to bottom, var(--secondary-black), var(--primary-black));
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: var(--shadow-heavy);
+            z-index: 1001;
+            display: none;
+            margin-top: 8px;
+            border: 1px solid var(--primary-gold);
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+
+        .game-dropdown.show {
+            display: block;
+            animation: slideDown 0.25s ease;
+        }
+
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .game-dropdown a {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 18px 20px;
+            color: var(--text-gray);
+            text-decoration: none;
+            transition: all 0.25s ease;
+            border-bottom: 1px solid rgba(212, 175, 55, 0.1);
+            font-size: 17px;
+            min-height: 64px;
+        }
+
+        .game-dropdown a:last-child {
+            border-bottom: none;
+        }
+
+        .game-dropdown a:active {
+            background: linear-gradient(to right, rgba(212, 175, 55, 0.2), transparent);
+            color: var(--secondary-gold);
+            padding-left: 24px;
+        }
+
+        .game-dropdown i {
+            width: 28px;
+            text-align: center;
+            font-size: 22px;
+            width: auto;
+        }
+
+        /* ----- OVERLAY MENU MOBILE (identico a index) ----- */
+        .mobile-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 1400;
+            pointer-events: none;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+
+        .mobile-overlay.show {
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
+        }
+
+        .mobile-overlay-backdrop {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(4px);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .mobile-overlay.show .mobile-overlay-backdrop {
+            opacity: 1;
+        }
+
+        .mobile-overlay-panel {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 80%;
+            max-width: 360px;
+            height: 100vh;
+            background: linear-gradient(180deg, #050505 0%, #0d0d0d 100%);
+            border-right: 2px solid var(--primary-gold);
+            box-shadow: 10px 0 30px rgba(0, 0, 0, 0.7);
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+            padding: 28px 22px 34px;
+            overflow-y: auto;
+        }
+
+        .mobile-overlay.show .mobile-overlay-panel {
+            transform: translateX(0);
+        }
+
+        .mobile-overlay-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 28px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid rgba(212, 175, 55, 0.25);
+        }
+
+        .mobile-overlay-title {
+            font-size: 26px;
+            color: var(--secondary-gold);
+            font-weight: 700;
+            margin: 0;
+        }
+
+        .mobile-menu-close {
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
+            border: 1px solid rgba(212, 175, 55, 0.45);
+            background: var(--secondary-black);
+            color: var(--secondary-gold);
+            font-size: 24px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .mobile-menu-section {
+            margin-bottom: 32px;
+        }
+
+        .mobile-menu-label {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-gray);
+            margin-bottom: 16px;
+            opacity: 0.9;
+        }
+
+        .mobile-menu-links {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .mobile-menu-link {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            text-decoration: none;
+            color: var(--text-light);
+            padding: 16px 18px;
+            border-radius: 16px;
+            border: 1px solid rgba(212, 175, 55, 0.15);
+            background: rgba(255, 255, 255, 0.02);
+            transition: all 0.2s ease;
+            font-size: 18px;
+            min-height: 64px;
+        }
+
+        .mobile-menu-link:active {
+            color: var(--secondary-gold);
+            border-color: rgba(212, 175, 55, 0.45);
+            background: rgba(212, 175, 55, 0.1);
+            transform: translateX(4px);
+        }
+
+        .mobile-menu-link i {
+            width: auto;
+            width: 26px;
+            text-align: center;
+            font-size: 22px;
+        }
+
+        body.mobile-menu-open {
+            overflow: hidden;
+        }
+
+        /* Nascondi il selettore giochi nell'header su mobile (fino a 991px) - come index */
+        @media (max-width: 991px) {
+            header .game-selector-container {
+                display: none;
+            }
+        }
+
+        /* Tablet: 600px */
+        @media (min-width: 600px) {
+            header { flex-wrap: nowrap; }
+            .game-selector-container { width: auto; min-width: 280px; order: 0; margin-top: 0; }
+        }
+
+        /* Desktop: 992px */
+        @media (min-width: 992px) {
+            .mobile-menu-toggle,
+            .mobile-overlay {
+                display: none !important;
+            }
+            nav ul {
+                display: flex;
+                gap: 20px;
+            }
+            nav a {
+                color: var(--text-gray);
+                text-decoration: none;
+                font-weight: 600;
+                font-size: 18px;
+                padding: 12px 18px;
+                border-radius: 12px;
+                transition: all 0.3s ease;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            nav a:hover,
+            nav a.active {
+                color: var(--secondary-gold);
+                background-color: rgba(212, 175, 55, 0.1);
+                transform: translateY(-2px);
+            }
+        }
+
+        /* Disabilita hover su touch */
+        @media (hover: none) and (pointer: coarse) {
+            .btn:hover:not(:disabled) { transform: none; box-shadow: none; }
+        }
+
+        /* ========== STILI SPECIFICI DEL GIOCO (sfidaEredita) ========== */
+        h1 {
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            font-weight: 900;
+            text-shadow: 0 4px 0 #000;
+            margin-bottom: 10px;
+            z-index: 2;
+            font-size: 3rem;
+        }
+
+        .game-container {
+            background: rgba(0, 50, 0, 0.6);
+            backdrop-filter: blur(5px);
+            border: 3px solid var(--line-white);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+            padding: 30px;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 800px;
+            text-align: center;
+            position: relative;
+            z-index: 2;
+            margin: 20px auto;
+        }
+
+        #start-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(27, 94, 32, 0.98);
+            z-index: 999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .big-btn {
+            padding: 20px 50px;
+            font-size: 2rem;
+            background: var(--accent-gold);
+            color: #000;
+            border: 4px solid #fff;
+            border-radius: 50px;
+            font-weight: 900;
+            cursor: pointer;
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+            transition: transform 0.2s;
+            animation: pulseBtn 2s infinite;
+            text-transform: uppercase;
+        }
+        .big-btn:hover { transform: scale(1.1); }
+
+        @keyframes pulseBtn { 0% { box-shadow: 0 0 0 0 rgba(255, 202, 40, 0.7); } 70% { box-shadow: 0 0 0 20px rgba(255, 202, 40, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 202, 40, 0); } }
+
+        .live-indicator {
+            position: absolute;
+            top: 80px;
+            right: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: bold;
+            color: var(--line-white);
+            background: rgba(0,0,0,0.3);
+            padding: 5px 15px;
+            border-radius: 20px;
+            border: 1px solid var(--accent-red);
+            z-index: 5;
+        }
+        .rec-dot {
+            width: 12px; height: 12px;
+            background-color: var(--accent-red);
+            border-radius: 50%;
+            animation: blinkRed 1s infinite;
+        }
+        @keyframes blinkRed { 50% { opacity: 0; } }
+
+        .players-area {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            gap: 20px;
+        }
+
+        .player-card {
+            flex: 1;
+            background: rgba(0,0,0,0.4);
+            padding: 15px;
+            border-radius: 15px;
+            border: 2px solid transparent;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            opacity: 0.6;
+            transition: all 0.3s;
+        }
+
+        .player-card.active {
+            transform: scale(1.05);
+            background: rgba(255, 255, 255, 0.1);
+            opacity: 1;
+        }
+        .player-card.active.p1 { border-color: var(--accent-gold); box-shadow: 0 0 20px rgba(255, 202, 40, 0.3); }
+        .player-card.active.p2 { border-color: #42a5f5; box-shadow: 0 0 20px rgba(66, 165, 245, 0.3); }
+
+        .timer-display {
+            font-size: 2.5rem;
+            font-weight: 900;
+            font-family: 'Courier New', Courier, monospace;
+            padding: 5px 15px;
+            background: #000;
+            border-radius: 8px;
+            color: white;
+            min-width: 80px;
+            margin-top: 10px;
+            border: 2px solid #555;
+        }
+        .timer-display.danger { color: var(--accent-red); animation: shakeError 0.5s infinite; }
+
+        #definition-box {
+            background: rgba(0,0,0,0.3);
+            padding: 20px;
+            border-radius: 10px;
+            font-size: 1.4rem;
+            font-style: italic;
+            margin-bottom: 20px;
+            border-left: 5px solid var(--accent-gold);
+            min-height: 70px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        #word-container {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 25px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .letter-box {
+            width: 55px;
+            height: 65px;
+            background: #fff;
+            color: #000;
+            box-shadow: 0 4px 0 #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.2rem;
+            font-weight: 900;
+            border-radius: 5px;
+        }
+        .letter-box.revealed { background: var(--accent-gold); color: #000; box-shadow: 0 4px 0 #c79a00; }
+        .letter-box.solved { background: var(--pitch-green-light); color: white; border: 2px solid white; }
+
+        #voice-feedback {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #bbb;
+            margin-bottom: 10px;
+            min-height: 30px;
+            text-transform: uppercase;
+        }
+        
+        .active-listening { color: var(--accent-gold) !important; text-shadow: 0 0 10px var(--accent-gold); }
+
+        #message { margin-top: 10px; height: 25px; font-weight: bold; font-size: 1.2rem; }
+        .hidden { display: none !important; }
+        
+        @keyframes shakeError { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+
+        @media (max-width: 768px) {
+            h1 { font-size: 2rem; }
+            .players-area { flex-direction: column; }
+            .letter-box { width: 40px; height: 50px; font-size: 1.8rem; }
+            #definition-box { font-size: 1.2rem; }
+        }
+        @media (max-width: 480px) {
+            .letter-box { width: 30px; height: 40px; font-size: 1.4rem; }
+        }
+    
+    /* ===== Ritocchi design system condiviso ===== */
+    * { transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease, color 0.2s ease; }
+    @media (prefers-reduced-motion: reduce) { * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; } }
+
+        /* ===== FOOTER (allineato al resto della piattaforma) ===== */
+        footer {
+            text-align: center;
+            padding: 28px 16px;
+            margin-top: 50px;
+            border-top: 1px solid rgba(212, 175, 55, 0.2);
+            color: var(--text-gray);
+            background: linear-gradient(to top, var(--primary-black), transparent);
+            width: 100%;
+        }
+
+        .footer-links {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            margin-top: 22px;
+            align-items: center;
+        }
+
+        .footer-links a {
+            color: var(--light-gold);
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            padding: 16px 24px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            background: rgba(212, 175, 55, 0.05);
+            border: 1px solid rgba(212, 175, 55, 0.15);
+            width: 100%;
+            max-width: 260px;
+            font-size: 18px;
+            min-height: 60px;
+        }
+
+        .footer-links a:active {
+            background-color: rgba(212, 175, 55, 0.15);
+            transform: translateY(-2px);
+        }
+
+        .copyright {
+            margin-top: 28px;
+            font-size: 14px;
+            color: #888;
+        }
+
+        @media (min-width: 600px) {
+            .footer-links {
+                flex-direction: row;
+                gap: 20px;
+            }
+            .footer-links a {
+                width: auto;
+                max-width: none;
+                padding: 14px 28px;
+            }
+        }
+
+</style>
+</head>
+<body>
+    <!-- HEADER identico a index.html -->
+    <a href="#main-content" class="qz-skip-link">Vai al contenuto principale</a>
+<header>
+    <a href="index.html" class="logo">
+      <picture>
+        <source srcset="logo1.webp" type="image/webp">
+        <img src="logo1.png" alt="Quizzotti Logo" class="logo-icon" width="70" height="70">
+      </picture>
+      <h1>Quizzotti</h1>
+    </a>
+
+    <nav>
+      <ul>
+        <li><a href="index.html" title="Home"><i class="fas fa-home"></i></a></li>
+        <li><a href="index.html#games" title="Giochi"><i class="fas fa-gamepad"></i> Giochi</a></li>
+        <li><a href="index.html#about" title="Info"><i class="fas fa-info-circle"></i></a></li>
+      </ul>
+    </nav>
+
+    <button class="qz-profile-badge" id="qz-profile-badge" type="button" aria-label="Il tuo profilo Quizzotti"><i class="fas fa-star" aria-hidden="true"></i><span>Lv. 1</span></button>
+
+    <button class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Apri menu">
+      <i class="fas fa-bars"></i>
+    </button>
+
+    <!-- Dropdown giochi -->
+        <div class="game-selector-container">
+            <div class="game-selector" id="gameSelector">
+                <span><i class="fas fa-gamepad"></i> Seleziona Gioco</span>
+                <i class="fas fa-chevron-down"></i>
+            </div>
+            <div class="game-dropdown" id="gameDropdown">
+                <a href="AvantiUnAltro.html"><i class="fas fa-forward"></i> Avanti un Altro</a>
+                <a href="IntesaVincente.html"><i class="fas fa-users"></i> Intesa Vincente</a>
+                <a href="Jeopardy.html"><i class="fas fa-question-circle"></i> Jeopardy</a>
+                <a href="MrWhite.html"><i class="fas fa-user-secret"></i> Mr.White</a>
+                <a href="Taboo.html"><i class="fas fa-ban"></i> Taboo</a>
+                <a href="CVEM.html"><i class="fas fa-money-bill-wave"></i> Chi Vuol Essere Milionario</a>
+                <a href="Bomba.html"><i class="fas fa-bomb"></i> Bomba</a>
+                <a href="sfidaEredita.html"><i class="fas fa-futbol"></i> Derby delle Parole</a>
+                <a href="GiocatoriBudget.html"><i class="fas fa-coins"></i> Sfida dei Budget</a>
+                <a href="Citazioni.html"><i class="fas fa-quote-right"></i> Chi l'ha detto</a>
+            </div>
+        </div>
+    </header>
+<span id="main-content" tabindex="-1"></span>
+
+    <!-- Overlay menu mobile -->
+    <div class="mobile-overlay" id="mobileOverlay" aria-hidden="true">
+        <div class="mobile-overlay-backdrop" id="mobileOverlayBackdrop"></div>
+        <aside class="mobile-overlay-panel" role="dialog" aria-modal="true" aria-label="Menu mobile">
+            <div class="mobile-overlay-header">
+                <h3 class="mobile-overlay-title">Menu</h3>
+                <button class="mobile-menu-close" id="mobileMenuClose" aria-label="Chiudi">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div class="mobile-menu-section">
+                <p class="mobile-menu-label">Sezioni</p>
+                <div class="mobile-menu-links">
+                    <a href="index.html" class="mobile-menu-link"><i class="fas fa-home"></i> Home</a>
+                    <a href="index.html#games" class="mobile-menu-link"><i class="fas fa-gamepad"></i> Giochi</a>
+                    <a href="index.html#about" class="mobile-menu-link"><i class="fas fa-info-circle"></i> Info</a>
+                </div>
+            </div>
+
+            <div class="mobile-menu-section">
+                <p class="mobile-menu-label">Minigiochi</p>
+                <div class="mobile-menu-links">
+                    <a href="AvantiUnAltro.html" class="mobile-menu-link"><i class="fas fa-forward"></i> Avanti un Altro</a>
+                    <a href="IntesaVincente.html" class="mobile-menu-link"><i class="fas fa-users"></i> Intesa Vincente</a>
+                    <a href="Jeopardy.html" class="mobile-menu-link"><i class="fas fa-question-circle"></i> Jeopardy</a>
+                    <a href="MrWhite.html" class="mobile-menu-link"><i class="fas fa-user-secret"></i> Mr.White</a>
+                    <a href="Taboo.html" class="mobile-menu-link"><i class="fas fa-ban"></i> Taboo</a>
+                    <a href="CVEM.html" class="mobile-menu-link"><i class="fas fa-money-bill-wave"></i> Chi Vuol Essere Milionario</a>
+                    <a href="Bomba.html" class="mobile-menu-link"><i class="fas fa-bomb"></i> Bomba</a>
+                    <a href="sfidaEredita.html" class="mobile-menu-link"><i class="fas fa-futbol"></i> Derby delle Parole</a>
+                    <a href="GiocatoriBudget.html" class="mobile-menu-link"><i class="fas fa-coins"></i> Sfida dei Budget</a>
+                    <a href="Citazioni.html" class="mobile-menu-link"><i class="fas fa-quote-right"></i> Chi l'ha detto</a>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <div id="start-overlay">
+        <h1 style="font-size: 4rem; margin-bottom: 20px;">IL DERBY</h1>
+        <h2 style="margin-bottom: 50px;">DELLE PAROLE</h2>
+        <p style="color: #ccc; margin-bottom: 30px; font-size: 1.2rem;">Consenti l'uso del microfono</p>
+        <button class="big-btn" onclick="startEverything()">FISCHIO D'INIZIO</button>
+    </div>
+
+    <div class="live-indicator" id="live-badge" style="display:none;">
+        <div class="rec-dot"></div> MIC ON
+    </div>
+
+    <h1>Il Derby</h1>
+
+    <div class="game-container" id="game-area">
+        
+        <div class="players-area">
+            <div id="card-p1" class="player-card p1 active">
+                <div class="player-name">SQUADRA 1</div>
+                <div class="player-score">Gol: <span id="score-p1">0</span></div>
+                <div id="timer-p1" class="timer-display">60</div>
+            </div>
+            <div id="card-p2" class="player-card p2">
+                <div class="player-name">SQUADRA 2</div>
+                <div class="player-score">Gol: <span id="score-p2">0</span></div>
+                <div id="timer-p2" class="timer-display">60</div>
+            </div>
+        </div>
+
+        <div id="definition-box">...</div>
+        <div id="word-container"></div>
+        
+        <div style="margin-top: 20px;">
+            <div style="font-size: 0.8rem; opacity: 0.8;">TELECRONACA (Parola detta):</div>
+            <div id="voice-feedback">...</div>
+        </div>
+
+        <p id="message"></p>
+    </div>
+
+    <div id="end-screen" class="game-container hidden">
+        <h2>TRIPLICE FISCHIO!</h2>
+        <p id="winner-reason"></p>
+        <h3 id="winner-text" style="font-size: 2rem; color: white;"></h3>
+        <br>
+        <button onclick="location.reload()" class="big-btn" style="font-size: 1.2rem; padding: 15px 30px;">Rigioca Derby</button>
+    </div>
+
+    <footer>
+    <p style="font-size: 20px; color: var(--light-gold); margin-bottom: 10px;">Quizzotti</p>
+    <p style="max-width: 600px; margin: 0 auto 20px; color: var(--text-gray);">Divertiti con i nostri minigiochi a tema calcio, sempre gratuiti.</p>
+    <div class="footer-links">
+      <a href="index.html"><i class="fas fa-home"></i> Home</a>
+      <a href="index.html#games"><i class="fas fa-gamepad"></i> Giochi</a>
+      <a href="index.html#about"><i class="fas fa-info-circle"></i> Info</a>
+    </div>
+    <div class="copyright">Quizzotti &copy; 2025 - Tutti i diritti sono dei giocatori</div>
+  </footer>
+
+    <!-- SCRIPT GESTIONE HEADER (da index) -->
+    <script src="assets/db-sfidaeredita.js?v=fb96dfea"></script>
+
+    <script>
+        (function() {
+            // Elementi DOM
+            const gameSelector = document.getElementById('gameSelector');
+            const gameDropdown = document.getElementById('gameDropdown');
+            const mobileToggle = document.getElementById('mobileMenuToggle');
+            const mobileOverlay = document.getElementById('mobileOverlay');
+            const backdrop = document.getElementById('mobileOverlayBackdrop');
+            const closeBtn = document.getElementById('mobileMenuClose');
+            const overlayLinks = mobileOverlay ? mobileOverlay.querySelectorAll('a') : [];
+
+            function closeMainDropdown() {
+                if (gameDropdown) gameDropdown.classList.remove('show');
+                if (gameSelector) gameSelector.classList.remove('active');
+            }
+
+            function toggleMainDropdown(e) {
+                if (e) e.stopPropagation();
+                if (gameDropdown && gameSelector) {
+                    gameDropdown.classList.toggle('show');
+                    gameSelector.classList.toggle('active');
+                }
+            }
+
+            function openMobileMenu() {
+                if (!mobileOverlay) return;
+                mobileOverlay.classList.add('show');
+                mobileOverlay.setAttribute('aria-hidden', 'false');
+                document.body.classList.add('mobile-menu-open');
+            }
+
+            function closeMobileMenu() {
+                if (!mobileOverlay) return;
+                mobileOverlay.classList.remove('show');
+                mobileOverlay.setAttribute('aria-hidden', 'true');
+                document.body.classList.remove('mobile-menu-open');
+            }
+
+            if (gameSelector) {
+                gameSelector.addEventListener('click', toggleMainDropdown);
+            }
+
+            if (mobileToggle) {
+                mobileToggle.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    openMobileMenu();
+                    closeMainDropdown();
+                });
+            }
+
+            if (backdrop) {
+                backdrop.addEventListener('click', closeMobileMenu);
+            }
+
+            if (closeBtn) {
+                closeBtn.addEventListener('click', closeMobileMenu);
+            }
+
+            overlayLinks.forEach(link => {
+                link.addEventListener('click', closeMobileMenu);
+            });
+
+            document.addEventListener('click', function(e) {
+                if (gameSelector && gameDropdown && !gameSelector.contains(e.target) && !gameDropdown.contains(e.target)) {
+                    closeMainDropdown();
+                }
+            });
+
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    closeMobileMenu();
+                    closeMainDropdown();
+                }
+            });
+        })();
+    </script>
+
+    <!-- SCRIPT DEL GIOCO (logica sfidaEredita) -->
+    <script>
+        // --- CONFIGURAZIONE ---
+        const INITIAL_TIME = 60; 
+        const LETTER_REVEAL_TIME = 1500;
+        
+        // --- DATABASE PAROLE CALCIO ---
+        // Database "database" caricato da assets/db-sfidaeredita.js
+      
+        // *** NUOVA FUNZIONE: RANDOMIZZA L'ARRAY (Fisher-Yates) ***
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        // --- STATO GIOCO ---
+        let gameState = {
+            round: 0,
+            playerTurn: 1,
+            scores: { 1: 0, 2: 0 },
+            timeLeft: { 1: INITIAL_TIME, 2: INITIAL_TIME },
+            currentWord: {},
+            revealedIndices: [],
+            isPaused: false, 
+            gameOver: false,
+            micActive: false
+        };
+
+        let letterTimer = null;
+        let gameClock = null;
+        let recognition = null;
+
+        // --- AVVIO TOTALE ---
+        function startEverything() {
+            document.getElementById('start-overlay').style.display = 'none';
+            document.getElementById('live-badge').style.display = 'flex';
+            
+            // *** CHIAMATA ALLA FUNZIONE DI RANDOMIZZAZIONE ***
+            shuffleArray(database);
+            
+            initSpeech();
+            renderTimers();
+            startRound();
+        }
+
+        // --- VOCALE ---
+        function initSpeech() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                alert("Browser non supportato. Usa Chrome.");
+                return;
+            }
+
+            recognition = new SpeechRecognition();
+            recognition.lang = 'it-IT';
+            recognition.continuous = false; 
+            recognition.interimResults = true; 
+
+            recognition.onstart = function() {
+                gameState.micActive = true;
+                document.getElementById('voice-feedback').classList.add('active-listening');
+            };
+
+            recognition.onresult = function(event) {
+                if (gameState.isPaused || gameState.gameOver) return;
+
+                let transcript = Array.from(event.results)
+                    .map(result => result[0].transcript).join('');
+                
+                transcript = transcript.toUpperCase().replace(/[.,!?;]/g, '').trim();
+                
+                const feedbackBox = document.getElementById('voice-feedback');
+                feedbackBox.textContent = transcript;
+
+                if (event.results[0].isFinal) {
+                    checkGuess(transcript);
+                }
+            };
+
+            recognition.onend = function() {
+                gameState.micActive = false;
+                document.getElementById('voice-feedback').classList.remove('active-listening');
+                if (!gameState.gameOver) {
+                    recognition.start();
+                }
+            };
+
+            recognition.onerror = function(event) { console.log("Speech error", event.error); };
+            recognition.start();
+        }
+
+        // --- LOGICA GIOCO ---
+        function startRound() {
+            if (gameState.round >= database.length) {
+                endGame("Campionato finito!");
+                return;
+            }
+
+            // Prende la parola dall'array ora randomizzato
+            gameState.currentWord = database[gameState.round]; 
+            gameState.revealedIndices = [];
+            gameState.isPaused = false;
+
+            document.getElementById('definition-box').textContent = gameState.currentWord.def;
+            document.getElementById('voice-feedback').textContent = "...";
+            document.getElementById('message').textContent = "";
+            renderWord();
+            updateActivePlayerUI();
+
+            startLetterTimer();
+            startPlayerClock();
+        }
+
+        function startPlayerClock() {
+            clearInterval(gameClock);
+            gameClock = setInterval(() => {
+                if (gameState.isPaused || gameState.gameOver) return;
+
+                const p = gameState.playerTurn;
+                gameState.timeLeft[p]--;
+                renderTimers();
+
+                if (gameState.timeLeft[p] <= 0) handleTimeRunOut(p);
+            }, 1000);
+        }
+
+        function handleTimeRunOut(loser) {
+            gameState.gameOver = true;
+            clearInterval(gameClock);
+            clearInterval(letterTimer);
+            if(recognition) recognition.stop(); 
+            const winner = loser === 1 ? 2 : 1;
+            endGame(`Fischio finale! La Squadra ${loser} ha finito il tempo!`, winner);
+        }
+
+        function renderTimers() {
+            document.getElementById('timer-p1').textContent = gameState.timeLeft[1];
+            document.getElementById('timer-p2').textContent = gameState.timeLeft[2];
+            
+            if(gameState.timeLeft[1] <= 10) document.getElementById('timer-p1').classList.add('danger');
+            if(gameState.timeLeft[2] <= 10) document.getElementById('timer-p2').classList.add('danger');
+        }
+
+        function startLetterTimer() {
+            clearInterval(letterTimer);
+            letterTimer = setInterval(() => {
+                if (gameState.isPaused || gameState.gameOver) return;
+                revealRandomLetter();
+            }, LETTER_REVEAL_TIME);
+        }
+
+        function revealRandomLetter() {
+            const word = gameState.currentWord.word;
+            const wordLength = word.length;
+
+            // STOP se manca solo una lettera
+            if (gameState.revealedIndices.length >= wordLength - 1) {
+                return;
+            }
+
+            const available = [];
+            for(let i=0; i<wordLength; i++) {
+                if(!gameState.revealedIndices.includes(i)) available.push(i);
+            }
+
+            if(available.length > 0) {
+                const rand = available[Math.floor(Math.random() * available.length)];
+                gameState.revealedIndices.push(rand);
+                renderWord();
+            }
+        }
+
+        function renderWord() {
+            const container = document.getElementById('word-container');
+            if (!gameState.isPaused) container.innerHTML = ''; 
+
+            const word = gameState.currentWord.word;
+            
+            if (gameState.isPaused) {
+                container.innerHTML = ''; 
+                for (let char of word) {
+                    let div = document.createElement('div');
+                    div.className = 'letter-box solved';
+                    div.textContent = char;
+                    container.appendChild(div);
+                }
+                return;
+            }
+
+            for (let i = 0; i < word.length; i++) {
+                let div = document.createElement('div');
+                div.className = 'letter-box';
+                if (gameState.revealedIndices.includes(i)) {
+                    div.textContent = word[i];
+                    div.classList.add('revealed');
+                }
+                container.appendChild(div);
+            }
+        }
+
+        // --- CHECK RISPOSTA ---
+        function checkGuess(spokenWord) {
+            if (gameState.isPaused || gameState.gameOver) return;
+            if (!spokenWord || spokenWord.length < 2) return; 
+
+            const correct = gameState.currentWord.word.toUpperCase();
+
+            if (spokenWord === correct) {
+                handleCorrect();
+            } else {
+                handleWrong(spokenWord);
+            }
+        }
+
+        function handleWrong(wrongWord) {
+            const feedback = document.getElementById('voice-feedback');
+            feedback.style.color = "var(--accent-red)";
+            
+            document.getElementById('message').textContent = `PALO! Riprova...`;
+            document.getElementById('message').style.color = "var(--accent-red)";
+            
+            setTimeout(() => {
+                feedback.style.color = "#bbb";
+                // Tentativi infiniti: il turno non cambia.
+            }, 1000);
+        }
+
+        function handleCorrect() {
+            clearInterval(gameClock);
+            clearInterval(letterTimer);
+            gameState.isPaused = true;
+
+            gameState.scores[gameState.playerTurn]++;
+            document.getElementById(`score-p${gameState.playerTurn}`).textContent = gameState.scores[gameState.playerTurn];
+
+            renderWord(); 
+            document.getElementById('message').textContent = `GOOOOL!`;
+            document.getElementById('message').style.color = "var(--pitch-green-light)";
+            document.getElementById('voice-feedback').style.color = "var(--pitch-green-light)";
+
+            setTimeout(() => {
+                gameState.round++;
+                gameState.playerTurn = gameState.playerTurn === 1 ? 2 : 1;
+                document.getElementById('voice-feedback').style.color = "#bbb";
+                startRound();
+            }, 4000);
+        }
+
+        function updateActivePlayerUI() {
+            const p1 = document.getElementById('card-p1');
+            const p2 = document.getElementById('card-p2');
+
+            if (gameState.playerTurn === 1) {
+                p1.classList.add('active');
+                p2.classList.remove('active');
+            } else {
+                p2.classList.add('active');
+                p1.classList.remove('active');
+            }
+        }
+
+        function endGame(reason, winnerOverride = null) {
+            gameState.gameOver = true;
+            clearInterval(gameClock);
+            clearInterval(letterTimer);
+            if(recognition) recognition.stop(); 
+
+            document.getElementById('game-area').classList.add('hidden');
+            document.getElementById('live-badge').classList.add('hidden');
+            document.getElementById('end-screen').classList.remove('hidden');
+            document.getElementById('winner-reason').textContent = reason;
+
+            let winnerText = "";
+            if (winnerOverride) {
+                winnerText = `VINCE LA SQUADRA ${winnerOverride}!`;
+            } else {
+                if (gameState.scores[1] > gameState.scores[2]) winnerText = "VINCE LA SQUADRA 1!";
+                else if (gameState.scores[2] > gameState.scores[1]) winnerText = "VINCE LA SQUADRA 2!";
+                else winnerText = "PAREGGIO!";
+            }
+            document.getElementById('winner-text').textContent = winnerText;
+        }
+
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
