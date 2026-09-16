@@ -210,6 +210,8 @@
     'Dawit', 'Yonas', 'Tewodros',
     'Levi', 'Jayce', 'Micah',
     'Bogdan', 'Cezar', 'Kian', 'Zayn', 'Idris',
+ ,
+    'Iker', 'Unai', 'Aitor', 'Mikel', 'Asier', 'Ander', 'Gorka', 'Inigo', 'Rodri', 'Nico', 'Bernardo', 'Duarte', 'Vitorino', 'Edu', 'Exequiel', 'Alan', 'Marcos', 'Angel', 'Luiz', 'Everton', 'Richarlison', 'Casemiro', 'Fabinho', 'Alisson', 'Ederson', 'Danilo', 'Alex', 'Randal', 'Presnel', 'Aurelien', 'Benjamin', 'Christopher', 'Jules', 'Pape', 'Ismaila', 'Boulaye', 'Nampalys', 'Cheikhou', 'Krepin', 'Dejan', 'Sasa', 'Aleksa', 'Uros', 'Strahinja', 'Nikola', 'Andrija', 'Erling', 'Martin', 'Kristoffer', 'Sander', 'Ola', 'Alexander', 'Leo', 'Emil', 'Sindre', 'Timo', 'Kai', 'Joshua', 'Leroy', 'Ilkay', 'Frenkie', 'Matthijs', 'Denzel', 'Cody', 'Steven', 'Memphis', 'Xavi', 'Donyell', 'Justin', 'Quinten', 'Joaquin', 'Hernan', 'Ramiro', 'Cristhian', 'Yerson', 'Cristopher', 'Emerson', 'Wanderson', 'Robson', 'Fabricio', 'Leandro', 'Rodolfo', 'Joel', 'Bastien', 'Malo', 'Warren', 'Stephane', 'Wissam', 'Karl', 'Bakary', 'Yacouba', 'Souleyman', 'Amara', 'Djibril', 'Vaclav', 'Radek', 'Jaroslav', 'Tibor', 'Zoltan', 'Bela',
   ];
 
   const LAST = [
@@ -250,6 +252,8 @@
     'Abubakar', 'Chukwuemeka', 'Onwuachi', 'Obi', 'Effiong', 'Yaboah', 'Appiah', 'Boateng', 'Adjei', 'Owusu',
     'Reid', 'Stewart', 'Watson', 'Mitchell', 'Campbell', 'Anderson',
     'Palmer', 'Foster', 'Cross', 'Hood', 'Marsh', 'Chapman', 'Dyer', 'Osei', 'Amankwah',
+ ,
+    'Aramburu', 'Zubimendi', 'Merino', 'Oyarzabal', 'Barrenetxea', 'Kubo', 'Pacheco', 'Fernandes', 'Guimaraes', 'Cancelo', 'Semedo', 'Guerreiro', 'Fonte', 'Firmino', 'Coutinho', 'Neymar', 'Marquinhos', 'Alex Sandro', 'Kounde', 'Upamecano', 'Saliba', 'Kimpembe', 'Digne', 'Coman', 'Nkunku', 'Barcola', 'Diaby', 'Diakhaby', 'Doucoure', 'Bissouma', 'Kalulu', 'Krunic', 'Vlahovic', 'Kostic', 'Milenkovic', 'Sucic', 'Majer', 'Ivanusec', 'Perisic', 'Brozovic', 'Kovacic', 'Pasalic', 'Skriniar', 'Hancko', 'Duda', 'Schick', 'Coufal', 'Soucek', 'Hlozek', 'Sadilek', 'Provod', 'Mandi', 'Boudaoui', 'Zaha', 'Doucet', 'Delort', 'Boudebouz', 'Feghouli', 'Belaili', 'Bounedjah', 'Mahrez', 'Bennacer', 'Elmas', 'Aleksandrov', 'Bozhinov', 'Berkovec', 'Radoslavov', 'Nedelev', 'Delev', 'Petrescu', 'Balaur', 'Radu', 'Tanase', 'Cicaldau', 'Sorescu', 'Burca', 'Racovitan', 'Screciu', 'Baze', 'Hoxha', 'Cikalleshi', 'Ismajli', 'Mavraj', 'Xhaka', 'Shaqiri', 'Embolo', 'Akanji', 'Widmer', 'Freuler', 'Zakaria', 'Elvedi', 'Zuber', 'Fassnacht', 'Frei', 'Ajeti', 'Gavranovic', 'Stocker', 'Lang', 'Sommer', 'Vargas',
   ];
 
   // Le prime voci di FIRST/LAST sono italiane in senso stretto (usate per i nazionali
@@ -509,9 +513,42 @@
   // Non si sceglie più un club con un nome già dato: si sceglie una SITUAZIONE di
   // partenza (che tipo di presidenza sarà). Il nome del club lo decide chi gioca, nel
   // campo qui sopra, pre-compilato con un suggerimento a caso.
+  // Ogni situazione ha una variante di titolo/racconto per fascia di categoria (bassa:
+  // Eccellenza-Serie C, media: Serie B, alta: Serie A): gli stessi 4 archetipi economici,
+  // ma raccontati in modo che abbia senso anche partendo già in alto — "piccola realtà" o
+  // "provincia" restano credibili in Serie A (Cagliari, Lecce...) ma con un altro nome e
+  // un'altra storia, non lo stesso testo pensato per l'Eccellenza.
   const SITUATIONS = [
-    { key: 'gigante', title: 'Gigante in declino', blurb: 'Una piazza che sogna ancora la Serie A: tanta tifoseria, casse quasi vuote.', strRange: [46, 54], budgetRange: [1.6e6, 2.3e6], stadiumTier: 1, stadiumChance: 0.7, fanbaseRange: [1.15, 1.35] },
-    { key: 'piccola', title: 'Piccola realtà solida', blurb: 'Pochi tifosi ma conti sempre in ordine: un progetto costruito con pazienza.', strRange: [42, 50], budgetRange: [2.8e6, 3.9e6], stadiumTier: 0, stadiumChance: 0, fanbaseRange: [0.85, 1.0] },
-    { key: 'matricola', title: 'Matricola ambiziosa', blurb: 'Presidente facoltoso, fame di categoria superiore: il budget più alto sul tavolo.', strRange: [44, 52], budgetRange: [3.5e6, 4.6e6], stadiumTier: 0, stadiumChance: 0.2, fanbaseRange: [0.9, 1.05] },
-    { key: 'provincia', title: 'Club di provincia stabile', blurb: 'Nessun lusso, ma né debiti né sorprese: si parte alla pari con tutti.', strRange: [43, 51], budgetRange: [2.2e6, 2.9e6], stadiumTier: 0, stadiumChance: 0, fanbaseRange: [0.95, 1.1] },
+    {
+      key: 'gigante', strRange: [46, 54], budgetRange: [1.6e6, 2.3e6], stadiumTier: 1, stadiumChance: 0.7, fanbaseRange: [1.15, 1.35],
+      variants: {
+        low: { title: 'Gigante in declino', blurb: 'Una piazza che sogna ancora la Serie A: tanta tifoseria, casse quasi vuote.' },
+        mid: { title: 'Nobile decaduta', blurb: 'Una big retrocessa che non si è ancora ripresa: tanta tifoseria, conti in affanno.' },
+        high: { title: 'Big in crisi', blurb: 'Un nome che pesa in Europa ma le ultime stagioni sono state dure: tifoseria enorme, casse in rosso.' },
+      },
+    },
+    {
+      key: 'piccola', strRange: [42, 50], budgetRange: [2.8e6, 3.9e6], stadiumTier: 0, stadiumChance: 0, fanbaseRange: [0.85, 1.0],
+      variants: {
+        low: { title: 'Piccola realtà solida', blurb: 'Pochi tifosi ma conti sempre in ordine: un progetto costruito con pazienza.' },
+        mid: { title: 'Matricola tranquilla', blurb: 'Pochi clamori ma bilanci sani: una salvezza onesta come obiettivo minimo.' },
+        high: { title: 'Provinciale di lusso', blurb: 'Una piazza raccolta ma organizzata: bilanci in ordine anche nella categoria più cara d\'Europa.' },
+      },
+    },
+    {
+      key: 'matricola', strRange: [44, 52], budgetRange: [3.5e6, 4.6e6], stadiumTier: 0, stadiumChance: 0.2, fanbaseRange: [0.9, 1.05],
+      variants: {
+        low: { title: 'Matricola ambiziosa', blurb: 'Presidente facoltoso, fame di categoria superiore: il budget più alto sul tavolo.' },
+        mid: { title: 'Progetto ambizioso', blurb: 'Un fondo con soldi veri punta dritto alla Serie A: il budget più alto sul tavolo.' },
+        high: { title: 'Nuova proprietà facoltosa', blurb: 'Un fondo straniero ha appena rilevato il club con ambizioni europee: il budget più alto sul tavolo.' },
+      },
+    },
+    {
+      key: 'provincia', strRange: [43, 51], budgetRange: [2.2e6, 2.9e6], stadiumTier: 0, stadiumChance: 0, fanbaseRange: [0.95, 1.1],
+      variants: {
+        low: { title: 'Club di provincia stabile', blurb: 'Nessun lusso, ma né debiti né sorprese: si parte alla pari con tutti.' },
+        mid: { title: 'Onesta realtà di categoria', blurb: 'Nessun lusso, ma né debiti né sorprese: una stagione tranquilla è già un successo.' },
+        high: { title: 'Piazza storica in equilibrio', blurb: 'Nessun lusso, ma né debiti né sorprese: la permanenza tranquilla è l\'obiettivo.' },
+      },
+    },
   ];

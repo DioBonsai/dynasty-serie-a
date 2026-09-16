@@ -310,13 +310,23 @@
     return -2.6 - (age - 32) * 0.5;
   }
 
+  // Oltre i 90 di overall la crescita rallenta (arrivare a 99 deve restare eccezionale, non
+  // la norma per chiunque abbia una buona stagione): frena solo la CRESCITA, non i cali, e
+  // si fa via via più ripida avvicinandosi al tetto, soprattutto fra 93 e 99.
+  function growthDamp(ovr) {
+    if (ovr < 90) return 1;
+    const t = clamp((ovr - 90) / 9, 0, 1);
+    return clamp(1 - t * t * 0.9, 0.12, 1);
+  }
   function seasonOvrDelta(p) {
     const ratio = seasonPerformanceRatio(p);
     // sopra 1 = stagione da incorniciare, sotto 1 = deludente; pesa di più verso l'alto
     // (le esplosioni improvvise fanno più notizia dei cali) ma può affondare parecchio.
     const perf = clamp((ratio - 1) * 3.5, -4.5, 7);
     const noise = (Math.random() - 0.5) * 2;
-    return Math.round(ageGrowthBase(p.age) + perf + noise);
+    let delta = ageGrowthBase(p.age) + perf + noise;
+    if (delta > 0) delta *= growthDamp(p.ovr);
+    return Math.round(delta);
   }
 
   // Marcatore per un avversario con una rosa reale nota: stesso peso ruolo+forza usato per
@@ -628,7 +638,7 @@
 
   function sponsorOffers() {
     const d = divOf();
-    const base = d.prize * 0.3 + capOf() * 9;
+    const base = (d.prize * 0.3 + capOf() * 9) * 1.2;   // +20% su tutti gli accordi sponsor
     const mk = (tag, mult, yrs, sent) => ({ name: pick(SPONSOR_BRANDS[tag]), tag, perYear: Math.round(base * mult * (0.85 + Math.random() * 0.3) / 1e4) * 1e4, years: yrs, left: yrs, sent });
     // Sempre QUATTRO offerte, con un peso economico più alto di prima: più scelta e
     // più soldi in ballo. Dalla Serie B in su un mega-sponsor globale sostituisce lo
@@ -686,18 +696,24 @@
   // forza di partenza sulla nuova media (dAvg - eccAvg) e si scala il budget con lo stesso
   // rapporto dei costi di spin, così "quanti spin ti puoi permettere" resta simile a
   // qualunque livello si parta.
+  // low = Eccellenza/Serie D/Serie C, mid = Serie B, high = Serie A: ogni situazione ha un
+  // racconto diverso a seconda di dove si parte (vedi SITUATIONS.variants in data.js).
+  const situationTier = (div) => (div >= 4 ? 'high' : div === 3 ? 'mid' : 'low');
   function genTakeovers(div) {
     div = div || 0;
+    const tier = situationTier(div);
     const shift = DIVS[div].avg - DIVS[0].avg;
     const budgetScale = DIVS[div].spin / DIVS[0].spin;
-    return SITUATIONS.map((s) => ({
-      key: s.key, title: s.title,
-      blurb: (s.key === 'gigante' && div >= 4) ? 'Una piazza che sogna ancora la Champions League: tanta tifoseria, casse quasi vuote.' : s.blurb,
-      str: s.strRange[0] + shift + rnd(s.strRange[1] - s.strRange[0] + 1),
-      budget: (s.budgetRange[0] + Math.random() * (s.budgetRange[1] - s.budgetRange[0])) * budgetScale,
-      stadiumTier: Math.random() < s.stadiumChance ? s.stadiumTier : 0,
-      fanbase: s.fanbaseRange[0] + Math.random() * (s.fanbaseRange[1] - s.fanbaseRange[0]),
-    }));
+    return SITUATIONS.map((s) => {
+      const v = s.variants[tier];
+      return {
+        key: s.key, title: v.title, blurb: v.blurb,
+        str: s.strRange[0] + shift + rnd(s.strRange[1] - s.strRange[0] + 1),
+        budget: (s.budgetRange[0] + Math.random() * (s.budgetRange[1] - s.budgetRange[0])) * budgetScale,
+        stadiumTier: Math.random() < s.stadiumChance ? s.stadiumTier : 0,
+        fanbase: s.fanbaseRange[0] + Math.random() * (s.fanbaseRange[1] - s.fanbaseRange[0]),
+      };
+    });
   }
 
   function startDynasty(owner, t, customClub, div) {
