@@ -558,3 +558,12 @@ body{
 }
 .ow-div-pick:hover{ border-color:var(--dyn); }
 .ow-div-pick.on{ border-color:var(--dyn); background:rgba(201,144,47,.16); color:var(--txt); }
+
+/* ---------- scelta del modulo (anteprima formazione) ---------- */
+.ow-formation-picker{ display:flex; flex-wrap:wrap; gap:6px; margin:0 0 10px; }
+.ow-formation-pick{
+  appearance:none; background:var(--panel); border:1px solid var(--line); color:var(--muted);
+  font:800 11.5px/1 var(--sans); padding:7px 12px; border-radius:999px; cursor:pointer; transition:border-color .12s ease,color .12s ease,background .12s ease;
+}
+.ow-formation-pick:hover{ border-color:var(--dyn); }
+.ow-formation-pick.on{ border-color:var(--dyn); background:rgba(201,144,47,.14); color:var(--txt); }

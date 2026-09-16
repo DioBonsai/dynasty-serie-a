@@ -167,9 +167,29 @@
     return `<div class="ow-meter"><span class="lbl">${label}</span><span class="bar"><span class="fill" style="width:${v}%;background:${col}"></span></span><span class="val" style="color:${col}">${Math.round(v)}${warn ? ' ⚠️' : ''}</span></div>`;
   }
 
+  // Moduli disponibili per l'anteprima formazione: ogni riga è [ruolo, quanti, ruoloFlex,
+  // quantiFlex], dall'attacco (in alto) al portiere (in basso). `quantiFlex` sono gli slot
+  // "esterni" di quella riga (ai lati, i primi che finiscono nella visuale) che possono
+  // essere presi anche da `ruoloFlex` se il migliore disponibile lì è più forte di un
+  // centrocampista puro: un esterno può benissimo essere un attaccante di ruolo. Un ruolo
+  // che compare in due righe (es. i due mediani vs i tre trequartisti nel 4-2-3-1) si
+  // "divide" prendendo i migliori per la riga più avanzata e i successivi per quella più
+  // arretrata: una semplificazione ragionevole dato che il gioco non distingue
+  // centrocampisti offensivi/difensivi come ruoli separati.
+  const FORMATIONS = {
+    '433': { label: '4-3-3', rows: [['ATT', 3], ['CEN', 3], ['DIF', 4], ['POR', 1]] },
+    '442': { label: '4-4-2', rows: [['ATT', 2], ['CEN', 4, 'ATT', 2], ['DIF', 4], ['POR', 1]] },
+    '352': { label: '3-5-2', rows: [['ATT', 2], ['CEN', 5, 'ATT', 2], ['DIF', 3], ['POR', 1]] },
+    '4231': { label: '4-2-3-1', rows: [['ATT', 1], ['CEN', 3, 'ATT', 2], ['CEN', 2], ['DIF', 4], ['POR', 1]] },
+    '343': { label: '3-4-3', rows: [['ATT', 3], ['CEN', 4, 'ATT', 2], ['DIF', 3], ['POR', 1]] },
+    '532': { label: '5-3-2', rows: [['ATT', 2], ['CEN', 3], ['DIF', 5], ['POR', 1]] },
+  };
+  // Modulo scelto per l'anteprima: solo preferenza di vista, non persistito.
+  let previewFormation = '433';
+
   // Probabile formazione: solo un'anteprima (i migliori per overall in ciascun ruolo, gli
-  // stessi criteri di pickMatchLineup ma senza il margine di casualità a partita), per ora
-  // sempre 4-3-3. Non incide sulle presenze/statistiche: è solo una vista d'insieme.
+  // stessi criteri di pickMatchLineup ma senza il margine di casualità a partita). Non
+  // incide sulle presenze/statistiche: è solo una vista d'insieme.
   function previewLineup() {
     const byPos = { POR: [], DIF: [], CEN: [], ATT: [] };
     S.squad.forEach((p) => { if (byPos[p.pos]) byPos[p.pos].push(p); });
@@ -195,14 +215,37 @@
     }
     return `<div class="ow-pitch-row">${chips.join('')}</div>`;
   }
-  function pitchHTML() {
+  // Costruisce una riga con slot flessibili: `pureN` (n - flexN) posti restano di `role`
+  // (i centrali), i restanti `flexN` posti (gli esterni, ai lati della riga) vanno ai
+  // migliori disponibili fra chi è rimasto di `role` e di `flexRole`, chiunque dei due
+  // abbia l'overall più alto. Ogni giocatore usato avanza il cursore del SUO ruolo reale,
+  // così non viene ripescato in una riga successiva.
+  function buildFlexRow(byPos, cursor, role, n, flexRole, flexN) {
+    const pureN = n - flexN;
+    const pure = byPos[role].slice(cursor[role], cursor[role] + pureN);
+    cursor[role] += pure.length;
+    const pool = byPos[role].slice(cursor[role]).map((p) => ({ p, src: role }))
+      .concat(byPos[flexRole].slice(cursor[flexRole]).map((p) => ({ p, src: flexRole })))
+      .sort((a, b) => b.p.ovr - a.p.ovr)
+      .slice(0, flexN);
+    pool.forEach((m) => { cursor[m.src]++; });
+    const flexPlayers = pool.map((m) => m.p);
+    const half = Math.ceil(flexPlayers.length / 2);
+    return flexPlayers.slice(0, half).concat(pure, flexPlayers.slice(half));
+  }
+  function pitchHTML(key) {
+    const f = FORMATIONS[key] || FORMATIONS['433'];
     const byPos = previewLineup();
-    return `<div class="ow-pitch">
-      ${pitchRowHTML(byPos.ATT, 3)}
-      ${pitchRowHTML(byPos.CEN, 3)}
-      ${pitchRowHTML(byPos.DIF, 4)}
-      ${pitchRowHTML(byPos.POR, 1)}
-    </div>`;
+    const cursor = { POR: 0, DIF: 0, CEN: 0, ATT: 0 };
+    const rows = f.rows.map(([role, n, flexRole, flexN]) => {
+      const list = flexN ? buildFlexRow(byPos, cursor, role, n, flexRole, flexN) : byPos[role].slice(cursor[role], cursor[role] + n);
+      if (!flexN) cursor[role] += n;
+      return pitchRowHTML(list, n);
+    }).join('');
+    return `<div class="ow-pitch">${rows}</div>`;
+  }
+  function formationPickerHTML() {
+    return `<div class="ow-formation-picker">${Object.keys(FORMATIONS).map((k) => `<button type="button" class="ow-formation-pick ${previewFormation === k ? 'on' : ''}" data-formation="${k}">${FORMATIONS[k].label}</button>`).join('')}</div>`;
   }
 
   // Sparkline SVG minimale (nessuna libreria): un'area + linea che mostra l'andamento
@@ -351,8 +394,9 @@
         <div class="ow-squadlist">${squadRows}</div>
       </div>
       <div class="ow-sec">
-        <div class="ow-sec-title">⚽ Probabile formazione (4-3-3)</div>
-        ${pitchHTML()}
+        <div class="ow-sec-title">⚽ Probabile formazione (${FORMATIONS[previewFormation].label})</div>
+        ${formationPickerHTML()}
+        ${pitchHTML(previewFormation)}
       </div>`;
 
     const stadioHTML = `
@@ -519,6 +563,7 @@
     body.querySelectorAll('[data-role]').forEach((el) => el.addEventListener('click', () => { squadRoleFilter = el.dataset.role; renderBoard(); }));
     const sortBtn = $('squadSortBtn');
     if (sortBtn) sortBtn.addEventListener('click', () => { squadSortDesc = !squadSortDesc; renderBoard(); });
+    body.querySelectorAll('[data-formation]').forEach((el) => el.addEventListener('click', () => { previewFormation = el.dataset.formation; renderBoard(); }));
     $('startSeasonBtn').addEventListener('click', startSeason);
     $('sellBtn').addEventListener('click', confirmSell);
     $('resignBtn').addEventListener('click', confirmResign);
