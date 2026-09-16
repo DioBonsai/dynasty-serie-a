@@ -1048,7 +1048,7 @@
     if (S.budget < wageBill() + S.manager.salary) { toast('Ti mancano ' + fmtMoney(wageBill() + S.manager.salary - S.budget) + ' per il monte ingaggi. Vendi giocatori o trova soldi.'); renderBoard(); return; }
     S.budget -= wageBill() + S.manager.salary;
     S.sent = clamp(S.sent + TICKETS[S.ticket].sent, 0, 100);
-    S.seasonActive = true; S.winterDone = false; S._janCands = null; S._janMgrCands = null;
+    S.seasonActive = true; S.winterDone = false; S._janCands = null; S._janSwitchUsed = false; S._janMgrCands = null;
     S.played = 0; S.pts = 0; S.gf = 0; S.ga = 0; S.wins = 0; S.results = []; S.last5 = []; S.form = 0;
     // Azzera le statistiche (valgono per la stagione in corso) e tira una "forma stagionale":
     // la maggior parte dei giocatori resta vicina alla norma, ma ogni tanto qualcuno esplode
@@ -1136,7 +1136,8 @@
   const janTransferFee = (p) => Math.round(playerValue(p) * 0.6);
   function openWinter() {
     S._pause = true;
-    if (!S._janCands) S._janCands = [spinPlayer(false), spinPlayer(false)];
+    if (!S._janCands) S._janCands = [spinPlayer(false), spinPlayer(false), spinPlayer(false)];
+    if (S._janSwitchUsed == null) S._janSwitchUsed = false;
     if (!S._janMgrCands) S._janMgrCands = [genManager(2), genManager(5)];
     renderWinterOverlay();
   }
@@ -1152,6 +1153,7 @@
           <span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span>
           <span class="postag postag-${p.pos}">${p.pos}</span>
           <span class="nm">${p.n}<small>${POS_LABEL[p.pos]} · età ${p.age} · chiede ${fmtYr(p.wage)}</small></span>
+          ${!S._janSwitchUsed ? `<button class="ow-jan-switch" data-jan-switch="${i}" title="Cambia questo giocatore (una sola volta)">🔄</button>` : ''}
         </div>
         <div class="ow-jan-actions">
           <button class="dyn-mini" data-jan-loan="${i}" ${S.budget < loanCost ? 'disabled' : ''}>🏷️ Prestito · ${fmtMoney(loanCost)}</button>
@@ -1163,10 +1165,11 @@
       <h2>❄️ Il mercato di gennaio</h2>
       <p>A metà strada. ${ord(currentPos())} in ${d.name}. Budget ${fmtMoney(S.budget)}.</p>
       ${cands.length ? cands.map(cardHTML).join('') : '<div class="ow-sub">Nessun altro candidato in questa finestra.</div>'}
-      <div class="ow-sub" style="margin:12px 0 6px;text-align:left">Esonera ${S.manager.n} (30% di buonuscita) e nomina:</div>
-      ${mgrCands.map((m, i) => `<div class="ow-mgr cand"><span class="ovr">${m.rating}</span><span class="nm">${m.n}<small>${fmtMoney(m.salary)}/anno, metà pagata subito</small></span><button class="dyn-mini" data-wh="${i}">Assumi</button></div>`).join('')}
+      <div class="ow-mgr"><span class="ovr" style="${ovrBadge(S.manager.rating)}">${S.manager.rating}</span><span class="nm">${S.manager.n}<small>Allenatore in carica</small></span><span class="tag">In carica</span></div>
+      <div class="ow-sub" style="margin:8px 0 6px;text-align:left">Esonera (30% di buonuscita) e nomina:</div>
+      ${mgrCands.map((m, i) => `<div class="ow-mgr cand"><span class="ovr" style="${ovrBadge(m.rating)}">${m.rating}</span><span class="nm">${m.n}<small>${fmtMoney(m.salary)}/anno, metà pagata subito</small></span><button class="dyn-mini" data-wh="${i}">Assumi</button></div>`).join('')}
       <div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovPlayOn">Continua così</button></div>`);
-    $('ovPlayOn').onclick = () => { S.winterDone = true; S._pause = false; S._janCands = null; S._janMgrCands = null; closeOverlay(); saveGame(); if (S.played >= gp()) endSeason(); };
+    $('ovPlayOn').onclick = () => { S.winterDone = true; S._pause = false; S._janCands = null; S._janSwitchUsed = false; S._janMgrCands = null; closeOverlay(); saveGame(); if (S.played >= gp()) endSeason(); };
     document.querySelectorAll('#owOverlayModal [data-jan-loan]').forEach((el) => el.addEventListener('click', () => {
       const i = +el.dataset.janLoan, p = S._janCands[i]; if (!p) return;
       const cost = janLoanCost(p);
@@ -1183,6 +1186,15 @@
       S.budget -= cost; S.squad.push(p);
       S._janCands.splice(i, 1);
       toast(p.n + ' firma a titolo definitivo.');
+      saveGame(); renderWinterOverlay();
+    }));
+    document.querySelectorAll('#owOverlayModal [data-jan-switch]').forEach((el) => el.addEventListener('click', () => {
+      if (S._janSwitchUsed) return;
+      const i = +el.dataset.janSwitch; if (!S._janCands[i]) return;
+      const old = S._janCands[i];
+      S._janCands[i] = spinPlayer(false);
+      S._janSwitchUsed = true;
+      toast('Cambi ' + old.n + ' con un altro candidato.');
       saveGame(); renderWinterOverlay();
     }));
     document.querySelectorAll('#owOverlayModal [data-wh]').forEach((el) => el.addEventListener('click', () => {

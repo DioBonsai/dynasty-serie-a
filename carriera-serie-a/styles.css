@@ -419,6 +419,11 @@ body{
 .ow-jan-head{ display:flex; align-items:center; gap:10px; margin-bottom:9px; }
 .ow-jan-head .nm{ flex:1; min-width:0; font-weight:900; font-size:13.5px; }
 .ow-jan-head .nm small{ display:block; font-size:11px; color:var(--muted); font-weight:700; margin-top:1px; }
+.ow-jan-switch{
+  flex:0 0 auto; width:30px; height:30px; border-radius:8px; border:1px solid var(--line); background:transparent;
+  color:var(--muted); font-size:14px; cursor:pointer; transition:border-color .12s ease, color .12s ease;
+}
+.ow-jan-switch:hover{ color:var(--dyn); border-color:var(--dyn); }
 .ow-jan-actions{ display:grid; grid-template-columns:1fr 1fr; gap:7px; }
 @media(max-width:420px){ .ow-jan-actions{ grid-template-columns:1fr; } }
 
