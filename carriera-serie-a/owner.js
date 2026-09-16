@@ -187,8 +187,42 @@
   ];
 
   /* ---------------- nomi ---------------- */
-  const FIRST = ['Marco', 'Luca', 'Matteo', 'Andrea', 'Davide', 'Simone', 'Alessandro', 'Francesco', 'Lorenzo', 'Gabriele', 'Riccardo', 'Federico', 'Nicolò', 'Giacomo', 'Tommaso', 'Leonardo', 'Antonio', 'Giuseppe', 'Salvatore', 'Vincenzo', 'Stefano', 'Roberto', 'Paolo', 'Fabio', 'Daniele', 'Emanuele', 'Cristian', 'Manuel', 'Samuele', 'Mattia', 'Diego', 'Bruno', 'Rafael', 'Thiago', 'Pedro', 'Nico', 'Karim', 'Youssef', 'Ibrahim', 'Mohamed', 'Amadou', 'Sadio', 'Ivan', 'Marko', 'Luka', 'Erik', 'Jonas', 'Nils', 'Kevin', 'Michael'];
-  const LAST = ['Rossi', 'Russo', 'Ferrari', 'Esposito', 'Bianchi', 'Romano', 'Colombo', 'Ricci', 'Marino', 'Greco', 'Bruno', 'Gallo', 'Conti', 'De Luca', 'Mancini', 'Costa', 'Giordano', 'Rizzo', 'Lombardi', 'Moretti', 'Barbieri', 'Fontana', 'Santoro', 'Mariani', 'Rinaldi', 'Caruso', 'Ferrara', 'Galli', 'Martini', 'Leone', 'Longo', 'Gentile', 'Martinez', 'Silva', 'Santos', 'Fernandez', 'Garcia', 'Sanchez', 'Nkomo', 'Diallo', 'Traore', 'Mensah', 'Kovac', 'Novak', 'Jansen', 'Andersen', 'Nielsen'];
+  // Ampio mix di provenienze (come una vera rosa di Serie A/B): italiani, spagnoli/
+  // latinoamericani, portoghesi/brasiliani, francesi, africani, balcanici, scandinavi,
+  // tedeschi/olandesi. Pool grande apposta, per evitare che gli stessi nomi tornino
+  // sempre negli stessi due-tre giocatori.
+  const FIRST = [
+    'Marco', 'Luca', 'Matteo', 'Andrea', 'Davide', 'Simone', 'Alessandro', 'Francesco', 'Lorenzo', 'Gabriele',
+    'Riccardo', 'Federico', 'Nicolò', 'Giacomo', 'Tommaso', 'Leonardo', 'Antonio', 'Giuseppe', 'Salvatore', 'Vincenzo',
+    'Stefano', 'Roberto', 'Paolo', 'Fabio', 'Daniele', 'Emanuele', 'Cristian', 'Manuel', 'Samuele', 'Mattia',
+    'Giovanni', 'Filippo', 'Alessio', 'Emiliano', 'Massimo', 'Pietro', 'Enrico', 'Angelo',
+    'Diego', 'Pablo', 'Rafael', 'Sergio', 'Javier', 'Alvaro', 'Carlos', 'Fernando', 'Ricardo', 'Miguel',
+    'Juan', 'Rodrigo', 'Adrian', 'Gonzalo',
+    'Thiago', 'Pedro', 'Bruno', 'Gustavo', 'Vinicius', 'Joao', 'Tiago', 'Eduardo', 'Wesley', 'Anderson', 'Felipe',
+    'Antoine', 'Hugo', 'Lucas', 'Mathis', 'Theo', 'Enzo', 'Kylian', 'Adama', 'Moussa', 'Mamadou',
+    'Karim', 'Youssef', 'Ibrahim', 'Mohamed', 'Amadou', 'Sadio', 'Ousmane', 'Cheikh', 'Boubacar', 'Idrissa',
+    'Kwame', 'Kofi', 'Emmanuel', 'Victor', 'Chidi', 'Emeka',
+    'Marko', 'Luka', 'Ivan', 'Stefan', 'Nemanja', 'Milan', 'Dusan', 'Filip', 'Dario', 'Bojan',
+    'Aleksandar', 'Vladimir', 'Andrei', 'Radu',
+    'Erik', 'Jonas', 'Nils', 'Anders', 'Magnus', 'Henrik', 'Lars', 'Sven', 'Oscar', 'Viktor',
+    'Kevin', 'Michael', 'Lukas', 'Maximilian', 'Julian', 'Niklas', 'Daan', 'Sem', 'Wout', 'Ruud',
+  ];
+  const LAST = [
+    'Rossi', 'Russo', 'Ferrari', 'Esposito', 'Bianchi', 'Romano', 'Colombo', 'Ricci', 'Marino', 'Greco',
+    'Bruno', 'Gallo', 'Conti', 'De Luca', 'Mancini', 'Costa', 'Giordano', 'Rizzo', 'Lombardi', 'Moretti',
+    'Barbieri', 'Fontana', 'Santoro', 'Mariani', 'Rinaldi', 'Caruso', 'Ferrara', 'Galli', 'Martini', 'Leone',
+    'Longo', 'Gentile', 'Villa', 'Ferro', 'Marchetti', 'Bellini', 'Monti', 'Vitale', 'Amato', 'Testa',
+    'Martinez', 'Fernandez', 'Garcia', 'Sanchez', 'Rodriguez', 'Lopez', 'Gonzalez', 'Perez', 'Diaz', 'Alonso',
+    'Torres', 'Ramirez', 'Ortiz',
+    'Silva', 'Santos', 'Oliveira', 'Pereira', 'Carvalho', 'Fonseca', 'Ribeiro', 'Moreira', 'Teixeira', 'Almeida',
+    'Dubois', 'Moreau', 'Laurent', 'Lefebvre', 'Girard', 'Bernard', 'Petit', 'Roux', 'Fournier', 'Mercier',
+    'Nkomo', 'Diallo', 'Traore', 'Mensah', 'Okafor', 'Eze', 'Adeyemi', 'Kone', 'Toure', 'Camara',
+    'Bakayoko', 'Diarra', 'Sow', 'Sarr', 'Ndiaye', 'Cisse',
+    'Kovac', 'Novak', 'Jankovic', 'Petrovic', 'Ivanovic', 'Radovic', 'Dragic', 'Vukovic', 'Popescu', 'Ionescu',
+    'Nagy', 'Kowalski', 'Nowak',
+    'Jansen', 'Andersen', 'Nielsen', 'Hansen', 'Larsen', 'Karlsson', 'Eriksson', 'Johansson', 'Berg', 'Lund',
+    'Muller', 'Schmidt', 'Weber', 'Wagner', 'Becker', 'Hoffmann', 'Bakker', 'Visser',
+  ];
   const genName = () => pick(FIRST) + ' ' + pick(LAST);
 
   /* ---------------- avversari di coppa ---------------- */
@@ -272,7 +306,7 @@
   const lineupFactor = (p, xi) => (xi.has(p.pid) ? 1 : BENCH_FACTOR);
   // Peso di un giocatore come possibile marcatore: il ruolo pesa più di tutto, ma tra
   // giocatori dello stesso ruolo quelli più forti (i titolari) segnano di più.
-  const scorerWeight = (p, xi) => (POS_SCORE_WEIGHT[p.pos] || 1) * Math.pow(Math.max(p.ovr, 30) / 50, 1.7) * lineupFactor(p, xi);
+  const scorerWeight = (p, xi) => (POS_SCORE_WEIGHT[p.pos] || 1) * Math.pow(Math.max(p.ovr, 30) / 50, 1.7) * lineupFactor(p, xi) * (p.formSeason || 1);
   function pickScorer() {
     if (!S.squad.length) return null;
     const xi = startingXI(S.squad);
@@ -285,7 +319,7 @@
   // po' meno (spesso sono loro a essere serviti), i difensori raramente, i portieri quasi
   // mai. Non può essere lo stesso giocatore che ha segnato.
   const POS_ASSIST_WEIGHT = { POR: 0.03, DIF: 1.0, CEN: 3.4, ATT: 2.2 };
-  const assistWeight = (p, xi) => (POS_ASSIST_WEIGHT[p.pos] || 1) * Math.pow(Math.max(p.ovr, 30) / 50, 1.4) * lineupFactor(p, xi);
+  const assistWeight = (p, xi) => (POS_ASSIST_WEIGHT[p.pos] || 1) * Math.pow(Math.max(p.ovr, 30) / 50, 1.4) * lineupFactor(p, xi) * (p.formSeason || 1);
   function pickAssister(scorerPid) {
     const pool = S.squad.filter((p) => p.pid !== scorerPid);
     if (!pool.length) return null;
@@ -300,6 +334,43 @@
   function currentStarterGK() {
     const gks = S.squad.filter((p) => p.pos === 'POR').sort((a, b) => b.ovr - a.ovr);
     return gks.length ? gks[0] : null;
+  }
+  // ---- crescita/calo dell'overall a fine stagione ----
+  // Quanto ci si aspetta da un giocatore nel suo ruolo in una stagione piena da titolare
+  // (gol + 0.7 per assist); un panchinaro è giudicato su un'asticella proporzionalmente
+  // più bassa, non sullo stesso metro di chi gioca sempre.
+  const POS_PROD_BASELINE = { POR: 0, DIF: 2.5, CEN: 6, ATT: 12 };
+  function seasonPerformanceRatio(p, xi) {
+    const starter = xi.has(p.pid);
+    if (p.pos === 'POR') {
+      const expectedCS = gp() * 0.28 * (starter ? 1 : BENCH_FACTOR);
+      return ((p.seasonCleanSheets || 0) + 0.5) / (expectedCS + 0.5);
+    }
+    const baseline = (POS_PROD_BASELINE[p.pos] || 4) * (starter ? 1 : BENCH_FACTOR);
+    const production = (p.seasonGoals || 0) + (p.seasonAssists || 0) * 0.7;
+    return (production + 0.5) / (baseline + 0.5);
+  }
+  // La crescita "di mestiere" legata all'età: i giovanissimi migliorano rapidamente, il
+  // physico regge stabile in mezzo alla carriera, dopo i 32 anni il calo è certo e sempre
+  // più marcato. Ci si somma sopra l'effetto della stagione appena giocata: un'esplosione
+  // (tanti gol/assist sopra l'atteso) spinge l'overall più su, una stagione opaca lo tira
+  // giù — a qualunque età, ma pesa meno su un ragazzino e di più su un veterano.
+  function ageGrowthBase(age) {
+    if (age <= 20) return 3.0;
+    if (age <= 23) return 2.2;
+    if (age <= 26) return 1.1;
+    if (age <= 29) return 0.2;
+    if (age <= 31) return -0.4;
+    if (age <= 32) return -1.2;
+    return -2.6 - (age - 32) * 0.5;
+  }
+  function seasonOvrDelta(p, xi) {
+    const ratio = seasonPerformanceRatio(p, xi);
+    // sopra 1 = stagione da incorniciare, sotto 1 = deludente; pesa di più verso l'alto
+    // (le esplosioni improvvise fanno più notizia dei cali) ma può affondare parecchio.
+    const perf = clamp((ratio - 1) * 3.5, -4.5, 7);
+    const noise = (Math.random() - 0.5) * 2;
+    return Math.round(ageGrowthBase(p.age) + perf + noise);
   }
   // Marcatore per un avversario di Serie A: pesca dalla sua rosa reale (Quotazioni
   // Fantacalcio 2026/27) con lo stesso peso ruolo+forza usato per la nostra squadra, solo
@@ -775,9 +846,22 @@
     const fa = $('freeAgentBtn');
     if (fa) fa.addEventListener('click', () => {
       const p = freeAgent();
-      S.squad.push(p);
-      toast('Lo svincolato ' + p.n + ' si aggrega (' + p.ovr + ' OVR, ' + fmtWk(p.wage) + ').');
-      renderBoard(); saveGame();
+      overlay(`
+        <h2>🖊️ Svincolato tesserato</h2>
+        <div class="ow-spin-card">
+          <div class="big" style="color:${ovrTier(p.ovr).c}">${p.ovr}</div>
+          <div class="nm">${p.n} <span class="postag postag-${p.pos}" style="vertical-align:middle">${p.pos}</span></div>
+          <div class="meta">${POS_LABEL[p.pos]} · età ${p.age} · ${fmtWk(p.wage)}</div>
+        </div>
+        <div class="dyn-modal-actions">
+          <button class="dyn-btn dyn-btn-primary" id="ovFaOk">OK</button>
+        </div>`);
+      $('ovFaOk').onclick = () => {
+        S.squad.push(p);
+        closeOverlay();
+        toast('Lo svincolato ' + p.n + ' si aggrega alla rosa.');
+        renderBoard(); saveGame();
+      };
     });
     const inv = $('investorBtn');
     if (inv) inv.addEventListener('click', () => {
@@ -878,7 +962,10 @@
     S.sent = clamp(S.sent + TICKETS[S.ticket].sent, 0, 100);
     S.seasonActive = true; S.winterDone = false; S.janSpinUsed = false;
     S.played = 0; S.pts = 0; S.gf = 0; S.ga = 0; S.wins = 0; S.results = []; S.last5 = []; S.form = 0;
-    S.squad.forEach((p) => { p.seasonGoals = 0; p.seasonAssists = 0; p.seasonCleanSheets = 0; });   // azzera le statistiche: valgono per la stagione in corso
+    // Azzera le statistiche (valgono per la stagione in corso) e tira una "forma stagionale":
+    // la maggior parte dei giocatori resta vicina alla norma, ma ogni tanto qualcuno esplode
+    // (fino quasi al doppio della sua resa attesa) o vive un'annata opaca (anche la metà).
+    S.squad.forEach((p) => { p.seasonGoals = 0; p.seasonAssists = 0; p.seasonCleanSheets = 0; p.formSeason = clamp(1 + gaussInt(0, 28) / 100, 0.45, 1.9); });
     S.cupMoney = 0; S.euroMoney = S.euro ? EURO_COMPS[S.euroComp].entry : 0;   // montepremi di partecipazione alla coppa europea
     S.opps = rivals().map((o) => ({ name: o.n, s: o.s, pts: seasonPtsFor(o.s), gf: 0, ga: 0 }));
     S.opps.forEach((o) => { o.gf = Math.round(gp() * (o.s - (divOf().avg - 12)) / 22); o.ga = Math.round(gp() * ((divOf().avg + 10) - o.s) / 22); });
@@ -1113,6 +1200,19 @@
     else S.debtSeasons = 0;
     const worth = computeWorth(); S.peakWorth = Math.max(S.peakWorth, worth);
     S.euroCompNext = qualTier;
+    // ----- crescita/calo di ogni giocatore, in base a età e prestazione della stagione
+    // appena chiusa: qui, PRIMA di mostrare le statistiche, così a fine stagione si vede
+    // subito quanto ciascuno è cresciuto o sceso. Il ritiro (36+ dopo il compleanno di
+    // fine stagione) viene solo marcato: la rimozione vera avviene entrando in quella
+    // successiva, per non far sparire un giocatore dalle sue stesse statistiche finali. -----
+    const xiEnd = startingXI(S.squad);
+    S.squad.forEach((p) => {
+      p.age++;
+      const before = p.ovr;
+      p.ovr = clamp(p.ovr + seasonOvrDelta(p, xiEnd), 40, 94);
+      p._ovrDelta = p.ovr - before;
+      p._retiring = p.age >= 36;
+    });
     S.history.push({ season: S.season, div: d.name, pos, promoted, relegated, trophies, net, worth });
     const statement = [
       ['Incasso stadio (' + att.toLocaleString('it-IT') + ' medi)', matchday],
@@ -1156,6 +1256,14 @@
     const keepers = S.squad.filter((p) => p.pos === 'POR').sort((a, b) => (b.seasonCleanSheets || 0) - (a.seasonCleanSheets || 0) || b.ovr - a.ovr);
     const gkStarter = currentStarterGK();
     const topScorer = scorers.find((p) => p.seasonGoals > 0);
+    // La variazione di overall della stagione appena chiusa: verde/su se è cresciuto,
+    // rosso/giù se è calato, grigio se è rimasto stabile.
+    const ovrDeltaHTML = (p) => {
+      const d = p._ovrDelta || 0;
+      const col = d > 0 ? 'var(--good)' : d < 0 ? 'var(--bad)' : 'var(--muted)';
+      const arrow = d > 0 ? '▲' : d < 0 ? '▼' : '—';
+      return `<span class="wg" style="font-size:12px;color:${col}">${arrow} ${Math.abs(d)}</span>`;
+    };
     const statsHTML = `
       <div class="ow-sec">
         <div class="ow-sec-title">📊 Statistiche giocatori</div>
@@ -1166,14 +1274,16 @@
               <span class="postag postag-${p.pos}">${p.pos}</span>
               <span class="nm">${p.n}</span>
               <span class="wg" style="color:var(--gold);font-size:13px">⚽ ${p.seasonGoals || 0}</span>
-              <span class="wg" style="font-size:13px">🅰️ ${p.seasonAssists || 0}</span></div>`).join('')}
+              <span class="wg" style="font-size:13px">🅰️ ${p.seasonAssists || 0}</span>
+              ${ovrDeltaHTML(p)}</div>`).join('')}
           </div>` : '<div class="ow-sub">Nessun marcatore o assistman di rilievo questa stagione.</div>'}
         ${keepers.length ? `
           <div class="ow-sub" style="margin-top:10px">Portieri</div>
           <div class="ow-squadlist" style="max-height:none">${keepers.map((p) => `
             <div class="ow-player"><span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span>
               <span class="nm">${p.n}<small>${gkStarter && p.pid === gkStarter.pid ? 'Titolare' : 'Riserva'}</small></span>
-              <span class="wg" style="color:var(--good);font-size:13px">🧤 ${p.seasonCleanSheets || 0} clean sheet</span></div>`).join('')}
+              <span class="wg" style="color:var(--good);font-size:13px">🧤 ${p.seasonCleanSheets || 0} clean sheet</span>
+              ${ovrDeltaHTML(p)}</div>`).join('')}
           </div>` : ''}
       </div>`;
     body.innerHTML = `
@@ -1217,16 +1327,12 @@
     else if (S.div === 4) { S.squad.forEach((p) => p.wage = roundWage(p.wage * 1.08)); }
     // il contratto sponsor scende
     if (S.sponsor) { S.sponsor.left--; S.sent = clamp(S.sent + (S.sponsor.sent || 0), 0, 100); if (S.sponsor.left <= 0) { toast('L\'accordo con ' + S.sponsor.name + ' scade.'); S.sponsor = null; } }
-    // i giocatori invecchiano: i giovani crescono, i vecchi calano, 36 = ritiro
-    const retired = [];
-    S.squad.forEach((p) => {
-      p.age++;
-      if (p.age <= 22) p.ovr = clamp(p.ovr + 1 + rnd(2), 40, 94);
-      else if (p.age >= 34) p.ovr = clamp(p.ovr - (2 + rnd(2)), 40, 94);
-      else if (p.age >= 31) p.ovr = clamp(p.ovr - 1, 40, 94);
-    });
-    S.squad = S.squad.filter((p) => { if (p.age >= 36) { retired.push(p.n); return false; } return true; });
+    // Età e overall sono già stati aggiornati a fine stagione (endSeason), per poterli
+    // mostrare nelle statistiche; qui si applica solo il ritiro di chi ha superato i 35.
+    const retired = S.squad.filter((p) => p._retiring).map((p) => p.n);
+    S.squad = S.squad.filter((p) => !p._retiring);
     if (retired.length) toast(retired.join(', ') + ' si ritira' + (retired.length === 1 ? '' : 'no') + '.');
+    S.squad.forEach((p) => { delete p._ovrDelta; delete p._retiring; });
     // I prestiti finiscono qui: il giocatore torna al suo club, qualunque sia il suo "yrs".
     const loanedBack = S.squad.filter((p) => p.loan).map((p) => p.n);
     S.squad = S.squad.filter((p) => !p.loan);
@@ -1387,8 +1493,22 @@
   /* ---------------- overlay / toast ---------------- */
   function overlay(html) { $('owOverlayModal').innerHTML = html; $('owOverlay').classList.remove('hidden'); }
   function closeOverlay() { $('owOverlay').classList.add('hidden'); }
-  let toastT = null;
-  function toast(msg) { const t = $('owToast'); t.textContent = msg; t.classList.remove('hidden'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.add('hidden'), 2400); }
+  // I toast si accodano invece di sovrascriversi: se succedono tre cose in fila (un
+  // prestito che rientra, un contratto in scadenza, un ritiro) le vedi una alla volta,
+  // ciascuna ferma abbastanza a lungo da poterla leggere, invece che l'ultima soltanto.
+  let toastT = null, toastQueue = [], toastShowing = false;
+  function toast(msg) { toastQueue.push(msg); if (!toastShowing) showNextToast(); }
+  function showNextToast() {
+    if (!toastQueue.length) { toastShowing = false; return; }
+    toastShowing = true;
+    const msg = toastQueue.shift();
+    const t = $('owToast');
+    const more = toastQueue.length ? ' <span class="toast-more">+' + toastQueue.length + '</span>' : '';
+    t.innerHTML = msg + more;
+    t.classList.remove('hidden');
+    clearTimeout(toastT);
+    toastT = setTimeout(() => { t.classList.add('hidden'); setTimeout(showNextToast, 260); }, 3800);
+  }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();

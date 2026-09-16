@@ -177,9 +177,16 @@ body{
 
 /* ---------- toast ---------- */
 .dyn-toast{
-  position:fixed; left:50%; bottom:26px; transform:translateX(-50%); background:var(--dyn-ink); color:var(--txt);
-  border:1px solid var(--dyn); padding:11px 20px; border-radius:999px; font-weight:700; font-size:13px; z-index:300;
-  box-shadow:var(--shadow), 0 0 0 1px rgba(201,144,47,.15); max-width:88vw; text-align:center;
+  position:fixed; left:50%; bottom:30px; transform:translateX(-50%); background:var(--dyn-ink); color:var(--txt);
+  border:1.5px solid var(--dyn); padding:14px 24px; border-radius:14px; font-weight:800; font-size:15px; line-height:1.4; z-index:300;
+  box-shadow:0 14px 34px rgba(0,0,0,.55), 0 0 0 1px rgba(201,144,47,.25); max-width:min(92vw,460px); text-align:center;
+  animation:toastIn .18s ease;
+}
+.dyn-toast.hidden{ display:none !important; }
+@keyframes toastIn{ from{ opacity:0; transform:translateX(-50%) translateY(8px); } to{ opacity:1; transform:translateX(-50%) translateY(0); } }
+.toast-more{
+  display:inline-block; margin-left:8px; font-size:11px; font-weight:900; color:var(--dyn-ink);
+  background:var(--gold); border-radius:999px; padding:2px 7px; vertical-align:middle;
 }
 
 /* ============================================================
