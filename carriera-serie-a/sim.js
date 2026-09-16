@@ -25,6 +25,10 @@
   const ord = (n) => n + '°';
 
   function gaussInt(c, sd) { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.round(c + Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v) * sd); }
+  // Età con una vera curva a campana invece di un intervallo piatto: più varietà, e senza
+  // che i giocatori si accumulino tutti verso il bordo alto dell'intervallo come capitava
+  // con `n + rnd(range)`.
+  const genAge = (center, sd, lo, hi) => clamp(gaussInt(center, sd), lo, hi);
 
   /* ---------------- soldi ---------------- */
   function fmtMoney(n) {
@@ -75,17 +79,37 @@
   // Coppa Italia: pesca un club vero (da una qualunque delle categorie italiane note) con
   // una forza vicina a quella richiesta dal turno, così nei turni bassi capitano squadre
   // minori e più avanti si va nei grandi club. Non è mai il tuo club.
-  function pickCoppaOpponent(oppStr) {
-    const all = [];
+  function pickCoppaOpponent(oppStr, faced) {
+    let all = [];
     POOLS.forEach((pool) => pool.forEach((c) => { if (c.n !== S.club) all.push(c); }));
     if (!all.length) return 'un club';
+    if (faced && faced.length) { const filtered = all.filter((c) => !faced.includes(c.n)); if (filtered.length) all = filtered; }
     all.sort((a, b) => Math.abs(a.s - oppStr) - Math.abs(b.s - oppStr));
     return pick(all.slice(0, 6)).n;
   }
 
-  const genEuroClub = () => pick(EURO_CLUB_PREFIX) + ' ' + pick(EURO_CITIES);
+  // Pesca un club europeo VERO dalla fascia della coppa in corso (EURO_CLUBS[S.euroComp]),
+  // il più vicino possibile alla forza richiesta dal turno, escludendo chi è già stato
+  // affrontato in questa corsa. Se la fascia si esaurisce (non dovrebbe mai succedere, sono
+  // 18-20 club a fascia contro un massimo di 8 turni fra girone ed eliminazione diretta),
+  // usa il generatore prefisso+città come riserva.
+  function genEuroClub(faced, oppStr) {
+    const tier = (S.euroComp && EURO_CLUBS[S.euroComp]) || EURO_CLUBS.conf;
+    let pool = faced && faced.length ? tier.filter((c) => !faced.includes(c.n)) : tier;
+    if (!pool.length) {
+      for (let i = 0; i < 10; i++) {
+        const name = pick(EURO_CLUB_PREFIX) + ' ' + pick(EURO_CITIES);
+        if (!faced || !faced.includes(name)) return name;
+      }
+      return pick(EURO_CLUB_PREFIX) + ' ' + pick(EURO_CITIES);
+    }
+    pool = pool.slice().sort((a, b) => Math.abs(a.s - oppStr) - Math.abs(b.s - oppStr));
+    return pick(pool.slice(0, 5)).n;
+  }
 
-  function cupOpponentName(key, oppStr) { return key === 'euro' ? genEuroClub() : pickCoppaOpponent(oppStr); }
+  // `faced` è la lista dei nomi già pescati in QUESTA corsa di coppa (stessa stagione):
+  // evita di incontrare due volte lo stesso avversario nello stesso torneo.
+  function cupOpponentName(key, oppStr, faced) { return key === 'euro' ? genEuroClub(faced, oppStr) : pickCoppaOpponent(oppStr, faced); }
 
   // Quanto è forte oggi ogni ruolo in rosa: la media dei migliori (fino a 3) giocatori che
   // lo ricoprono. Un ruolo scoperto o con pochi elementi vale come debole, non "senza dati",
@@ -101,22 +125,36 @@
   }
 
   // Trasforma la forza per ruolo in pesi di estrazione: un ruolo più debole della media
-  // ha più probabilità di uscire allo spin successivo, per aiutarti a coprire il buco.
+  // ha più probabilità di uscire allo spin successivo, per aiutarti a coprire il buco. I
+  // portieri hanno un'oscillazione più stretta (0.7-1.6 invece di 0.4-2.8): sono un ruolo
+  // da 1-2 titolari, non ha senso che il bisogno li faccia oscillare quanto un attaccante.
   function roleNeedWeights(squad) {
     const avg = roleStrength(squad);
     const roles = ['POR', 'DIF', 'CEN', 'ATT'];
     const overall = roles.reduce((a, r) => a + avg[r], 0) / roles.length;
     const w = {};
-    roles.forEach((r) => { w[r] = POS_BASE_WEIGHT[r] * clamp(1 + (overall - avg[r]) / 10, 0.4, 2.8); });
+    roles.forEach((r) => { const range = r === 'POR' ? [0.7, 1.6] : [0.4, 2.8]; w[r] = POS_BASE_WEIGHT[r] * clamp(1 + (overall - avg[r]) / 10, range[0], range[1]); });
     return w;
   }
 
+  // Come roleNeedWeights, ma esclude qualunque ruolo abbia già raggiunto il suo tetto
+  // (POS_CAP): oltre quel numero il ruolo non viene più estratto. Se la rosa è già al
+  // tetto ovunque (caso limite, oltre i 26 titolari possibili in totale), niente panico:
+  // non sblocchiamo tutto, andiamo sul ruolo con meno eccesso, per non sforare tutto da
+  // un lato solo.
   function randPos(squad) {
-    const w = roleNeedWeights(squad || (S && S.squad) || []);
-    const total = w.POR + w.DIF + w.CEN + w.ATT;
+    squad = squad || (S && S.squad) || [];
+    const w = roleNeedWeights(squad);
+    const counts = { POR: 0, DIF: 0, CEN: 0, ATT: 0 };
+    squad.forEach((p) => { if (counts[p.pos] != null) counts[p.pos]++; });
+    const roles = ['POR', 'DIF', 'CEN', 'ATT'];
+    const avail = roles.filter((k) => counts[k] < POS_CAP[k]);
+    if (!avail.length) return roles.slice().sort((a, b) => (counts[a] - POS_CAP[a]) - (counts[b] - POS_CAP[b]))[0];
+    const pool = avail;
+    const total = pool.reduce((a, k) => a + w[k], 0);
     let r = Math.random() * total;
-    for (const k of ['POR', 'DIF', 'CEN', 'ATT']) { r -= w[k]; if (r <= 0) return k; }
-    return 'ATT';
+    for (const k of pool) { r -= w[k]; if (r <= 0) return k; }
+    return pool[pool.length - 1];
   }
 
   // La formazione della singola partita: un 4-3-3 (1 portiere, 4 difensori, 3
@@ -145,7 +183,7 @@
       if (p.outWeeks > 0 || p.suspMatches > 0) return;
       const injChance = p.age >= 32 ? 0.03 : p.age >= 28 ? 0.02 : 0.013;
       if (Math.random() < injChance) {
-        const weeks = 1 + rnd(3);
+        const weeks = 2 + rnd(4);
         p.outWeeks = weeks;
         events.push({ n: p.n, nat: p.nat, kind: 'inj', weeks });
       } else if (lineup.starters.has(p.pid) && Math.random() < 0.018) {
@@ -160,7 +198,10 @@
     tickAbsences();
     const available = squad.filter((p) => !(p.outWeeks > 0) && !(p.suspMatches > 0));
     const pool = available.length >= Math.min(11, squad.length) ? available : squad;   // rosa decimata: si gioca comunque con chi c'è
-    const rated = pool.map((p) => ({ p, eff: p.ovr * (p.formSeason || 1) * (0.82 + Math.random() * 0.36) }));
+    // Margine di casualità a partita stretto (±7%, non più ±18%): la forma stagionale
+    // pesa già parecchio da sola, qui serve solo a rompere i pareggi, non a far scavalcare
+    // un titolare più forte a un panchinaro mediocre su un colpo di fortuna.
+    const rated = pool.map((p) => ({ p, eff: p.ovr * (p.formSeason || 1) * (0.93 + Math.random() * 0.14) }));
     const byPos = { POR: [], DIF: [], CEN: [], ATT: [] };
     rated.forEach((r) => { if (byPos[r.p.pos]) byPos[r.p.pos].push(r); });
     Object.keys(byPos).forEach((k) => byPos[k].sort((a, b) => b.eff - a.eff));
@@ -257,7 +298,7 @@
 
   // Marcatore per un avversario di Serie A: pesca dalla sua rosa reale (Quotazioni
   // Fantacalcio 2026/27) con lo stesso peso ruolo+forza usato per la nostra squadra, solo
-  // calibrato sulla scala di quotazione (1-37) invece che sull'overall (40-94).
+  // calibrato sulla scala di quotazione (1-37) invece che sull'overall (40-99).
   function pickRealScorer(roster) {
     if (!roster || !roster.length) return null;
     const weight = (p) => (POS_SCORE_WEIGHT[p.pos] || 1) * Math.pow(Math.max(p.q, 1) / 10, 1.4);
@@ -331,23 +372,50 @@
     if (Math.random() < scoutTier().prospectChance) {
       const d = divOf(), nat = pickNationality(S.div);
       const ovr = clamp(gaussInt(d.avg - 5, 5), 40, 90);
-      S.scoutProspect = { n: genName(nat), nat, ovr, age: 16 + rnd(4), wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 };
+      S.scoutProspect = { n: genName(nat), nat, ovr, age: 16 + rnd(5), wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 };
     }
   }
 
+  // Solo in Serie B: ogni tanto lo spin pesca un giocatore VERO dalle rose reali
+  // (SERIE_B_ROSTERS, finora usate solo per gli avversari) invece di generarne uno di
+  // fantasia. La quotazione fantacalcio (q) diventa un overall tarato sulla media della
+  // categoria: i migliori nomi reali restano comunque sotto il tetto degli spin generati.
+  function realBPlayer() {
+    const teams = Object.keys(SERIE_B_ROSTERS);
+    for (let i = 0; i < 5; i++) {
+      const roster = SERIE_B_ROSTERS[pick(teams)];
+      if (!roster || !roster.length) continue;
+      const rp = pick(roster);
+      const count = S.squad.filter((p) => p.pos === rp.pos).length;
+      if (count >= POS_CAP[rp.pos]) continue;
+      const d = divOf();
+      const ovr = clamp(Math.round(d.avg - 6 + rp.q * 0.4), 40, d.avg + 14);
+      const nat = pickNationality(S.div);
+      return { n: rp.n, nat, ovr, age: genAge(26, 4.5, 19, 34), wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: rp.pos, seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0, real: true };
+    }
+    return null;
+  }
   function spinPlayer(premium) {
     const d = divOf(), scout = scoutTier();
-    let ovr = gaussInt(d.avg + (premium ? 6 : 1) + scout.bonus, clamp(4 + scout.varDelta, 2, 4));
-    if (Math.random() < (premium ? 0.09 : 0) + scout.gem) ovr += 5 + rnd(4);   // lo scout scopre un gioiello
-    ovr = clamp(ovr, 40, 94);
-    const age = premium && Math.random() < 0.35 ? 18 + rnd(5) : 19 + rnd(13);
+    if (S.div === 3 && Math.random() < (premium ? 0.30 : 0.18)) {
+      const real = realBPlayer();
+      if (real) return real;
+    }
+    // Ricalibratura generale: base più stretta (3.3 invece di 4) su tutte le divisioni, così
+    // uno spin "normale" resta vicino alla media di categoria più spesso; il colpo da
+    // titoli di giornale (gem) resta possibile ma non deve più essere la norma nemmeno
+    // con lo scouting al massimo.
+    let ovr = gaussInt(d.avg + (premium ? 6 : 1) + scout.bonus, clamp(3.3 + scout.varDelta, 1.8, 3.3));
+    if (Math.random() < (premium ? 0.09 : 0) + scout.gem) ovr += 4 + rnd(4);   // lo scout scopre un gioiello
+    ovr = clamp(ovr, 40, 99);
+    const age = premium && Math.random() < 0.35 ? 16 + rnd(6) : genAge(24, 5, 17, 36);
     const nat = pickNationality(S.div);
     return { n: genName(nat), nat, ovr, age, wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 };
   }
 
   // Svincolati: nessun costo di cartellino, rating scarso per il livello, stipendi modesti.
   // Servono a portare un club in difficoltà al minimo di 16 giocatori, non a vincere partite.
-  const freeAgent = () => { const d = divOf(); const ovr = clamp(d.avg - 13 + rnd(6), 40, 94); const nat = pickNationality(S.div); return { n: genName(nat), nat, ovr, age: 24 + rnd(9), wage: roundWage(wageFor(ovr) * 0.7), yrs: 1 + rnd(2), pid: newPid(), pos: randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 }; };
+  const freeAgent = () => { const d = divOf(); const ovr = clamp(d.avg - 13 + rnd(6), 40, 99); const nat = pickNationality(S.div); return { n: genName(nat), nat, ovr, age: genAge(27, 5.5, 18, 37), wage: roundWage(wageFor(ovr) * 0.7), yrs: 1 + rnd(2), pid: newPid(), pos: randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 }; };
 
   const playerValue = (p) => p.wage * 52 * (p.ovr >= 85 ? 9 : p.ovr >= 78 ? 7 : p.ovr >= 68 ? 5 : 3.5) * (p.age <= 23 ? 1.4 : p.age >= 31 ? 0.6 : 1);
 
@@ -430,8 +498,15 @@
 
   const mgrSalaryFor = (rating) => Math.round(40e3 * Math.pow(1.14, rating - 50) / 1e3) * 1e3;
 
+  // Un candidato su circa 4 è un allenatore vero, se ce n'è uno con un rating abbastanza
+  // vicino a quello richiesto (altrimenti si genera normalmente): non sostituiscono i
+  // generati, si aggiungono come opzione possibile fra i candidati.
   function genManager(bonus) {
     const r = clamp(divOf().mgrBase - 4 + rnd(12) + (bonus || 0), 45, 92);
+    if (Math.random() < 0.22) {
+      const near = REAL_MANAGERS.filter((m) => Math.abs(m.rating - r) <= 8);
+      if (near.length) { const m = pick(near); return { n: m.n, rating: m.rating, salary: mgrSalaryFor(m.rating), real: true }; }
+    }
     return { n: genName(), rating: r, salary: mgrSalaryFor(r) };
   }
 
@@ -441,11 +516,13 @@
     const d = divOf();
     const base = d.prize * 0.3 + capOf() * 9;
     const mk = (tag, mult, yrs, sent) => ({ name: pick(SPONSOR_BRANDS[tag]), tag, perYear: Math.round(base * mult * (0.85 + Math.random() * 0.3) / 1e4) * 1e4, years: yrs, left: yrs, sent });
-    // Sempre esattamente TRE offerte. Dalla Serie B in su, un mega-sponsor globale
-    // sostituisce lo sponsor di comunità.
+    // Sempre QUATTRO offerte, con un peso economico più alto di prima: più scelta e
+    // più soldi in ballo. Dalla Serie B in su un mega-sponsor globale sostituisce lo
+    // sponsor di comunità, con un accordo regionale a fare da via di mezzo in entrambi
+    // i casi.
     return S.div >= 3
-      ? [mk('standard', 1.0, 2, 0), mk('betting', 1.5, 2, -2), mk('global', 2.2, 4, 0)]
-      : [mk('community', 0.7, 3, 2), mk('standard', 1.0, 2, 0), mk('betting', 1.5, 2, -2)];
+      ? [mk('standard', 1.5, 3, 0), mk('regional', 1.9, 3, 0), mk('betting', 2.3, 2, -2), mk('global', 3.0, 4, 0)]
+      : [mk('community', 0.9, 3, 2), mk('regional', 1.2, 3, 0), mk('standard', 1.5, 2, 0), mk('betting', 2.0, 2, -2)];
   }
 
   /* ---------------- forza della rosa + aspettative ---------------- */
@@ -504,7 +581,7 @@
   function startDynasty(owner, t, customClub) {
     clearSave();
     const squad = [];
-    for (let i = 0; i < 16; i++) { const ovr = clamp(gaussInt(t.str - 1, 3.5), 40, 55); const nat = pickNationality(0); squad.push({ n: genName(nat), nat, ovr, age: 19 + rnd(12), wage: wageFor(ovr), yrs: 1 + rnd(3), pos: randPos(squad), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 }); }
+    for (let i = 0; i < 16; i++) { const ovr = clamp(gaussInt(t.str - 1, 3.5), 40, 55); const nat = pickNationality(0); squad.push({ n: genName(nat), nat, ovr, age: genAge(23, 4.5, 17, 34), wage: wageFor(ovr), yrs: 1 + rnd(3), pos: randPos(squad), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 }); }
     S = {
       owner, club: (customClub || '').slice(0, 24) || pick(POOLS[0]).n, div: 0, season: 1,
       budget: Math.round(t.budget), fanbase: Math.round(t.fanbase * 100) / 100,
@@ -556,7 +633,10 @@
     S.opps.forEach((o, i) => { fx.push({ opp: i, home: true }); fx.push({ opp: i, home: false }); });
     shuffle(fx); S.fixtures = fx.map((f, i) => ({ ...f, mw: i + 1 }));
     S.cups = { nat: { name: 'Coppa Italia', rounds: ['Turno 2', 'Turno 3', 'Turno 4', 'Quarti', 'Semifinale', 'Finale'], at: 0, out: false, won: false } };
-    if (S.euro && S.div === 4) S.cups.euro = { name: EURO_COMPS[S.euroComp].name, rounds: ['Ottavi', 'Quarti', 'Semifinale', 'Finale'], at: 0, out: false, won: false };
+    // Le coppe europee iniziano con una fase a gironi (4 partite, come il girone unico
+    // UEFA in miniatura): servono almeno 7 punti su 12 per passare alla fase a eliminazione
+    // diretta (Ottavi in poi); sotto quella soglia l'avventura europea finisce lì.
+    if (S.euro && S.div === 4) S.cups.euro = { name: EURO_COMPS[S.euroComp].name, phase: 'group', groupAt: 0, groupPts: 0, groupGF: 0, groupGA: 0, rounds: ['Ottavi', 'Quarti', 'Semifinale', 'Finale'], at: 0, out: false, won: false };
     show('owSeasonScreen'); $('owLog').innerHTML = ''; renderHud(); renderCups(); saveGame();
   }
 
@@ -586,20 +666,62 @@
   function simToEnd() { while (S.seasonActive && S.played < gp() && !S._pause) { const b = S.played; simMatch(); if (S._pause) break; if (S.played === b) break; } }
 
   /* ---------------- coppe (checkpoint scalati sulla lunghezza di stagione) ---------------- */
+  // La Coppa Italia resta a eliminazione diretta pura. La coppa europea ha invece due fasi:
+  // 4 partite di girone (checkpoint euroGroup) e poi, solo se qualificata, l'eliminazione
+  // diretta a partire dagli Ottavi (checkpoint euroKO).
   function maybeCupRound() {
     const G = gp();
     const f = (fr) => Math.max(1, Math.min(G - 1, Math.round(G * fr)));
-    const checkpoints = { nat: [f(0.10), f(0.24), f(0.40), f(0.57), f(0.74), f(0.92)], euro: [f(0.21), f(0.47), f(0.68), f(0.92)] };
-    for (const key of ['nat', 'euro']) {
-      const cup = S.cups[key]; if (!cup || cup.out || cup.won) continue;
-      if (cup.at < cup.rounds.length && S.played >= checkpoints[key][cup.at]) resolveCupRound(key);
+    const checkpoints = {
+      nat: [f(0.10), f(0.24), f(0.40), f(0.57), f(0.74), f(0.92)],
+      euroGroup: [f(0.12), f(0.26), f(0.40), f(0.54)],
+      euroKO: [f(0.66), f(0.76), f(0.86), f(0.95)],
+    };
+    const nat = S.cups.nat;
+    if (nat && !nat.out && !nat.won && nat.at < nat.rounds.length && S.played >= checkpoints.nat[nat.at]) resolveCupRound('nat');
+    const euro = S.cups.euro;
+    if (euro && !euro.out && !euro.won) {
+      if (euro.phase === 'group') { if (euro.groupAt < 4 && S.played >= checkpoints.euroGroup[euro.groupAt]) resolveEuroGroupMatch(); }
+      else if (euro.at < euro.rounds.length && S.played >= checkpoints.euroKO[euro.at]) resolveCupRound('euro');
     }
+  }
+
+  // Una partita di girone: punti, non solo passaggio/eliminazione secca — il pareggio
+  // esiste, e serve un bottino minimo (7 punti su 12) per accedere alla fase a eliminazione
+  // diretta. Gli avversari di girone sono leggermente più abbordabili di quelli degli Ottavi.
+  function resolveEuroGroupMatch() {
+    const cup = S.cups.euro, i = cup.groupAt, ec = EURO_COMPS[S.euroComp];
+    const oppStr = ec.oppBase - 4 + i * 2 + rnd(6);
+    const faced = cup.faced || (cup.faced = []);
+    const oppName = cupOpponentName('euro', oppStr, faced);
+    faced.push(oppName);
+    const diff = teamEff() - oppStr;
+    const winP = 1 / (1 + Math.exp(-diff / 6.5));
+    const drawP = 0.24;
+    const roll = Math.random();
+    const won = roll < winP * (1 - drawP), draw = !won && roll < winP * (1 - drawP) + drawP;
+    let gf = poisson(clamp(1.3 + diff * 0.05, 0.2, 4)), ga = poisson(clamp(1.3 - diff * 0.05, 0.2, 4));
+    if (draw) { const avgg = Math.round((gf + ga) / 2); gf = avgg; ga = avgg; }
+    else if (won && gf <= ga) gf = ga + 1;
+    else if (!won && gf >= ga) ga = gf + 1;
+    cup.groupAt++;
+    cup.groupPts += won ? 3 : draw ? 1 : 0;
+    cup.groupGF += gf; cup.groupGA += ga;
+    if (won) S.euroMoney += ec.roundWin * 0.4; else if (draw) S.euroMoney += ec.roundWin * 0.15;
+    const lineup = pickMatchLineup(S.squad);
+    registerAppearances(lineup);
+    logEuroGroup(cup.name, 'Girone ' + cup.groupAt, won ? 'W' : draw ? 'D' : 'L', gf, ga, genGoals(gf, true, null, lineup), genGoals(ga, false, oppName), oppName, cup.groupPts);
+    registerCleanSheet(ga, lineup);
+    if (cup.groupAt >= 4) { if (cup.groupPts >= 7) cup.phase = 'knockout'; else cup.out = true; }
+    renderCups();
   }
 
   function resolveCupRound(key) {
     const cup = S.cups[key], d = divOf(), i = cup.at;
     const oppStr = key === 'euro' ? EURO_COMPS[S.euroComp].oppBase + i * 3 + rnd(5) : Math.min(90, d.avg + 2 + i * 4 + rnd(6));
-    const oppName = cupOpponentName(key, oppStr);
+    const faced = cup.faced || (cup.faced = []);
+    const oppName = cupOpponentName(key, oppStr, faced);
+    faced.push(oppName);
     const diff = teamEff() - oppStr;
     const winP = 1 / (1 + Math.exp(-diff / 6.5));
     const won = Math.random() < winP;
@@ -643,14 +765,22 @@
     const exp = expectedPos();
     const auto = d.promoted > 0 && pos <= d.promoted;
     // ---- playoff promozione (regole reali della piramide): finisci nei posti playoff e
-    // giochi una semifinale + finale per UN posto extra di promozione ----
+    // giochi per UN posto extra di promozione a fine stagione. Tabellone da 4 (Eccellenza
+    // esclusa, non ha playoff): semifinale + finale, teste di serie a specchio (3° vs 6°).
+    // Tabellone da 6 (Serie B, come nella vera Lega): i due semi più bassi si affrontano
+    // ai quarti, i vincitori raggiungono le teste di serie 3°/4° in semifinale, poi finale.
+    // Le partite che non coinvolgono il nostro club (l'altra metà del tabellone) non vengono
+    // simulate per esteso: si risolvono con un confronto di forza, come già per la finale
+    // nel tabellone da 4. ----
     let playoff = null;
     if (!auto && d.playoff > 0 && pos > d.promoted && pos <= d.promoted + d.playoff) {
       const lo = d.promoted + 1, hi = d.promoted + d.playoff;
       const strAt = (position) => { const row = S.table[position - 1]; const o = S.opps.find((x) => x.name === row.name); return o ? o.s : d.avg; };
       const nameAt = (position) => S.table[position - 1].name;
+      const hypoWinner = (a, b) => (Math.random() < (1 / (1 + Math.exp(-(strAt(a) - strAt(b)) / 5))) ? a : b);
       const rounds = [];
-      const playPO = (oppName, oppStr, stage) => {
+      const playPO = (oppPos, stage) => {
+        const oppName = nameAt(oppPos), oppStr = strAt(oppPos);
         const diff = teamEff() - oppStr;
         const winP = 1 / (1 + Math.exp(-diff / 6.0));
         const won = Math.random() < winP;
@@ -665,12 +795,36 @@
         return won;
       };
       let won = false;
-      const mirror = lo + hi - pos;   // semifinali con teste di serie: 3° vs 6°, 4° vs 5° (e equivalenti 4°-7°)
-      if (playPO(nameAt(mirror), strAt(mirror), 'Semifinale')) {
-        const rest = []; for (let i = lo; i <= hi; i++) if (i !== pos && i !== mirror) rest.push(i);
-        const a = rest[0], b = rest[1] != null ? rest[1] : rest[0];
-        const finalist = Math.random() < (1 / (1 + Math.exp(-(strAt(a) - strAt(b)) / 5))) ? a : b;
-        won = playPO(nameAt(finalist), strAt(finalist), 'Finale');
+      if (d.playoff >= 6) {
+        const byeA = lo, byeB = lo + 1;   // 3° e 4°: già in semifinale
+        const qfPairOf = (bye) => (bye === byeA ? [lo + 3, lo + 4] : [lo + 2, lo + 5]);   // 6°-7° per il 3°, 5°-8° per il 4°
+        const partnerOf = {}; partnerOf[lo + 3] = lo + 4; partnerOf[lo + 4] = lo + 3; partnerOf[lo + 2] = lo + 5; partnerOf[lo + 5] = lo + 2;
+        const byeOf = {}; byeOf[lo + 3] = byeA; byeOf[lo + 4] = byeA; byeOf[lo + 2] = byeB; byeOf[lo + 5] = byeB;
+        const otherBye = (b) => (b === byeA ? byeB : byeA);
+        const finalOpponent = (myBye) => {
+          const ob = otherBye(myBye), [oa, obb] = qfPairOf(ob);
+          return hypoWinner(ob, hypoWinner(oa, obb));
+        };
+        if (pos === byeA || pos === byeB) {
+          const [a, b] = qfPairOf(pos);
+          won = playPO(hypoWinner(a, b), 'Semifinale');
+          if (won) won = playPO(finalOpponent(pos), 'Finale');
+        } else {
+          won = playPO(partnerOf[pos], 'Quarti');
+          if (won) {
+            const myBye = byeOf[pos];
+            won = playPO(myBye, 'Semifinale');
+            if (won) won = playPO(finalOpponent(myBye), 'Finale');
+          }
+        }
+      } else {
+        const mirror = lo + hi - pos;   // semifinali con teste di serie: 3° vs 6°, 4° vs 5° (e equivalenti 4°-7°)
+        won = playPO(mirror, 'Semifinale');
+        if (won) {
+          const rest = []; for (let i = lo; i <= hi; i++) if (i !== pos && i !== mirror) rest.push(i);
+          const finalist = hypoWinner(rest[0], rest[1] != null ? rest[1] : rest[0]);
+          won = playPO(finalist, 'Finale');
+        }
       }
       playoff = { rounds, won };
     }
@@ -750,10 +904,18 @@
     S.squad.forEach((p) => {
       p.age++;
       const before = p.ovr;
-      p.ovr = clamp(p.ovr + seasonOvrDelta(p), 40, 94);
+      p.ovr = clamp(p.ovr + seasonOvrDelta(p), 40, 99);
       p._ovrDelta = p.ovr - before;
       p._retiring = p.age >= 36;
     });
+    // ----- crescita/calo dell'allenatore: legata alle prestazioni della stagione (risultati
+    // sopra o sotto le attese, promozione, titolo, retrocessione), non all'età. Un buon
+    // allenatore che ottiene più di quanto la rosa "valesse sulla carta" cresce, uno che
+    // delude scende. -----
+    const mgrBefore = S.manager.rating;
+    const mgrDelta = clamp(Math.round((exp - pos) * 0.35 + (promoted ? 2 : 0) + (title ? 3 : 0) + (relegated ? -3 : 0) + gaussInt(0, 1)), -4, 4);
+    S.manager.rating = clamp(S.manager.rating + mgrDelta, 40, 97);
+    S.manager._ovrDelta = S.manager.rating - mgrBefore;
     S.history.push({ season: S.season, div: d.name, pos, promoted, relegated, trophies, net, worth, budget: S.budget });
     const statement = [
       ['Incasso stadio (' + att.toLocaleString('it-IT') + ' medi)', matchday],
@@ -792,7 +954,18 @@
     S.squad = S.squad.filter((p) => !p._retiring);
     if (retired.length) toast(retired.join(', ') + ' si ritira' + (retired.length === 1 ? '' : 'no') + '.');
     S.squad.forEach((p) => { delete p._ovrDelta; delete p._retiring; });
-    // I prestiti finiscono qui: il giocatore torna al suo club, qualunque sia il suo "yrs".
+    // I prestiti finirebbero qui di norma: prima però si offre la possibilità di riscattarli
+    // a titolo definitivo (renderLoanBuybackOverlay, in ui.js). Solo chi non viene riscattato
+    // torna al suo club in finishAdvance().
+    const loaned = S.squad.filter((p) => p.loan);
+    if (loaned.length) renderLoanBuybackOverlay(loaned, finishAdvance);
+    else finishAdvance();
+  }
+  // Prezzo per trattenere in rosa a titolo definitivo un giocatore preso in prestito a
+  // gennaio: più caro del semplice prestito, in linea col cartellino del mercato di gennaio.
+  const loanBuybackFee = (p) => Math.round(playerValue(p) * 0.75);
+  function finishAdvance() {
+    // I prestiti non riscattati tornano al loro club, qualunque sia il loro "yrs".
     const loanedBack = S.squad.filter((p) => p.loan).map((p) => p.n);
     S.squad = S.squad.filter((p) => !p.loan);
     if (loanedBack.length) toast(loanedBack.join(', ') + ' torna' + (loanedBack.length === 1 ? '' : 'no') + ' al suo club a fine prestito.');

@@ -48,7 +48,7 @@
 
   // Colore del badge overall in base a quanto è alto: scarso (grigio) → discreto
   // (bianco) → buono (azzurro) → ottimo (verde) → fuoriclasse (oro), sulla scala
-  // 40-94 usata dal gioco.
+  // 40-99 usata dal gioco.
   function ovrTier(ovr) {
     if (ovr >= 85) return { c: 'var(--gold)', bg: 'rgba(255,210,74,.16)' };
     if (ovr >= 75) return { c: 'var(--good)', bg: 'rgba(40,217,160,.14)' };
@@ -539,6 +539,40 @@
     $('ovNo').onclick = closeOverlay;
   }
 
+  // Riscatto dei prestiti a inizio stagione: un giocatore alla volta rischia di tornare al
+  // suo club, a meno che il presidente non lo trattenga pagando il cartellino. `doneCb` è
+  // finishAdvance() in sim.js, richiamato solo quando non resta più nessuno da decidere.
+  function renderLoanBuybackOverlay(loaned, doneCb) {
+    S._loanBuyback = { loaned, doneCb };
+    renderLoanBuybackModal();
+  }
+  function renderLoanBuybackModal() {
+    const stillLoaned = S._loanBuyback.loaned.filter((p) => p.loan);
+    if (!stillLoaned.length) { closeOverlay(); const cb = S._loanBuyback.doneCb; S._loanBuyback = null; cb(); return; }
+    overlay(`
+      <h2>🔁 Fine prestito</h2>
+      <p>${stillLoaned.length} giocator${stillLoaned.length === 1 ? 'e' : 'i'} in prestito torna${stillLoaned.length === 1 ? '' : 'no'} al club di provenienza, a meno che tu non li riscatti ora a titolo definitivo.</p>
+      ${stillLoaned.map((p) => `
+      <div class="ow-jan-card">
+        <div class="ow-jan-head">
+          <span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span>
+          <span class="postag postag-${p.pos}">${p.pos}</span>
+          <span class="nm">${flagOf(p)}${p.n}<small>${POS_LABEL[p.pos]} · età ${p.age}</small></span>
+        </div>
+        <button class="dyn-btn dyn-btn-primary" data-buyback="${p.pid}" ${S.budget < loanBuybackFee(p) ? 'disabled' : ''}>💰 Riscatta a titolo definitivo · ${fmtMoney(loanBuybackFee(p))}</button>
+      </div>`).join('')}
+      <div class="dyn-modal-actions"><button class="dyn-btn" id="ovLoanSkip">Lascia tornare gli altri</button></div>`);
+    document.querySelectorAll('#owOverlayModal [data-buyback]').forEach((el) => el.addEventListener('click', () => {
+      const p = S.squad.find((x) => x.pid === +el.dataset.buyback); if (!p) return;
+      const fee = loanBuybackFee(p);
+      if (S.budget < fee) { toast('Non hai abbastanza per riscattarlo.'); return; }
+      S.budget -= fee; p.loan = false; p.yrs = 3 + rnd(2);
+      toast(p.n + ' riscattato a titolo definitivo per ' + fmtMoney(fee) + '.');
+      saveGame(); renderLoanBuybackModal();
+    }));
+    $('ovLoanSkip').onclick = () => { closeOverlay(); const cb = S._loanBuyback.doneCb; S._loanBuyback = null; cb(); };
+  }
+
   function openWinter() {
     S._pause = true;
     if (!S._janCands) S._janCands = [spinPlayer(false), spinPlayer(false), spinPlayer(false)];
@@ -617,7 +651,7 @@
     const banner = e.fate === 'forced' ? ['😡 I tifosi hanno parlato', 'Gradimento troppo basso. Sei costretto a dimetterti.']
       : e.fate === 'admin' ? ['🏦 Amministrazione controllata', 'Due stagioni in rosso. La banca chiede i conti.']
       : e.promoted ? ['🎉 PROMOZIONE', e.playoff && e.playoff.won ? 'Su tramite i playoff dopo un ' + ord(e.pos) + ' posto!' : e.title ? 'Campioni di ' + d.name + '!' : 'Promossi al ' + ord(e.pos) + ' posto!']
-      : e.playoff && !e.playoff.won ? ['💔 Delusione playoff', 'Eliminati in ' + (e.playoff.rounds.length > 1 ? 'finale' : 'semifinale') + ' playoff dopo un ' + ord(e.pos) + ' posto.']
+      : e.playoff && !e.playoff.won ? ['💔 Delusione playoff', 'Eliminati ' + (e.playoff.rounds[e.playoff.rounds.length - 1].stage === 'Finale' ? 'in finale' : e.playoff.rounds[e.playoff.rounds.length - 1].stage === 'Semifinale' ? 'in semifinale' : 'ai quarti') + ' playoff dopo un ' + ord(e.pos) + ' posto.']
       : e.relegated ? ['📉 Retrocessione', 'Giù al ' + ord(e.pos) + ' posto. I tifosi soffrono.']
       : e.title ? ['🏆 CAMPIONI', 'Vincitori di ' + d.name + '!']
       : ['Stagione ' + S.season + ' completata', ord(e.pos) + ' in ' + d.name + ' (i tifosi si aspettavano il ' + ord(e.exp) + ')'];
@@ -786,7 +820,11 @@
     const wrap = $('owCups'); if (!S.cups) { wrap.innerHTML = ''; return; }
     wrap.innerHTML = Object.values(S.cups).map((c) => {
       const st = c.won ? 'win' : c.out ? 'out' : '';
-      const label = c.won ? 'Vincitori' : c.out ? (c.rounds[c.at - 1] || 'Eliminati') : (c.at ? c.rounds[c.at - 1] : 'Iscritti');
+      let label;
+      if (c.won) label = 'Vincitori';
+      else if (c.out) label = c.phase === 'group' ? 'Eliminati nel girone' : (c.rounds[c.at - 1] || 'Eliminati');
+      else if (c.phase === 'group') label = 'Girone: ' + (c.groupPts || 0) + 'pt';
+      else label = c.at ? c.rounds[c.at - 1] : 'Iscritti';
       return `<span class="cup-pill ${st}">${c.name}: <b>${label}</b></span>`;
     }).join('');
   }
@@ -802,6 +840,22 @@
     row.innerHTML = `<div class="mrow-mw">G${m.mw}</div>
       <div class="mrow-main"><div class="mrow-fix"><span class="ha">${m.home ? 'C' : 'T'}</span> vs ${m.opp}</div>${scorersHTML}${eventsHTML}</div>
       <div class="mrow-res ${m.res}">${m.gf}-${m.ga}</div>`;
+    $('owLog').prepend(row);
+  }
+
+  // Partita di girone europeo: a differenza di logCup non è "passa/eliminato" ma un
+  // risultato con punteggio di classifica, perché nella fase a gironi si può anche pareggiare.
+  function logEuroGroup(name, round, res, gf, ga, goalsFor, goalsAgainst, oppName, ptsSoFar) {
+    const row = document.createElement('div'); row.className = 'mrow cup';
+    const usSc = fmtScorers(goalsFor), themSc = fmtScorers(goalsAgainst);
+    const scorersHTML = (usSc || themSc) ? `<div class="mrow-scorers">
+        ${usSc ? '<div class="sc us">⚽ ' + usSc + '</div>' : ''}
+        ${themSc ? '<div class="sc them">🥅 ' + themSc + '</div>' : ''}
+      </div>` : '';
+    const label = res === 'W' ? 'Vittoria' : res === 'D' ? 'Pareggio' : 'Sconfitta';
+    row.innerHTML = `<div class="mrow-mw">${name.split(' ')[0]}</div>
+      <div class="mrow-main"><div class="mrow-fix">${name} ${round} <span class="ha">vs ${oppName}</span></div><div class="mrow-you">${label} · ${ptsSoFar} pt nel girone</div>${scorersHTML}</div>
+      <div class="mrow-res ${res}">${gf}-${ga}</div>`;
     $('owLog').prepend(row);
   }
 

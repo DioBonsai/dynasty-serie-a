@@ -17,16 +17,19 @@
   // promoBonus arriva quando sali FUORI dalla categoria (quello della Serie B è
   // il "salto più ricco del calcio"), spin/premium = costo spin a quel livello.
   // Promozione secondo il sistema italiano reale (adattato): `promoted` salgono
-  // direttamente e i successivi `playoff` posti si giocano UN posto extra
-  // (semifinale + finale a fine stagione). Eccellenza: prime 2 dirette.
+  // direttamente e i successivi `playoff` posti si giocano UN posto extra a fine
+  // stagione. Con `playoff` a 4 è un tabellone da 4 (semifinale + finale); con
+  // `playoff` a 6, come la vera Serie B, è un tabellone da 6 (quarti fra i due
+  // semi più bassi in classifica, poi semifinale con le teste di serie 3°/4°
+  // già qualificate, poi finale). Eccellenza: prime 2 dirette.
   // Serie D: prime 3 + playoff (4°-7°), ultime 2 retrocedono. Serie C: prime 2 +
-  // playoff (3°-6°), ultime 4 giù. Serie B: prime 2 + playoff (3°-6°), ultime 3
-  // giù. Serie A: ultime 3 giù.
+  // playoff (3°-6°), ultime 4 giù. Serie B: prime 2 + playoff (3°-8°, come nella
+  // vera Serie B), ultime 3 giù. Serie A: ultime 3 giù.
   const DIVS = [
     { name: 'Eccellenza', teams: 24, avg: 47, demand: 4200, ticket: 14, prize: 0.15e6, perPlace: 6e3, promoted: 2, playoff: 0, releg: 0, promoBonus: 0.6e6, titleBonus: 0.25e6, spin: 75e3, premium: 225e3, cupBase: 35e3, admin: 120e3, mgrBase: 52, investor: 300e3 },
     { name: 'Serie D', teams: 24, avg: 54, demand: 7500, ticket: 17, prize: 1.0e6, perPlace: 15e3, promoted: 3, playoff: 4, releg: 2, promoBonus: 1.2e6, titleBonus: 0.5e6, spin: 200e3, premium: 600e3, cupBase: 70e3, admin: 250e3, mgrBase: 58, investor: 600e3 },
     { name: 'Serie C', teams: 24, avg: 60, demand: 13000, ticket: 21, prize: 1.6e6, perPlace: 25e3, promoted: 2, playoff: 4, releg: 4, promoBonus: 3e6, titleBonus: 1e6, spin: 500e3, premium: 2.5e6, cupBase: 140e3, admin: 450e3, mgrBase: 63, investor: 1.2e6 },
-    { name: 'Serie B', teams: 24, avg: 66, demand: 24000, ticket: 28, prize: 9e6, perPlace: 120e3, promoted: 2, playoff: 4, releg: 3, promoBonus: 130e6, titleBonus: 3e6, spin: 1.5e6, premium: 8e6, cupBase: 500e3, admin: 1.5e6, mgrBase: 69, investor: 5e6 },
+    { name: 'Serie B', teams: 24, avg: 66, demand: 24000, ticket: 28, prize: 9e6, perPlace: 120e3, promoted: 2, playoff: 6, releg: 3, promoBonus: 130e6, titleBonus: 3e6, spin: 1.5e6, premium: 8e6, cupBase: 500e3, admin: 1.5e6, mgrBase: 69, investor: 5e6 },
     { name: 'Serie A', teams: 20, avg: 77, demand: 52000, ticket: 42, prize: 105e6, perPlace: 3.1e6, promoted: 0, playoff: 0, releg: 3, euroSpots: 4, uelPos: 5, confPos: 6, promoBonus: 0, titleBonus: 30e6, spin: 6e6, premium: 30e6, cupBase: 2e6, admin: 6e6, mgrBase: 76, investor: 15e6 },
   ];
 
@@ -289,8 +292,37 @@
 
   const CREST_DEFAULT = { shape: 'shield', colors: ['#f0c869', '#7a4f16'] };
 
-  // Coppe europee: l'avversario è straniero, quindi non peschiamo dai nostri database
-  // italiani ma generiamo un nome plausibile combinando un prefisso e una città europee.
+  // Coppe europee: club veri, divisi per fascia di forza (in linea con oppBase di
+  // EURO_COMPS). genEuroClub pesca dalla fascia della coppa in corso; il generatore
+  // prefisso+città resta solo come riserva se una fascia dovesse esaurirsi.
+  const EURO_CLUBS = {
+    ucl: [
+      { n: 'Real Madrid', s: 95 }, { n: 'Manchester City', s: 94 }, { n: 'Bayern Monaco', s: 92 },
+      { n: 'Paris Saint-Germain', s: 91 }, { n: 'Liverpool', s: 90 }, { n: 'Barcellona', s: 90 },
+      { n: 'Arsenal', s: 88 }, { n: 'Chelsea', s: 85 }, { n: 'Borussia Dortmund', s: 85 },
+      { n: 'Atletico Madrid', s: 86 }, { n: 'Bayer Leverkusen', s: 84 }, { n: 'Manchester United', s: 83 },
+      { n: 'Tottenham', s: 83 }, { n: 'Benfica', s: 81 }, { n: 'Porto', s: 80 }, { n: 'Ajax', s: 79 },
+      { n: 'Sporting Lisbona', s: 82 }, { n: 'RB Lipsia', s: 82 }, { n: 'Marsiglia', s: 80 }, { n: 'Monaco', s: 79 },
+    ],
+    uel: [
+      { n: 'West Ham', s: 76 }, { n: 'Villarreal', s: 78 }, { n: 'Real Sociedad', s: 76 },
+      { n: 'Eintracht Francoforte', s: 77 }, { n: 'Rangers', s: 72 }, { n: 'Celtic', s: 73 },
+      { n: 'Feyenoord', s: 77 }, { n: 'PSV Eindhoven', s: 78 }, { n: 'Olympiacos', s: 74 },
+      { n: 'Fenerbahce', s: 76 }, { n: 'Galatasaray', s: 77 }, { n: 'Besiktas', s: 73 },
+      { n: 'Sporting Braga', s: 73 }, { n: 'Slavia Praga', s: 71 }, { n: 'Dinamo Zagabria', s: 72 },
+      { n: 'Shakhtar Donetsk', s: 74 }, { n: 'Club Brugge', s: 75 }, { n: 'Anderlecht', s: 72 },
+      { n: 'Young Boys', s: 71 }, { n: 'Salisburgo', s: 78 },
+    ],
+    conf: [
+      { n: 'Aberdeen', s: 63 }, { n: 'Molde', s: 62 }, { n: 'AZ Alkmaar', s: 68 }, { n: 'Nizza', s: 69 },
+      { n: 'Lens', s: 70 }, { n: 'Konyaspor', s: 62 }, { n: 'Legia Varsavia', s: 65 }, { n: 'Slovan Bratislava', s: 63 },
+      { n: 'Cluj', s: 61 }, { n: 'Ludogorets', s: 64 }, { n: 'Gent', s: 66 }, { n: 'Vitoria Guimaraes', s: 65 },
+      { n: 'Maccabi Tel Aviv', s: 62 }, { n: 'Rakow Czestochowa', s: 60 }, { n: 'APOEL', s: 58 },
+      { n: 'Zorya Luhansk', s: 59 }, { n: 'Apollon Limassol', s: 58 }, { n: 'Silkeborg', s: 60 },
+      { n: 'Vikingur Reykjavik', s: 57 }, { n: 'Lincoln Red Imps', s: 54 },
+    ],
+  };
+
   const EURO_CLUB_PREFIX = ['Dynamo', 'Slavia', 'Sporting', 'Real', 'Atletico', 'Union', 'Rapid', 'Steaua', 'Partizan', 'Spartak', 'Legia', 'CSKA', 'Olympique', 'Girondins', 'Racing', 'FC'];
 
   const EURO_CITIES = ['Praga', 'Varsavia', 'Vienna', 'Zagabria', 'Belgrado', 'Sofia', 'Bucarest', 'Atene', 'Lisbona', 'Porto', 'Bruges', 'Rotterdam', 'Basilea', 'Zurigo', 'Salisburgo', 'Copenaghen', 'Oslo', 'Stoccolma', 'Helsinki', 'Bratislava', 'Budapest', 'Istanbul', 'Mosca', 'Kiev'];
@@ -306,6 +338,9 @@
   // Distribuzione "di base" di un ruolo in una rosa, prima di guardare ai bisogni della
   // squadra (portieri pochi, difensori e centrocampisti il grosso, attaccanti un po' meno).
   const POS_BASE_WEIGHT = { POR: 0.10, DIF: 0.35, CEN: 0.30, ATT: 0.25 };
+  // Tetto massimo per ruolo: oltre questo numero, quel ruolo non viene più estratto (né
+  // dagli spin né dagli svincolati né dal settore giovanile), a prescindere dal peso.
+  const POS_CAP = { POR: 4, DIF: 8, CEN: 8, ATT: 6 };
 
   // Chi serve l'assist: i centrocampisti ne fanno di più di chiunque, gli attaccanti un
   // po' meno (spesso sono loro a essere serviti), i difensori raramente, i portieri quasi
@@ -321,11 +356,26 @@
   const POS_PROD_BASELINE = { POR: 0, DIF: 2.5, CEN: 6, ATT: 12 };
 
   const SPONSOR_BRANDS = {
-    community: ['Panetteria del Borgo', 'Assicurazioni del Porto', 'Latteria Locale', 'Birrificio Vecchio Mulino', 'Autofficina Collina'],
-    standard: ['NordGate Energia', 'Corona Telecom', 'Vetro Vertice', 'Redline Logistica', 'Ancora Finanza'],
-    betting: ['ScommettiBene', 'FortunaKick', 'GoalRush Casinò', 'BetNazione', 'SpinWin'],
-    global: ['Atlas Global', 'Vantage Air', 'Nimbus Tech', 'Meridian Bank', 'Solaris Motori'],
+    community: ['Panetteria del Borgo', 'Assicurazioni del Porto', 'Latteria Locale', 'Birrificio Vecchio Mulino', 'Autofficina Collina', 'Pasticceria Reale', 'Ferramenta Centrale'],
+    regional: ['Gruppo Adriatica', 'Edilizia del Nord', 'Distretto Energia', 'Cantine Riunite Sud', 'Trasporti Peninsulare', 'Confidi Regionale'],
+    standard: ['NordGate Energia', 'Corona Telecom', 'Vetro Vertice', 'Redline Logistica', 'Ancora Finanza', 'Orizzonte Assicurazioni'],
+    betting: ['ScommettiBene', 'FortunaKick', 'GoalRush Casinò', 'BetNazione', 'SpinWin', 'JackpotArena'],
+    global: ['Atlas Global', 'Vantage Air', 'Nimbus Tech', 'Meridian Bank', 'Solaris Motori', 'Zenith Capital'],
   };
+
+  // Allenatori reali: si aggiungono ai candidati generati (non li sostituiscono), pescati
+  // solo quando il loro rating è vicino a quello richiesto dal club che offre il posto.
+  const REAL_MANAGERS = [
+    { n: 'Pep Guardiola', rating: 93 }, { n: 'Carlo Ancelotti', rating: 91 }, { n: 'Jurgen Klopp', rating: 90 },
+    { n: 'Antonio Conte', rating: 88 }, { n: 'Luciano Spalletti', rating: 81 }, { n: 'Simone Inzaghi', rating: 85 },
+    { n: 'Massimiliano Allegri', rating: 84 }, { n: 'Gian Piero Gasperini', rating: 82 }, { n: 'Thiago Motta', rating: 78 },
+    { n: 'Stefano Pioli', rating: 77 }, { n: 'Roberto Mancini', rating: 76 }, { n: 'Claudio Ranieri', rating: 75 },
+    { n: 'Vincenzo Italiano', rating: 76 }, { n: 'Gennaro Gattuso', rating: 73 }, { n: 'Ivan Juric', rating: 69 },
+    { n: 'Walter Mazzarri', rating: 70 }, { n: 'Marco Baroni', rating: 67 }, { n: 'Raffaele Palladino', rating: 71 },
+    { n: 'Eusebio Di Francesco', rating: 65 }, { n: 'Alberto Gilardino', rating: 64 }, { n: 'Davide Nicola', rating: 63 },
+    { n: 'Paolo Zanetti', rating: 66 }, { n: 'Fabio Pecchia', rating: 61 }, { n: 'Rolando Maran', rating: 60 },
+    { n: 'Fabio Liverani', rating: 58 }, { n: 'Fabio Cannavaro', rating: 59 }, { n: 'Cristian Bucchi', rating: 56 },
+  ];
 
   /* ---------------- stato ---------------- */
   const MAX_SEASONS = 20;
