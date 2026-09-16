@@ -1,0 +1,406 @@
+/* ============================================================
+   PRESIDENTE · Serie A — identità grafica originale.
+   Palette "Scudetto": nero caldo, bronzo/oro anziché il verde standard
+   da app sportiva, titoli in serif editoriale (Fraunces) per un taglio
+   da rivista sportiva/salotto dirigenziale, corpo in Inter.
+   ============================================================ */
+:root{
+  --bg:#0b0906;
+  --panel:#18130f;
+  --panel2:#221a13;
+  --line:#3c2c1a;
+  --txt:#f4ebdd;
+  --muted:#a89680;
+  --accent:#ff2d78;
+  --gold:#ffd24a;
+  --good:#28d9a0;
+  --bad:#ff4d5e;
+  --shadow:0 16px 46px rgba(0,0,0,.55);
+  /* "dyn" resta il nome storico della variabile d'azione: qui è il bronzo dello Scudetto. */
+  --dyn:#c9902f;
+  --dyn-deep:#7a4f16;
+  --dyn-ink:#170e05;
+  --serif:'Fraunces','Georgia',serif;
+  --sans:'Inter',system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; min-height:100%;
+  font-family:var(--sans); color:var(--txt);
+  background:
+    radial-gradient(1200px 650px at 88% -12%, rgba(201,144,47,.20) 0%, transparent 58%),
+    radial-gradient(950px 620px at -10% 108%, rgba(122,15,38,.22) 0%, transparent 55%),
+    repeating-linear-gradient(127deg, rgba(255,255,255,.014) 0px, rgba(255,255,255,.014) 1px, transparent 1px, transparent 7px),
+    var(--bg);
+}
+.dyn-screen{ min-height:auto; }
+.dyn-wrap{ max-width:640px; margin:0 auto; padding:22px 16px 64px; }
+.hidden{ display:none !important; }
+
+/* ---------- pulsanti condivisi ---------- */
+.dyn-btn{
+  appearance:none; border:1px solid var(--line); background:var(--panel2); color:var(--txt);
+  font:800 14.5px/1 var(--sans); letter-spacing:.01em; padding:14px 18px; border-radius:12px; cursor:pointer;
+  transition:transform .05s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease; width:100%;
+}
+.dyn-btn:hover{ border-color:var(--dyn); box-shadow:0 0 0 1px rgba(201,144,47,.25) inset; }
+.dyn-btn:active{ transform:translateY(1px); }
+.dyn-btn:disabled{ opacity:.4; cursor:default; box-shadow:none; }
+.dyn-btn-primary{
+  background:linear-gradient(180deg,#e7b559,var(--dyn) 55%,var(--dyn-deep)); border-color:transparent; color:#1c1002;
+  box-shadow:0 10px 28px rgba(201,144,47,.32), inset 0 1px 0 rgba(255,255,255,.35);
+  text-shadow:0 1px 0 rgba(255,255,255,.2);
+}
+.dyn-btn-primary:hover{ border-color:transparent; filter:brightness(1.06); }
+
+/* ---------- stemma + barra home ---------- */
+.dyn-topbar{ max-width:640px; margin:0 auto; padding:14px 16px 0; }
+.dyn-home{
+  appearance:none; background:var(--panel2); border:1px solid var(--line); color:var(--txt);
+  font:800 13px/1 var(--sans); padding:8px 16px 8px 10px; border-radius:999px; cursor:pointer;
+  display:inline-flex; align-items:center; gap:8px;
+  transition:border-color .15s ease, transform .05s ease;
+}
+.dyn-home-crest{ width:20px; height:23px; flex:0 0 auto; }
+.dyn-home:hover{ border-color:var(--dyn); }
+.dyn-home:active{ transform:translateY(1px); }
+
+/* ---------- setup ---------- */
+.dyn-setup{ text-align:center; padding-top:30px; }
+.setup-crest{ width:76px; height:88px; margin:0 auto 18px; display:block; filter:drop-shadow(0 8px 18px rgba(201,144,47,.25)); }
+.dyn-kicker{ color:var(--dyn); font-weight:800; letter-spacing:.24em; text-transform:uppercase; font-size:11.5px; }
+.dyn-h1{
+  font-family:var(--serif); font-style:italic; font-weight:800; font-size:58px; letter-spacing:-.01em;
+  margin:8px 0 14px; line-height:1.02; color:var(--txt);
+}
+.dyn-h1 em{ font-style:italic; color:var(--dyn); background:linear-gradient(180deg,#f0c869,var(--dyn)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+.dyn-sub{ color:var(--muted); font-size:14.5px; line-height:1.65; max-width:460px; margin:0 auto 26px; }
+.dyn-field{ display:block; text-align:left; max-width:340px; margin:0 auto 16px; }
+.dyn-field span{ display:block; font-size:11.5px; color:var(--muted); font-weight:700; margin:0 0 6px; text-transform:uppercase; letter-spacing:.1em; }
+.dyn-field input{
+  width:100%; box-sizing:border-box; background:var(--panel); border:1px solid var(--line); color:var(--txt);
+  border-radius:11px; padding:13px 14px; font:700 16px var(--sans);
+}
+.dyn-field input:focus{ outline:none; border-color:var(--dyn); box-shadow:0 0 0 3px rgba(201,144,47,.18); }
+.dyn-setup .dyn-btn{ display:block; max-width:340px; margin:6px auto 0; }
+.dyn-back{ display:inline-block; margin-top:22px; color:var(--muted); font-size:13px; font-weight:600; text-decoration:none; }
+.dyn-back:hover{ color:var(--txt); }
+
+/* ---------- intestazione sezione ---------- */
+.dyn-top{ text-align:center; margin:8px 0 20px; }
+.dyn-top-title{ font-family:var(--serif); font-weight:800; font-size:27px; letter-spacing:-.01em; }
+.dyn-top-sub{ color:var(--muted); font-size:13px; margin-top:5px; }
+
+.dyn-aggr-label{ font-size:11.5px; color:var(--muted); font-weight:800; text-transform:uppercase; letter-spacing:.1em; margin-bottom:8px; }
+
+/* ---------- stagione ---------- */
+.dyn-hud{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:10px; }
+.dyn-hud-cell{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:11px 6px; text-align:center; }
+.dyn-hud-cell span{ display:block; font-size:9.5px; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.08em; }
+.dyn-hud-cell b{ font-size:19px; font-weight:900; font-family:var(--serif); }
+.dyn-cups{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+.cup-pill{ font-size:11px; font-weight:800; padding:6px 11px; border-radius:999px; border:1px solid var(--line); color:var(--muted); background:var(--panel); }
+.cup-pill b{ color:var(--txt); }
+.cup-pill.win{ border-color:var(--gold); color:var(--gold); background:rgba(255,210,74,.08); }
+.cup-pill.out{ opacity:.5; }
+
+.dyn-manage-row{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
+.dyn-mini{ appearance:none; background:var(--panel2); border:1px solid var(--line); color:var(--txt); border-radius:10px; padding:10px; font:800 13px var(--sans); cursor:pointer; transition:border-color .15s ease; }
+.dyn-mini:hover{ border-color:var(--dyn); }
+.dyn-mini:active{ transform:translateY(1px); }
+.dyn-log{ display:flex; flex-direction:column; gap:6px; min-height:120px; margin-bottom:14px; }
+.mrow{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px 12px; display:flex; align-items:center; gap:10px; animation:mrowIn .25s ease; }
+@keyframes mrowIn{ from{ opacity:0; transform:translateY(6px);} to{opacity:1;transform:none;} }
+.mrow-mw{ font-size:9.5px; font-weight:800; color:var(--muted); width:52px; flex:0 0 auto; text-transform:uppercase; }
+.mrow-main{ flex:1; min-width:0; }
+.mrow-fix{ font-size:13px; font-weight:700; }
+.mrow-fix .ha{ color:var(--muted); font-weight:800; font-size:11px; }
+.mrow-you{ font-size:11px; color:var(--muted); margin-top:2px; }
+.mrow-scorers{ display:flex; flex-direction:column; gap:2px; margin-top:4px; }
+.mrow-scorers .sc{ font-size:11px; font-weight:600; line-height:1.4; white-space:normal; overflow-wrap:anywhere; }
+.mrow-scorers .sc.us{ color:var(--txt); }
+.mrow-scorers .sc.them{ color:var(--muted); }
+.mrow-res{ font-weight:900; font-size:16px; flex:0 0 auto; width:58px; text-align:center; border-radius:8px; padding:5px 0; }
+.mrow-res.W{ color:var(--good); background:rgba(40,217,160,.12); }
+.mrow-res.D{ color:var(--muted); background:rgba(255,255,255,.05); }
+.mrow-res.L{ color:var(--bad); background:rgba(255,84,112,.12); }
+.mrow.cup{ border-color:rgba(255,210,74,.35); }
+.mrow.cup .mrow-mw{ color:var(--gold); }
+.dyn-season-actions{ display:flex; flex-direction:column; gap:9px; position:sticky; bottom:10px; }
+
+/* ---------- tabelle (fine stagione + classifiche) ---------- */
+.dyn-table{ width:100%; border-collapse:collapse; font-size:13px; margin:10px 0; }
+.dyn-table th{ text-align:left; color:var(--dyn); font-size:9.5px; text-transform:uppercase; letter-spacing:.08em; font-weight:800; padding:7px 8px; border-bottom:1px solid var(--line); }
+.dyn-table td{ padding:8px; border-bottom:1px solid rgba(255,255,255,.05); }
+.dyn-table td.num, .dyn-table th.num{ text-align:right; font-variant-numeric:tabular-nums; }
+.dyn-table tr.me{ background:rgba(201,144,47,.14); }
+.dyn-table tr.me td{ font-weight:800; }
+.dyn-table tr.ucl td:first-child{ border-left:3px solid var(--dyn); }
+.dyn-table tr.uel td:first-child{ border-left:3px solid var(--gold); }
+.dyn-table tr.conf td:first-child{ border-left:3px solid var(--good); }
+.dyn-table tr.rel td:first-child{ border-left:3px solid var(--bad); }
+.dyn-table tr.po td:first-child{ border-left:3px solid #ff9d4d; }
+
+/* ---------- pannelli fine stagione / riepilogo ---------- */
+.dyn-panel{
+  position:relative; overflow:hidden;
+  background:linear-gradient(180deg,var(--panel2),var(--panel)); border:1px solid var(--line);
+  border-radius:18px; padding:22px 20px; margin-bottom:14px; text-align:center; box-shadow:var(--shadow);
+}
+.dyn-panel::before{ content:""; position:absolute; top:0; left:18px; right:18px; height:2px; background:linear-gradient(90deg,transparent,var(--dyn),transparent); opacity:.7; }
+.pl-hero .big{ font-family:var(--serif); font-weight:900; color:var(--gold); }
+.pl-hero .cap{ font-size:11.5px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; margin-top:5px; }
+.dyn-trophies{ display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin:14px 0 4px; }
+.trophy{ background:var(--panel2); border:1px solid var(--gold); border-radius:11px; padding:8px 12px; font-weight:800; font-size:12.5px; color:var(--gold); }
+.trophy.none{ border-color:var(--line); color:var(--muted); }
+.dyn-verdict{ font-size:14px; line-height:1.6; color:var(--txt); }
+.dyn-stat-row{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:12px 0; }
+.dyn-stat{ background:var(--panel2); border:1px solid var(--line); border-radius:12px; padding:12px; text-align:left; }
+.dyn-stat span{ font-size:10.5px; color:var(--muted); font-weight:700; display:block; text-transform:uppercase; letter-spacing:.06em; }
+.dyn-stat b{ font-size:18px; font-weight:900; font-family:var(--serif); }
+.pl-card{ position:relative; overflow:hidden; background:linear-gradient(180deg,var(--panel2),var(--panel)); border:1px solid var(--line); border-radius:18px; margin-bottom:14px; box-shadow:var(--shadow); }
+.pl-card::before{ content:""; position:absolute; top:0; left:18px; right:18px; height:2px; background:linear-gradient(90deg,transparent,var(--dyn),transparent); opacity:.7; }
+
+/* ---------- overlay modale ---------- */
+.dyn-overlay{ position:fixed; inset:0; background:rgba(5,3,1,.86); backdrop-filter:blur(2px); z-index:200; display:flex; align-items:center; justify-content:center; padding:18px; }
+.dyn-modal{
+  position:relative; overflow:hidden;
+  background:linear-gradient(180deg,var(--panel2),var(--panel)); border:1px solid var(--line); border-radius:20px;
+  padding:26px 22px; max-width:420px; width:100%; text-align:center; box-shadow:var(--shadow);
+}
+.dyn-modal::before{ content:""; position:absolute; top:0; left:0; right:0; height:3px; background:linear-gradient(90deg,var(--dyn-deep),var(--dyn),var(--gold),var(--dyn),var(--dyn-deep)); }
+.dyn-modal h2{ font-family:var(--serif); font-size:22px; font-weight:800; margin:4px 0 6px; }
+.dyn-modal p{ color:var(--muted); font-size:14px; line-height:1.6; margin:0 0 16px; }
+.dyn-modal .dyn-btn{ margin-top:6px; }
+.dyn-modal-actions{ display:flex; flex-direction:column; gap:9px; }
+
+/* ---------- toast ---------- */
+.dyn-toast{
+  position:fixed; left:50%; bottom:26px; transform:translateX(-50%); background:var(--dyn-ink); color:var(--txt);
+  border:1px solid var(--dyn); padding:11px 20px; border-radius:999px; font-weight:700; font-size:13px; z-index:300;
+  box-shadow:var(--shadow), 0 0 0 1px rgba(201,144,47,.15); max-width:88vw; text-align:center;
+}
+
+/* ============================================================
+   Componenti specifici della Modalità Proprietario
+   ============================================================ */
+
+/* ---------- carte di acquisizione (setup) ---------- */
+.ow-takeovers{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:4px 0 12px; }
+@media(max-width:520px){ .ow-takeovers{ grid-template-columns:1fr; } }
+.ow-takeover{
+  position:relative; overflow:hidden;
+  background:var(--panel2); border:1px solid var(--line); border-radius:15px; padding:15px 14px;
+  cursor:pointer; color:var(--txt); text-align:left; display:flex; flex-direction:column; gap:6px;
+  font-family:var(--sans); transition:border-color .12s ease, background .12s ease, transform .1s ease, box-shadow .15s ease;
+}
+.ow-takeover:hover{ border-color:var(--dyn); transform:translateY(-2px); box-shadow:0 10px 22px rgba(0,0,0,.35); }
+.ow-takeover:active{ transform:translateY(0); }
+.ow-takeover.on{ border-color:var(--dyn); background:rgba(201,144,47,.10); box-shadow:0 0 0 1px var(--dyn) inset; }
+.ow-takeover.on::after{ content:"✓"; position:absolute; top:10px; right:12px; width:20px; height:20px; border-radius:50%; background:var(--dyn); color:var(--dyn-ink); font-size:12px; font-weight:900; display:flex; align-items:center; justify-content:center; }
+.ow-takeover > b{ font-family:var(--serif); font-size:17px; font-weight:700; }
+.ow-takeover > small{ font-size:11px; font-weight:600; color:var(--muted); line-height:1.4; min-height:30px; }
+.ow-tk-row{ display:flex; justify-content:space-between; font-size:11.5px; color:var(--muted); font-weight:700; padding-top:2px; border-top:1px dashed rgba(255,255,255,.08); }
+.ow-tk-row:first-of-type{ border-top:none; padding-top:0; }
+.ow-tk-row b{ color:var(--txt); font-weight:900; }
+
+/* ---------- scala della piramide ---------- */
+.ow-ladder{ display:flex; align-items:center; flex-wrap:wrap; gap:4px 6px; justify-content:center; margin:0 0 16px; }
+.ow-rung{
+  font-size:10px; font-weight:800; letter-spacing:.03em; color:var(--muted);
+  background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:5px 11px; white-space:nowrap;
+}
+.ow-rung.done{ color:var(--dyn); border-color:rgba(201,144,47,.45); }
+.ow-rung.on{ color:var(--dyn-ink); background:linear-gradient(180deg,#e7b559,var(--dyn)); border-color:transparent; font-weight:900; box-shadow:0 4px 12px rgba(201,144,47,.3); }
+.ow-arrow{ color:var(--muted); font-weight:900; font-size:11px; opacity:.6; }
+
+/* ---------- barra budget fissa (sala del consiglio) ---------- */
+.ow-stickybar{
+  position:sticky; top:8px; z-index:30;
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:11px 15px; margin:0 0 16px; border-radius:14px;
+  border:1px solid var(--line); background:rgba(14,10,6,.92);
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  box-shadow:0 12px 28px rgba(0,0,0,.5);
+}
+.ow-stickybar .cell{ display:flex; flex-direction:column; gap:1px; min-width:0; }
+.ow-stickybar .cell span{ font-size:9px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); white-space:nowrap; }
+.ow-stickybar .cell b{ font-size:16px; font-weight:900; color:var(--txt); font-variant-numeric:tabular-nums; white-space:nowrap; font-family:var(--serif); }
+.ow-stickybar .cell.main b{ font-size:21px; color:var(--gold); }
+.ow-stickybar .cell.free b{ color:var(--dyn); }
+.ow-stickybar .cell b.bad{ color:var(--bad); }
+@media(max-width:430px){
+  .ow-stickybar{ gap:8px; padding:9px 12px; }
+  .ow-stickybar .cell b{ font-size:14px; }
+  .ow-stickybar .cell.main b{ font-size:17px; }
+}
+
+/* ---------- sezioni sala del consiglio ---------- */
+.ow-sec{
+  position:relative; overflow:hidden;
+  background:linear-gradient(180deg,var(--panel2),var(--panel)); border:1px solid var(--line);
+  border-radius:17px; padding:16px 16px 14px; margin:0 0 12px; box-shadow:var(--shadow); text-align:left;
+}
+.ow-sec::before{ content:""; position:absolute; top:0; left:18px; right:18px; height:2px; background:linear-gradient(90deg,transparent,var(--dyn),transparent); opacity:.65; }
+.ow-sec-title{ font-family:var(--serif); font-size:15px; font-weight:700; margin-bottom:10px; letter-spacing:-.01em; }
+.ow-sub{ font-size:11.5px; font-weight:700; color:var(--muted); margin:2px 0 8px; }
+.ow-warn{
+  margin-top:10px; padding:10px 13px; border-radius:11px; font-size:12px; font-weight:700; line-height:1.45;
+  color:var(--bad); background:rgba(255,84,112,.09); border:1px solid rgba(255,84,112,.3);
+}
+
+.ow-status{ display:flex; flex-direction:column; gap:10px; }
+.ow-bigmoney{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+.ow-bigmoney span{ font-size:11.5px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.07em; }
+.ow-bigmoney b{ font-family:var(--serif); font-size:26px; font-weight:900; color:var(--gold); font-variant-numeric:tabular-nums; }
+.ow-bigmoney b.bad{ color:var(--bad); }
+.ow-meter{ display:flex; align-items:center; gap:9px; }
+.ow-meter .lbl{ font-size:11px; font-weight:800; color:var(--muted); width:150px; flex:0 0 auto; }
+.ow-meter .bar{ flex:1; height:9px; border-radius:999px; background:rgba(255,255,255,.07); overflow:hidden; box-shadow:inset 0 1px 3px rgba(0,0,0,.4); }
+.ow-meter .fill{ display:block; height:100%; border-radius:999px; min-width:3px; transition:width .3s ease; }
+.ow-meter .val{ font-size:13px; font-weight:900; width:38px; text-align:right; flex:0 0 auto; font-variant-numeric:tabular-nums; }
+
+.ow-fin-row{
+  display:flex; justify-content:space-between; align-items:center; gap:10px;
+  padding:7px 0; border-bottom:1px solid rgba(255,255,255,.05); font-size:12.5px; font-weight:700; color:var(--muted);
+}
+.ow-fin-row:last-child{ border-bottom:none; }
+.ow-fin-row b{ color:var(--txt); font-weight:900; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.ow-fin-row b.bad, .ow-fin-row.bad b{ color:var(--bad); }
+.ow-fin-row b.good{ color:var(--good); }
+.ow-fin-row.total{ border-top:1px solid rgba(255,255,255,.14); border-bottom:none; margin-top:2px; padding-top:10px; }
+.ow-fin-row.total b{ color:var(--gold); font-family:var(--serif); font-size:15px; }
+.ow-fin-row.memo b{ color:var(--muted); font-weight:700; font-style:italic; }
+
+.ow-mgr{
+  display:flex; align-items:center; gap:11px; padding:10px 11px; border-radius:12px;
+  background:var(--panel); border:1px solid var(--line); margin-bottom:7px;
+}
+.ow-mgr .ovr{
+  width:38px; height:38px; flex:0 0 auto; display:flex; align-items:center; justify-content:center;
+  border-radius:10px; font-weight:900; font-size:15px; background:rgba(201,144,47,.15); color:var(--dyn);
+  font-family:var(--serif);
+}
+.ow-mgr .nm{ flex:1; min-width:0; font-size:13.5px; font-weight:900; }
+.ow-mgr .nm small{ display:block; font-size:11px; color:var(--muted); font-weight:700; margin-top:1px; }
+.ow-mgr .tag{ font-size:9.5px; font-weight:900; letter-spacing:.06em; text-transform:uppercase; color:var(--dyn); background:rgba(201,144,47,.15); border-radius:999px; padding:4px 10px; }
+.ow-mgr.cand .ovr{ background:rgba(255,255,255,.06); color:var(--txt); }
+
+.ow-offer{
+  display:flex; align-items:center; gap:12px; width:100%; text-align:left; cursor:pointer;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 13px; color:var(--txt);
+  font-family:var(--sans); margin-bottom:7px; transition:border-color .12s ease, transform .05s ease;
+}
+.ow-offer:hover{ border-color:var(--dyn); }
+.ow-offer:active{ transform:translateY(1px); }
+.ow-offer .info{ flex:1; min-width:0; }
+.ow-offer .info b{ font-size:14px; font-weight:900; display:block; }
+.ow-offer .info small{ font-size:11px; color:var(--muted); font-weight:700; }
+.ow-offer .money{ font-size:13px; font-weight:900; color:var(--gold); flex:0 0 auto; font-variant-numeric:tabular-nums; }
+
+.ow-upg{ width:100%; margin-top:4px; }
+.ow-tickets{ display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+@media(max-width:460px){ .ow-tickets{ grid-template-columns:1fr; } }
+.ow-ticket{
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px 11px; cursor:pointer;
+  color:var(--txt); font-family:var(--sans); text-align:left; transition:border-color .12s ease;
+}
+.ow-ticket:hover{ border-color:var(--dyn); }
+.ow-ticket.on{ border-color:var(--dyn); background:rgba(201,144,47,.13); }
+.ow-ticket b{ font-size:13px; font-weight:900; display:block; }
+.ow-ticket small{ font-size:10.5px; color:var(--muted); font-weight:600; line-height:1.35; display:block; margin-top:2px; }
+
+.ow-spins{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px; }
+@media(max-width:460px){ .ow-spins{ grid-template-columns:1fr; } }
+.ow-investor{ width:100%; margin-bottom:8px; }
+.ow-squadlist{
+  max-height:280px; overflow-y:auto; border:1px solid var(--line); border-radius:13px; padding:4px 8px;
+  background:rgba(0,0,0,.16);
+}
+.ow-squadlist::-webkit-scrollbar{ width:8px; }
+.ow-squadlist::-webkit-scrollbar-thumb{ background:var(--line); border-radius:999px; }
+.ow-squadlist::-webkit-scrollbar-thumb:hover{ background:var(--dyn); }
+.ow-player{
+  display:flex; align-items:center; gap:10px; padding:7px 2px;
+  border-bottom:1px solid rgba(255,255,255,.05); font-size:12.5px;
+}
+.ow-player:last-child{ border-bottom:none; }
+.ow-player .ovr{
+  width:34px; height:30px; flex:0 0 auto; display:flex; align-items:center; justify-content:center;
+  border-radius:8px; font-weight:900; font-size:13px; font-family:var(--serif);
+}
+.ow-player .nm{ flex:1; min-width:0; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ow-player .nm small{ color:var(--muted); font-weight:700; margin-left:6px; }
+.postag{
+  flex:0 0 auto; font-size:9px; font-weight:900; letter-spacing:.03em; padding:3px 6px; border-radius:6px;
+  background:rgba(255,255,255,.06); color:var(--muted); border:1px solid var(--line);
+}
+.postag-ATT{ color:#ff9d6a; border-color:rgba(255,157,106,.4); background:rgba(255,157,106,.1); }
+.postag-CEN{ color:var(--dyn); border-color:rgba(201,144,47,.4); background:rgba(201,144,47,.1); }
+.postag-DIF{ color:#6fb3ff; border-color:rgba(111,179,255,.4); background:rgba(111,179,255,.1); }
+.postag-POR{ color:var(--good); border-color:rgba(40,217,160,.4); background:rgba(40,217,160,.1); }
+.ow-player .wg{ flex:0 0 auto; font-weight:900; color:var(--muted); font-size:11.5px; font-variant-numeric:tabular-nums; }
+.ow-x{
+  flex:0 0 auto; width:26px; height:26px; border-radius:8px; border:1px solid var(--line); background:transparent;
+  color:var(--muted); font-size:12px; font-weight:900; cursor:pointer; transition:border-color .12s ease, color .12s ease;
+}
+.ow-x:hover{ color:var(--bad); border-color:var(--bad); }
+.ow-player.final{ background:rgba(255,210,74,.06); border-radius:8px; }
+.ow-player .yy{ flex:0 0 auto; font-size:11px; font-weight:900; color:var(--muted); font-variant-numeric:tabular-nums; min-width:20px; text-align:right; }
+.ow-player .yy.fy{ color:var(--gold); }
+.ow-player .yy.loan{
+  font-size:9.5px; font-weight:900; text-transform:uppercase; letter-spacing:.04em;
+  color:#6fb3ff; background:rgba(111,179,255,.12); border:1px solid rgba(111,179,255,.35);
+  border-radius:6px; padding:3px 7px; min-width:0;
+}
+.ow-renew{
+  flex:0 0 auto; border:none; border-radius:8px; padding:5px 9px; cursor:pointer;
+  background:linear-gradient(90deg,#ffd24a,#ffb300); color:#1a1205; font-weight:900; font-size:11px;
+}
+.ow-renew:hover{ filter:brightness(1.05); }
+.ow-bid{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 0; border-bottom:1px solid rgba(255,255,255,.06); }
+.ow-bid:last-child{ border-bottom:none; }
+.ow-bid .who{ display:flex; align-items:center; gap:10px; min-width:0; flex:1; }
+.ow-bid .who .ovr{ width:34px; height:30px; flex:0 0 auto; display:flex; align-items:center; justify-content:center; border-radius:8px; font-weight:900; font-size:13px; background:rgba(255,210,74,.16); font-family:var(--serif); }
+.ow-bid .who .nm{ min-width:0; font-weight:800; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ow-bid .who .nm small{ display:block; color:var(--muted); font-weight:700; font-size:11px; margin-top:1px; }
+.ow-bid .act{ display:flex; align-items:center; gap:6px; flex:0 0 auto; }
+.ow-bid .fee{ font-weight:900; color:var(--gold); font-size:13px; font-variant-numeric:tabular-nums; margin-right:2px; }
+.ow-bid .dyn-mini{ padding:7px 12px; font-size:12px; }
+.ow-accept{ background:rgba(40,217,160,.14); border-color:rgba(40,217,160,.5); color:#a6f3dc; }
+.ow-reject{ color:var(--muted); }
+
+.ow-spin-card{ text-align:center; padding:8px 0 2px; }
+.ow-spin-card .big{ font-family:var(--serif); font-size:58px; font-weight:900; line-height:1; color:var(--gold); }
+.ow-spin-card .nm{ font-size:19px; font-weight:900; margin-top:6px; }
+.ow-spin-card .meta{ font-size:12.5px; font-weight:700; color:var(--muted); margin-top:4px; }
+.ow-spin-card .meta b{ color:var(--txt); }
+.ow-spin-card .gem{
+  display:inline-block; margin-top:9px; font-size:11.5px; font-weight:900; color:var(--gold);
+  background:rgba(255,210,74,.1); border:1px solid rgba(255,210,74,.35); border-radius:999px; padding:5px 11px;
+}
+
+.ow-exit-row{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+@media(max-width:460px){ .ow-exit-row{ grid-template-columns:1fr; } }
+
+/* ---------- sub-HUD di stagione ---------- */
+.ow-subhud{ display:flex; align-items:stretch; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+.ow-div-chip{
+  display:flex; align-items:center; font-size:12.5px; font-weight:900; padding:7px 15px; border-radius:12px;
+  background:linear-gradient(180deg,#e7b559,var(--dyn)); color:var(--dyn-ink); white-space:nowrap;
+  box-shadow:0 6px 14px rgba(201,144,47,.28);
+}
+.ow-subcells{ flex:1; display:grid; grid-template-columns:repeat(3,1fr); gap:8px; min-width:0; }
+.ow-subcells .cell{
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:6px 11px;
+  display:flex; flex-direction:column; gap:1px; min-width:0;
+}
+.ow-subcells .cell span{ font-size:9px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); white-space:nowrap; }
+.ow-subcells .cell b{ font-size:14.5px; font-weight:900; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+@media(max-width:430px){ .ow-div-chip{ width:100%; justify-content:center; } }
+
+.ow-euroflag{
+  font-size:12px; font-weight:800; color:var(--gold); padding:9px 13px; border-radius:11px;
+  background:rgba(255,210,74,.08); border:1px solid rgba(255,210,74,.3);
+}
