@@ -153,6 +153,44 @@
     return `<div class="ow-meter"><span class="lbl">${label}</span><span class="bar"><span class="fill" style="width:${v}%;background:${col}"></span></span><span class="val" style="color:${col}">${Math.round(v)}${warn ? ' ⚠️' : ''}</span></div>`;
   }
 
+  // Probabile formazione: solo un'anteprima (i migliori per overall in ciascun ruolo, gli
+  // stessi criteri di pickMatchLineup ma senza il margine di casualità a partita), per ora
+  // sempre 4-3-3. Non incide sulle presenze/statistiche: è solo una vista d'insieme.
+  function previewLineup() {
+    const byPos = { POR: [], DIF: [], CEN: [], ATT: [] };
+    S.squad.forEach((p) => { if (byPos[p.pos]) byPos[p.pos].push(p); });
+    Object.keys(byPos).forEach((k) => byPos[k].sort((a, b) => b.ovr - a.ovr));
+    return byPos;
+  }
+  // Stessi colori per ruolo dei tag POR/DIF/CEN/ATT già usati nella rosa (verde, azzurro,
+  // bronzo, arancione), non quelli di qualità dell'overall: sul campo il colore identifica
+  // subito il reparto, a colpo d'occhio.
+  const ROLE_BADGE = {
+    POR: 'color:#0a3d2a;box-shadow:0 0 0 2px var(--good),0 3px 7px rgba(0,0,0,.4)',
+    DIF: 'color:#0a3350;box-shadow:0 0 0 2px #6fb3ff,0 3px 7px rgba(0,0,0,.4)',
+    CEN: 'color:#3a2405;box-shadow:0 0 0 2px var(--dyn),0 3px 7px rgba(0,0,0,.4)',
+    ATT: 'color:#4a1a00;box-shadow:0 0 0 2px #ff9d6a,0 3px 7px rgba(0,0,0,.4)',
+  };
+  function pitchRowHTML(list, count) {
+    const chips = [];
+    for (let i = 0; i < count; i++) {
+      const p = list[i];
+      chips.push(p
+        ? `<div class="ow-pitch-chip" title="${p.n} · ${p.ovr}"><span class="ovr" style="${ROLE_BADGE[p.pos] || ''}">${p.ovr}</span><span class="nm">${flagOf(p)}${p.n.split(' ').slice(-1)[0]}</span></div>`
+        : '<div class="ow-pitch-chip empty"><span class="ovr">–</span><span class="nm">—</span></div>');
+    }
+    return `<div class="ow-pitch-row">${chips.join('')}</div>`;
+  }
+  function pitchHTML() {
+    const byPos = previewLineup();
+    return `<div class="ow-pitch">
+      ${pitchRowHTML(byPos.ATT, 3)}
+      ${pitchRowHTML(byPos.CEN, 3)}
+      ${pitchRowHTML(byPos.DIF, 4)}
+      ${pitchRowHTML(byPos.POR, 1)}
+    </div>`;
+  }
+
   // Sparkline SVG minimale (nessuna libreria): un'area + linea che mostra l'andamento
   // di una serie di valori stagione per stagione, usata nella bacheca di fine carriera.
   function sparklineSVG(values, color) {
@@ -217,10 +255,10 @@
         <span class="postag postag-${p.pos}">${p.pos}</span>
         <span class="nm">${flagOf(p)}${p.n}<small>età ${p.age}</small></span>
         ${p.outWeeks > 0 ? `<span class="stat-tag inj" title="Infortunato">🚑 ${p.outWeeks}</span>` : p.suspMatches > 0 ? '<span class="stat-tag susp" title="Squalificato">🟥</span>' : ''}
-        ${p.loan ? '<span class="yy loan" title="Torna al suo club a fine stagione">prestito</span>' : `<span class="yy${fy ? ' fy' : ''}" title="Anni di contratto rimasti">${p.yrs}a</span>`}
+        ${p.loan ? '<span class="yy loan" title="Torna al suo club se non riscattato">prestito</span>' : `<span class="yy${fy ? ' fy' : ''}" title="Anni di contratto rimasti">${p.yrs}a</span>`}
         <span class="wg">${fmtYr(p.wage)}</span>
         ${fy ? `<button class="ow-renew" data-renew="${p.pid}" title="Offri un nuovo contratto">Rinnova</button>` : ''}
-        ${p.loan ? '' : `<button class="ow-x" data-rel="${p.pid}" title="Vendi">💷</button>`}</div>`;
+        ${p.loan ? `<button class="ow-renew" data-buyback="${p.pid}" title="Riscatta a titolo definitivo, altrimenti torna al suo club a inizio stagione">💰 Riscatta · ${fmtMoney(loanBuybackFee(p))}</button>` : `<button class="ow-x" data-rel="${p.pid}" title="Vendi">💷</button>`}</div>`;
     }).join('') : '<div class="ow-sub" style="margin:10px 0">Nessun giocatore in questo ruolo.</div>';
     const estRevenue = estSeasonRevenue();
     const scout = scoutTier(), scoutLv = S.scoutLevel || 0, nextScoutCost = scoutLv < SCOUT_TIERS.length - 1 ? scoutUpgradeCost(scoutLv + 1) : null;
@@ -297,6 +335,10 @@
         </div>
         ${squadRoleFilter !== 'ALL' ? `<div class="ow-sub" style="margin:-4px 0 6px">${squadFiltered.length} di ${S.squad.length} giocatori</div>` : ''}
         <div class="ow-squadlist">${squadRows}</div>
+      </div>
+      <div class="ow-sec">
+        <div class="ow-sec-title">⚽ Probabile formazione (4-3-3)</div>
+        ${pitchHTML()}
       </div>`;
 
     const stadioHTML = `
@@ -370,6 +412,16 @@
         </div>`);
       $('ovRenew').onclick = () => { p.wage = nw; p.yrs = ny; closeOverlay(); toast(p.n + ' firma un nuovo contratto di ' + ny + ' anni.'); renderBoard(); saveGame(); };
       $('ovNoRenew').onclick = closeOverlay;
+    }));
+    // Riscatta un giocatore in prestito a titolo definitivo: se non lo fai entro l'inizio
+    // della stagione, torna al suo club (vedi startSeason).
+    body.querySelectorAll('[data-buyback]').forEach((el) => el.addEventListener('click', () => {
+      const p = S.squad.find((x) => x.pid === +el.dataset.buyback); if (!p) return;
+      const fee = loanBuybackFee(p);
+      if (S.budget < fee) { toast('Non hai abbastanza per riscattarlo.'); return; }
+      S.budget -= fee; p.loan = false; p.yrs = 3 + rnd(2);
+      toast(p.n + ' riscattato a titolo definitivo per ' + fmtMoney(fee) + '.');
+      renderBoard(); saveGame();
     }));
     // Accetta un'offerta: incassi la cifra, il giocatore parte. Vendere un vero big infastidisce l'ambiente.
     body.querySelectorAll('.ow-accept').forEach((el) => el.addEventListener('click', () => {
@@ -537,40 +589,6 @@
       </div>`);
     $('ovGo').onclick = () => { closeOverlay(); endDynasty('resigned', 0); };
     $('ovNo').onclick = closeOverlay;
-  }
-
-  // Riscatto dei prestiti a inizio stagione: un giocatore alla volta rischia di tornare al
-  // suo club, a meno che il presidente non lo trattenga pagando il cartellino. `doneCb` è
-  // finishAdvance() in sim.js, richiamato solo quando non resta più nessuno da decidere.
-  function renderLoanBuybackOverlay(loaned, doneCb) {
-    S._loanBuyback = { loaned, doneCb };
-    renderLoanBuybackModal();
-  }
-  function renderLoanBuybackModal() {
-    const stillLoaned = S._loanBuyback.loaned.filter((p) => p.loan);
-    if (!stillLoaned.length) { closeOverlay(); const cb = S._loanBuyback.doneCb; S._loanBuyback = null; cb(); return; }
-    overlay(`
-      <h2>🔁 Fine prestito</h2>
-      <p>${stillLoaned.length} giocator${stillLoaned.length === 1 ? 'e' : 'i'} in prestito torna${stillLoaned.length === 1 ? '' : 'no'} al club di provenienza, a meno che tu non li riscatti ora a titolo definitivo.</p>
-      ${stillLoaned.map((p) => `
-      <div class="ow-jan-card">
-        <div class="ow-jan-head">
-          <span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span>
-          <span class="postag postag-${p.pos}">${p.pos}</span>
-          <span class="nm">${flagOf(p)}${p.n}<small>${POS_LABEL[p.pos]} · età ${p.age}</small></span>
-        </div>
-        <button class="dyn-btn dyn-btn-primary" data-buyback="${p.pid}" ${S.budget < loanBuybackFee(p) ? 'disabled' : ''}>💰 Riscatta a titolo definitivo · ${fmtMoney(loanBuybackFee(p))}</button>
-      </div>`).join('')}
-      <div class="dyn-modal-actions"><button class="dyn-btn" id="ovLoanSkip">Lascia tornare gli altri</button></div>`);
-    document.querySelectorAll('#owOverlayModal [data-buyback]').forEach((el) => el.addEventListener('click', () => {
-      const p = S.squad.find((x) => x.pid === +el.dataset.buyback); if (!p) return;
-      const fee = loanBuybackFee(p);
-      if (S.budget < fee) { toast('Non hai abbastanza per riscattarlo.'); return; }
-      S.budget -= fee; p.loan = false; p.yrs = 3 + rnd(2);
-      toast(p.n + ' riscattato a titolo definitivo per ' + fmtMoney(fee) + '.');
-      saveGame(); renderLoanBuybackModal();
-    }));
-    $('ovLoanSkip').onclick = () => { closeOverlay(); const cb = S._loanBuyback.doneCb; S._loanBuyback = null; cb(); };
   }
 
   function openWinter() {

@@ -55,7 +55,39 @@
     return Math.random() < itaChance ? ITA_NAT : pick(NATIONS);
   }
 
-  const flagOf = (p) => (p.nat && p.nat.flag ? p.nat.flag + ' ' : '');
+  // Disegna una bandiera in SVG (16x11) a partire da una ricetta di FLAG_SPECS: strisce
+  // orizzontali/verticali, croce nordica (con eventuale bordo), saltire diagonale, cerchio
+  // centrato o stella. Semplificate, ma nei colori veri — al contrario dell'emoji, si
+  // vedono uguali su ogni sistema (niente più "IT"/"ES" testuali su Windows).
+  function flagSVG(spec) {
+    const w = 20, h = 14;
+    let inner = '';
+    if (spec.type === 'v') {
+      const n = spec.colors.length, bw = w / n;
+      inner = spec.colors.map((c, i) => `<rect x="${(i * bw).toFixed(2)}" y="0" width="${(bw + 0.5).toFixed(2)}" height="${h}" fill="${c}"/>`).join('');
+    } else if (spec.type === 'cross') {
+      const cx = 8;
+      inner = `<rect width="${w}" height="${h}" fill="${spec.base}"/>`;
+      if (spec.outline) inner += `<rect x="${cx - 3}" y="0" width="6" height="${h}" fill="${spec.outline}"/><rect x="0" y="${h / 2 - 3}" width="${w}" height="6" fill="${spec.outline}"/>`;
+      inner += `<rect x="${cx - 2}" y="0" width="4" height="${h}" fill="${spec.cross}"/><rect x="0" y="${h / 2 - 2}" width="${w}" height="4" fill="${spec.cross}"/>`;
+    } else if (spec.type === 'saltire') {
+      inner = `<rect width="${w}" height="${h}" fill="${spec.base}"/><line x1="0" y1="0" x2="${w}" y2="${h}" stroke="${spec.cross}" stroke-width="3.2"/><line x1="${w}" y1="0" x2="0" y2="${h}" stroke="${spec.cross}" stroke-width="3.2"/>`;
+    } else if (spec.type === 'circle') {
+      inner = `<rect width="${w}" height="${h}" fill="${spec.base}"/><circle cx="${w / 2}" cy="${h / 2}" r="4" fill="${spec.circleColor}"/>`;
+    } else if (spec.type === 'star') {
+      inner = `<rect width="${w}" height="${h}" fill="${spec.base}"/><path d="M10 4 L11.1 7 L14.3 7 L11.7 8.9 L12.7 11.9 L10 10 L7.3 11.9 L8.3 8.9 L5.7 7 L8.9 7 Z" fill="${spec.starColor}"/>`;
+    } else {
+      const n = (spec.colors || []).length || 1, bh = h / n;
+      inner = (spec.colors || [spec.base || '#888']).map((c, i) => `<rect x="0" y="${(i * bh).toFixed(2)}" width="${w}" height="${(bh + 0.5).toFixed(2)}" fill="${c}"/>`).join('');
+    }
+    return `<svg viewBox="0 0 ${w} ${h}" width="16" height="11" class="flag-ico">${inner}</svg>`;
+  }
+  const flagOf = (p) => {
+    if (!p.nat) return '';
+    const spec = FLAG_SPECS[p.nat.code];
+    if (spec) return `<span class="flag-wrap" title="${p.nat.name}">${flagSVG(spec)}</span> `;
+    return p.nat.flag ? p.nat.flag + ' ' : '';
+  };
 
   /* ---------------- stemma procedurale ---------------- */
   // Non più un unico stemma riciclato ovunque: alla creazione del club si sceglie una
@@ -111,29 +143,20 @@
   // evita di incontrare due volte lo stesso avversario nello stesso torneo.
   function cupOpponentName(key, oppStr, faced) { return key === 'euro' ? genEuroClub(faced, oppStr) : pickCoppaOpponent(oppStr, faced); }
 
-  // Quanto è forte oggi ogni ruolo in rosa: la media dei migliori (fino a 3) giocatori che
-  // lo ricoprono. Un ruolo scoperto o con pochi elementi vale come debole, non "senza dati",
-  // altrimenti la rosa non chiederebbe mai un rinforzo lì.
-  function roleStrength(squad) {
-    const teamAvg = squad.length ? squad.reduce((a, p) => a + p.ovr, 0) / squad.length : 50;
-    const avg = {};
-    ['POR', 'DIF', 'CEN', 'ATT'].forEach((r) => {
-      const top = squad.filter((p) => p.pos === r).sort((a, b) => b.ovr - a.ovr).slice(0, 3);
-      avg[r] = top.length ? top.reduce((a, p) => a + p.ovr, 0) / top.length : teamAvg - 18;
-    });
-    return avg;
-  }
-
-  // Trasforma la forza per ruolo in pesi di estrazione: un ruolo più debole della media
-  // ha più probabilità di uscire allo spin successivo, per aiutarti a coprire il buco. I
-  // portieri hanno un'oscillazione più stretta (0.7-1.6 invece di 0.4-2.8): sono un ruolo
-  // da 1-2 titolari, non ha senso che il bisogno li faccia oscillare quanto un attaccante.
+  // Trasforma il RIEMPIMENTO di ogni ruolo (quanti ne ho rispetto al tetto POS_CAP) in
+  // pesi di estrazione: pochi elementi in un ruolo = molto probabile che esca lì al
+  // prossimo spin, tanti (vicino al tetto) = molto meno probabile. La curva è quadratica
+  // apposta: il primo giocatore mancante pesa più degli ultimi, così con un solo portiere
+  // il prossimo spin punta quasi certamente lì, con due è già molto meno probabile.
   function roleNeedWeights(squad) {
-    const avg = roleStrength(squad);
+    const counts = { POR: 0, DIF: 0, CEN: 0, ATT: 0 };
+    squad.forEach((p) => { if (counts[p.pos] != null) counts[p.pos]++; });
     const roles = ['POR', 'DIF', 'CEN', 'ATT'];
-    const overall = roles.reduce((a, r) => a + avg[r], 0) / roles.length;
     const w = {};
-    roles.forEach((r) => { const range = r === 'POR' ? [0.7, 1.6] : [0.4, 2.8]; w[r] = POS_BASE_WEIGHT[r] * clamp(1 + (overall - avg[r]) / 10, range[0], range[1]); });
+    roles.forEach((r) => {
+      const need = clamp(1 - counts[r] / POS_CAP[r], 0, 1);   // 1 = ruolo vuoto, 0 = al tetto
+      w[r] = POS_BASE_WEIGHT[r] * (0.08 + need * need * 3.6);
+    });
     return w;
   }
 
@@ -419,6 +442,10 @@
 
   const playerValue = (p) => p.wage * 52 * (p.ovr >= 85 ? 9 : p.ovr >= 78 ? 7 : p.ovr >= 68 ? 5 : 3.5) * (p.age <= 23 ? 1.4 : p.age >= 31 ? 0.6 : 1);
 
+  // Prezzo per trattenere in rosa a titolo definitivo un giocatore preso in prestito a
+  // gennaio: più caro del semplice prestito, in linea col cartellino del mercato di gennaio.
+  const loanBuybackFee = (p) => Math.round(playerValue(p) * 0.75);
+
   const wageBill = () => S.squad.reduce((a, p) => a + p.wage, 0) * 52;
 
   /* ---------------- contratti + offerte di mercato ---------------- */
@@ -616,6 +643,11 @@
   }
 
   function startSeason() {
+    // Ultima chiamata per riscattare i prestiti dell'estate scorsa (bottone 💰 Riscatta
+    // nella rosa, in sala del consiglio): chi non è stato riscattato torna al suo club ora.
+    const loanedBack = S.squad.filter((p) => p.loan).map((p) => p.n);
+    S.squad = S.squad.filter((p) => !p.loan);
+    if (loanedBack.length) toast(loanedBack.join(', ') + ' torna' + (loanedBack.length === 1 ? '' : 'no') + ' al suo club, non riscattat' + (loanedBack.length === 1 ? 'o' : 'i') + '.');
     if (S.squad.length < MIN_SQUAD) { toast('Ti servono almeno ' + MIN_SQUAD + ' giocatori per iniziare la stagione. Ingaggia svincolati gratis se sei a corto.'); renderBoard(); return; }
     if (S.budget < wageBill() + S.manager.salary) { toast('Ti mancano ' + fmtMoney(wageBill() + S.manager.salary - S.budget) + ' per il monte ingaggi. Vendi giocatori o trova soldi.'); renderBoard(); return; }
     S.budget -= wageBill() + S.manager.salary;
@@ -954,21 +986,10 @@
     S.squad = S.squad.filter((p) => !p._retiring);
     if (retired.length) toast(retired.join(', ') + ' si ritira' + (retired.length === 1 ? '' : 'no') + '.');
     S.squad.forEach((p) => { delete p._ovrDelta; delete p._retiring; });
-    // I prestiti finirebbero qui di norma: prima però si offre la possibilità di riscattarli
-    // a titolo definitivo (renderLoanBuybackOverlay, in ui.js). Solo chi non viene riscattato
-    // torna al suo club in finishAdvance().
-    const loaned = S.squad.filter((p) => p.loan);
-    if (loaned.length) renderLoanBuybackOverlay(loaned, finishAdvance);
-    else finishAdvance();
-  }
-  // Prezzo per trattenere in rosa a titolo definitivo un giocatore preso in prestito a
-  // gennaio: più caro del semplice prestito, in linea col cartellino del mercato di gennaio.
-  const loanBuybackFee = (p) => Math.round(playerValue(p) * 0.75);
-  function finishAdvance() {
-    // I prestiti non riscattati tornano al loro club, qualunque sia il loro "yrs".
-    const loanedBack = S.squad.filter((p) => p.loan).map((p) => p.n);
-    S.squad = S.squad.filter((p) => !p.loan);
-    if (loanedBack.length) toast(loanedBack.join(', ') + ' torna' + (loanedBack.length === 1 ? '' : 'no') + ' al suo club a fine prestito.');
+    // I prestiti restano in rosa (con l'etichetta "prestito" e il bottone 💰 Riscatta al
+    // posto di quello di vendita, vedi renderBoard): il presidente decide con calma in
+    // sala del consiglio. Chi non viene riscattato torna al suo club solo all'avvio della
+    // stagione (startSeason), non qui.
     // I contratti scendono di un anno. Un accordo lasciato scadere senza rinnovo parte a parametro zero.
     const freed = [];
     S.squad.forEach((p) => { p.yrs = (p.yrs == null ? 1 : p.yrs) - 1; });

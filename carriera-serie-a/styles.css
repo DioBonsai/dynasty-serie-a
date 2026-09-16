@@ -516,3 +516,36 @@ body{
 .ow-spark-row{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:2px; }
 .ow-spark-row .lbl{ font-size:11.5px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
 .ow-spark-row .lv{ font-size:13px; font-weight:900; color:var(--txt); font-variant-numeric:tabular-nums; }
+
+/* ---------- anteprima formazione (campo stile fanta) ---------- */
+.ow-pitch{
+  position:relative; overflow:hidden; border-radius:16px; padding:16px 8px 12px;
+  margin-bottom:2px; border:1px solid rgba(255,255,255,.14);
+  background:
+    repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 15%, transparent 15% 30%),
+    linear-gradient(180deg, #1f7a44, #15532e 70%, #123f24);
+}
+.ow-pitch::before{
+  content:""; position:absolute; left:50%; top:50%; width:74px; height:74px;
+  border:1.5px solid rgba(255,255,255,.22); border-radius:50%; transform:translate(-50%,-50%); pointer-events:none;
+}
+.ow-pitch::after{
+  content:""; position:absolute; left:6%; right:6%; top:50%; height:1.5px; background:rgba(255,255,255,.16); pointer-events:none;
+}
+.ow-pitch-row{ display:flex; justify-content:space-evenly; gap:4px; position:relative; z-index:1; margin:12px 0; }
+.ow-pitch-chip{ display:flex; flex-direction:column; align-items:center; gap:4px; flex:1; min-width:0; max-width:92px; }
+.ow-pitch-chip .ovr{
+  width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+  background:rgba(255,255,255,.94); color:#12220f; font-weight:900; font-size:11.5px; font-family:var(--serif);
+  box-shadow:0 3px 7px rgba(0,0,0,.4);
+}
+.ow-pitch-chip .nm{
+  font-size:10px; font-weight:800; color:#fff; text-align:center; text-shadow:0 1px 3px rgba(0,0,0,.65);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;
+}
+.ow-pitch-chip.empty .ovr{ background:rgba(255,255,255,.22); color:rgba(255,255,255,.55); box-shadow:none; }
+.ow-pitch-chip.empty .nm{ color:rgba(255,255,255,.45); }
+
+/* ---------- bandiere SVG (non emoji, uguali su ogni sistema) ---------- */
+.flag-wrap{ display:inline-flex; vertical-align:middle; margin-right:1px; }
+.flag-ico{ border-radius:2px; display:block; box-shadow:0 0 0 1px rgba(255,255,255,.18); }

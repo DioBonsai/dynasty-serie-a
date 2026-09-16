@@ -286,6 +286,50 @@
     { code: 'ISL', name: 'Islanda', flag: '🇮🇸' }, { code: 'BEL', name: 'Belgio', flag: '🇧🇪' },
   ];
 
+  // Bandiere disegnate a SVG (non emoji): su Windows i flag emoji spesso non hanno un
+  // glifo dedicato e il sistema mostra il codice ISO in lettere ("IT", "ES", ...) al posto
+  // della bandiera. Ogni voce è una ricetta semplificata (strisce/croce/cerchio/stella)
+  // nei colori veri della bandiera, disegnata da flagSVG in sim.js.
+  const FLAG_SPECS = {
+    ITA: { type: 'v', colors: ['#009246', '#F1F2F1', '#CE2B37'] },
+    ESP: { type: 'h', colors: ['#AA151B', '#F1BF00', '#AA151B'] },
+    ARG: { type: 'h', colors: ['#74ACDF', '#F1F2F1', '#74ACDF'] },
+    BRA: { type: 'h', colors: ['#009B3A', '#FEDF00', '#009B3A'] },
+    POR: { type: 'v', colors: ['#006600', '#FF0000'] },
+    FRA: { type: 'v', colors: ['#0055A4', '#F1F2F1', '#EF4135'] },
+    SEN: { type: 'h', colors: ['#00853F', '#FDEF42', '#E31B23'] },
+    CIV: { type: 'v', colors: ['#F77F00', '#F1F2F1', '#009E60'] },
+    MLI: { type: 'v', colors: ['#14B53A', '#FCD116', '#CE1126'] },
+    GHA: { type: 'h', colors: ['#CE1126', '#FCD116', '#006B3F'] },
+    NGA: { type: 'v', colors: ['#008751', '#F1F2F1', '#008751'] },
+    SRB: { type: 'h', colors: ['#C6363C', '#0C4076', '#F1F2F1'] },
+    CRO: { type: 'h', colors: ['#FF0000', '#F1F2F1', '#171796'] },
+    ROU: { type: 'v', colors: ['#002B7F', '#FCD116', '#CE1126'] },
+    SWE: { type: 'cross', base: '#006AA7', cross: '#FECC02' },
+    NOR: { type: 'cross', base: '#EF2B2D', cross: '#F1F2F1', outline: '#002868' },
+    DEN: { type: 'cross', base: '#C60C30', cross: '#F1F2F1' },
+    GER: { type: 'h', colors: ['#000000', '#DD0000', '#FFCE00'] },
+    NED: { type: 'h', colors: ['#AE1C28', '#F1F2F1', '#21468B'] },
+    ENG: { type: 'cross', base: '#F1F2F1', cross: '#CE1124' },
+    SCO: { type: 'saltire', base: '#0065BF', cross: '#F1F2F1' },
+    IRL: { type: 'v', colors: ['#169B62', '#F1F2F1', '#FF883E'] },
+    TUR: { type: 'star', base: '#E30A17', starColor: '#F1F2F1' },
+    GRE: { type: 'h', colors: ['#0D5EAF', '#F1F2F1', '#0D5EAF', '#F1F2F1', '#0D5EAF'] },
+    POL: { type: 'h', colors: ['#F1F2F1', '#DC143C'] },
+    CZE: { type: 'h', colors: ['#F1F2F1', '#D7141A'] },
+    GEO: { type: 'star', base: '#F1F2F1', starColor: '#FF0000' },
+    JPN: { type: 'circle', base: '#F1F2F1', circleColor: '#BC002D' },
+    KOR: { type: 'circle', base: '#F1F2F1', circleColor: '#0047A0' },
+    COL: { type: 'h', colors: ['#FCD116', '#FCD116', '#003893', '#CE1126'] },
+    CHI: { type: 'h', colors: ['#F1F2F1', '#D52B1E'] },
+    MAR: { type: 'star', base: '#C1272D', starColor: '#006233' },
+    ALG: { type: 'v', colors: ['#006233', '#F1F2F1'] },
+    IRN: { type: 'h', colors: ['#239F40', '#F1F2F1', '#DA0000'] },
+    UKR: { type: 'h', colors: ['#005BBB', '#FFD500'] },
+    ISL: { type: 'cross', base: '#02529C', cross: '#DC1E35', outline: '#F1F2F1' },
+    BEL: { type: 'v', colors: ['#000000', '#FDDA24', '#EF3340'] },
+  };
+
   // Quota di italiani per categoria (indice = S.div, 0=Eccellenza … 4=Serie A): scende
   // gradualmente, come la vera piramide del calcio italiano.
   const ITA_SHARE = [0.97, 0.90, 0.75, 0.55, 0.35];
