@@ -75,6 +75,9 @@
 
   let takeovers = null, selTakeover = -1;
 
+  // Categoria di partenza scelta in fase di creazione (indice in DIVS, 0=Eccellenza).
+  let startDiv = 0;
+
   // Stato dello stemma in fase di creazione del club (prima che esista S).
   let crestShape = CREST_DEFAULT.shape, crestColors = randCrestColors();
 
@@ -84,6 +87,16 @@
 
   // Tab attiva in Sala del Consiglio: solo preferenza di vista, non persistita.
   let boardTab = 'finanze';
+
+  function renderDivPicker() {
+    const grid = $('divPicker'); if (!grid) return;
+    grid.innerHTML = DIVS.map((d, i) => `<button type="button" class="ow-div-pick ${startDiv === i ? 'on' : ''}" data-startdiv="${i}">${d.name}</button>`).join('');
+    grid.querySelectorAll('.ow-div-pick').forEach((el) => el.addEventListener('click', () => {
+      startDiv = +el.dataset.startdiv;
+      grid.querySelectorAll('.ow-div-pick').forEach((x) => x.classList.toggle('on', +x.dataset.startdiv === startDiv));
+      takeovers = genTakeovers(startDiv); selTakeover = -1; renderTakeovers();
+    }));
+  }
 
   function renderTakeovers() {
     const grid = $('takeoverGrid');
@@ -109,8 +122,9 @@
   }
 
   function boot() {
-    takeovers = genTakeovers(); renderTakeovers();
-    if (!$('owClubName').value) $('owClubName').value = pick(POOLS[0]).n;   // suggerimento a caso, modificabile
+    renderDivPicker();
+    takeovers = genTakeovers(startDiv); renderTakeovers();
+    if (!$('owClubName').value) $('owClubName').value = pick(POOLS[startDiv]).n;   // suggerimento a caso, modificabile
     updateCrestPreview();
     document.querySelectorAll('.ow-crest-shape').forEach((el) => el.addEventListener('click', () => { crestShape = el.dataset.shape; updateCrestPreview(); }));
     const c1 = $('crestColor1'), c2 = $('crestColor2');
@@ -118,10 +132,10 @@
     if (c2) c2.addEventListener('input', (e) => { crestColors[1] = e.target.value; updateCrestPreview(); });
     const crestReroll = $('crestRerollBtn');
     if (crestReroll) crestReroll.addEventListener('click', () => { crestColors = randCrestColors(); updateCrestPreview(); });
-    $('owRerollBtn').addEventListener('click', () => { takeovers = genTakeovers(); selTakeover = -1; renderTakeovers(); toast('Nuove condizioni di partenza sul tavolo.'); });
+    $('owRerollBtn').addEventListener('click', () => { takeovers = genTakeovers(startDiv); selTakeover = -1; renderTakeovers(); toast('Nuove condizioni di partenza sul tavolo.'); });
     $('owStartBtn').addEventListener('click', () => {
       if (selTakeover < 0) { toast('Scegli prima una situazione di partenza.'); return; }
-      const go = () => startDynasty(($('owName').value || '').trim() || 'Il Presidente', takeovers[selTakeover], ($('owClubName').value || '').trim());
+      const go = () => startDynasty(($('owName').value || '').trim() || 'Il Presidente', takeovers[selTakeover], ($('owClubName').value || '').trim(), startDiv);
       if (!hasSave()) { go(); return; }
       overlay(`
         <h2>Iniziare una nuova carriera?</h2>

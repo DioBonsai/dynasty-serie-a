@@ -549,3 +549,12 @@ body{
 /* ---------- bandiere SVG (non emoji, uguali su ogni sistema) ---------- */
 .flag-wrap{ display:inline-flex; vertical-align:middle; margin-right:1px; }
 .flag-ico{ border-radius:2px; display:block; box-shadow:0 0 0 1px rgba(255,255,255,.18); }
+
+/* ---------- scelta della categoria di partenza ---------- */
+.ow-div-picker{ display:flex; flex-wrap:wrap; justify-content:center; gap:8px; margin:0 0 4px; }
+.ow-div-pick{
+  appearance:none; background:var(--panel2); border:1px solid var(--line); color:var(--muted);
+  font:800 12.5px/1 var(--sans); padding:9px 16px; border-radius:999px; cursor:pointer; transition:border-color .12s ease,color .12s ease,background .12s ease;
+}
+.ow-div-pick:hover{ border-color:var(--dyn); }
+.ow-div-pick.on{ border-color:var(--dyn); background:rgba(201,144,47,.16); color:var(--txt); }

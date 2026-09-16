@@ -595,25 +595,35 @@
 
   const hasSave = () => !!loadSave();
 
-  function genTakeovers() {
+  // Le SITUATIONS sono tarate sull'Eccellenza: per una categoria diversa si trasla la
+  // forza di partenza sulla nuova media (dAvg - eccAvg) e si scala il budget con lo stesso
+  // rapporto dei costi di spin, così "quanti spin ti puoi permettere" resta simile a
+  // qualunque livello si parta.
+  function genTakeovers(div) {
+    div = div || 0;
+    const shift = DIVS[div].avg - DIVS[0].avg;
+    const budgetScale = DIVS[div].spin / DIVS[0].spin;
     return SITUATIONS.map((s) => ({
-      key: s.key, title: s.title, blurb: s.blurb,
-      str: s.strRange[0] + rnd(s.strRange[1] - s.strRange[0] + 1),
-      budget: s.budgetRange[0] + Math.random() * (s.budgetRange[1] - s.budgetRange[0]),
+      key: s.key, title: s.title,
+      blurb: (s.key === 'gigante' && div >= 4) ? 'Una piazza che sogna ancora la Champions League: tanta tifoseria, casse quasi vuote.' : s.blurb,
+      str: s.strRange[0] + shift + rnd(s.strRange[1] - s.strRange[0] + 1),
+      budget: (s.budgetRange[0] + Math.random() * (s.budgetRange[1] - s.budgetRange[0])) * budgetScale,
       stadiumTier: Math.random() < s.stadiumChance ? s.stadiumTier : 0,
       fanbase: s.fanbaseRange[0] + Math.random() * (s.fanbaseRange[1] - s.fanbaseRange[0]),
     }));
   }
 
-  function startDynasty(owner, t, customClub) {
+  function startDynasty(owner, t, customClub, div) {
+    div = div || 0;
     clearSave();
     const squad = [];
-    for (let i = 0; i < 16; i++) { const ovr = clamp(gaussInt(t.str - 1, 3.5), 40, 55); const nat = pickNationality(0); squad.push({ n: genName(nat), nat, ovr, age: genAge(23, 4.5, 17, 34), wage: wageFor(ovr), yrs: 1 + rnd(3), pos: randPos(squad), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 }); }
+    const dAvg = DIVS[div].avg;
+    for (let i = 0; i < 16; i++) { const ovr = clamp(gaussInt(t.str - 1, 3.5), dAvg - 9, dAvg + 9); const nat = pickNationality(div); squad.push({ n: genName(nat), nat, ovr, age: genAge(23, 4.5, 17, 34), wage: wageFor(ovr), yrs: 1 + rnd(3), pos: randPos(squad), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 }); }
     S = {
-      owner, club: (customClub || '').slice(0, 24) || pick(POOLS[0]).n, div: 0, season: 1,
+      owner, club: (customClub || '').slice(0, 24) || pick(POOLS[div]).n, div: div, season: 1,
       budget: Math.round(t.budget), fanbase: Math.round(t.fanbase * 100) / 100,
       stadiumTier: t.stadiumTier, stadiumSpent: 0.6e6 + (t.stadiumTier ? STADIUM[1].cost : 0), ticket: 1,
-      squad, manager: (function () { const r = clamp(DIVS[0].mgrBase - 2 + rnd(8), 45, 92); return { n: genName(), rating: r, salary: mgrSalaryFor(r) }; })(),
+      squad, manager: (function () { const r = clamp(DIVS[div].mgrBase - 2 + rnd(8), 45, 92); return { n: genName(), rating: r, salary: mgrSalaryFor(r) }; })(),
       sponsor: null, sent: 55, ownerRating: 62, prestige: 0, debtSeasons: 0,
       euro: false, euroComp: null, form: 0, spinsBought: 0,
       trophies: { titles: [0, 0, 0, 0, 0], nat: 0, ucl: 0, uel: 0, conf: 0, total: 0 },
