@@ -319,26 +319,110 @@
     return Math.round(ageGrowthBase(p.age) + perf + noise);
   }
 
-  // Marcatore per un avversario di Serie A: pesca dalla sua rosa reale (Quotazioni
-  // Fantacalcio 2026/27) con lo stesso peso ruolo+forza usato per la nostra squadra, solo
-  // calibrato sulla scala di quotazione (1-37) invece che sull'overall (40-99).
+  // Marcatore per un avversario con una rosa reale nota: stesso peso ruolo+forza usato per
+  // la nostra squadra. Le rose italiane usano `q` (quotazione fantacalcio, scala 1-65), le
+  // rose europee usano `ovr` (scala 40-99 come i nostri giocatori): si normalizza `ovr`
+  // sulla stessa scala approssimativa di `q` prima di pesare.
   function pickRealScorer(roster) {
     if (!roster || !roster.length) return null;
-    const weight = (p) => (POS_SCORE_WEIGHT[p.pos] || 1) * Math.pow(Math.max(p.q, 1) / 10, 1.4);
+    const strengthOf = (p) => (p.q != null ? p.q : Math.max(1, Math.round((p.ovr - 40) * 0.9)));
+    const weight = (p) => (POS_SCORE_WEIGHT[p.pos] || 1) * Math.pow(Math.max(strengthOf(p), 1) / 10, 1.4);
     const total = roster.reduce((a, p) => a + weight(p), 0);
     let r = Math.random() * total;
     for (const p of roster) { r -= weight(p); if (r <= 0) return p; }
     return roster[roster.length - 1];
   }
 
+  // Rosa reale nota per un club avversario: se il mercato dinamico è già stato inizializzato
+  // (S.market, vedi simulateTransferWindow) legge da lì, che evolve stagione dopo stagione;
+  // altrimenti dai database statici originali (Italia + Europa).
+  function rostersFor(oppClub) {
+    if (S.market) return S.market.serieA[oppClub] || S.market.serieB[oppClub] || S.market.euro[oppClub] || null;
+    return SERIE_A_ROSTERS[oppClub] || SERIE_B_ROSTERS[oppClub] || EURO_ROSTERS[oppClub] || null;
+  }
+
+  /* ---------------- mercato "semi-realistico" (Serie A/B + club europei) ---------------- */
+  // Le rose reali (italiane ed europee) non restano identiche per sempre: dalla prima volta
+  // che il presidente mette piede in Serie B/Serie A, quella categoria (e per la Serie A
+  // anche il pool europeo) comincia a "vivere" — qualche trasferimento fra club a ogni
+  // cambio di stagione, più qualche ricambio generazionale (un giocatore si ritira, arriva
+  // un giovane generato al suo posto). Tutto questo vive in S.market: una copia PRIVATA
+  // della partita, clonata dai database statici la prima volta che serve, così i database
+  // originali restano lo stato "di lancio" identico per ogni nuova carriera.
+  const Q_TO_OVR = (q) => clamp(Math.round(55 + q * 0.85), 40, 99);
+  const OVR_TO_Q = (ovr) => clamp(Math.round((ovr - 55) / 0.85), 1, 65);
+  function cloneRosterPool(pool) {
+    const out = {};
+    Object.keys(pool).forEach((club) => { out[club] = pool[club].map((p) => ({ ...p })); });
+    return out;
+  }
+  function initMarket() {
+    S.market = { serieA: cloneRosterPool(SERIE_A_ROSTERS), serieB: cloneRosterPool(SERIE_B_ROSTERS), euro: cloneRosterPool(EURO_ROSTERS) };
+  }
+  // Un ruolo casuale con una distribuzione realistica di rosa (pochi portieri, il grosso fra
+  // difesa e centrocampo, un po' meno attacco): indipendente dai tetti della TUA rosa, qui
+  // servono solo per rimpiazzare un giocatore ritirato in una rosa avversaria.
+  function randOppPos() {
+    const r = Math.random();
+    return r < 0.09 ? 'POR' : r < 0.42 ? 'DIF' : r < 0.74 ? 'CEN' : 'ATT';
+  }
+  // Chiamata a ogni cambio di stagione (in advance(), dopo l'aggiornamento di S.div): sblocca
+  // le categorie appena raggiunte per la prima volta e fa "muovere" quelle già sbloccate.
+  function simulateTransferWindow() {
+    if (S.div >= 3) S.marketSeenB = true;
+    if (S.div >= 4) S.marketSeenA = true;
+    if (!S.marketSeenB && !S.marketSeenA) return;
+    if (!S.market) initMarket();
+    const pools = [];
+    if (S.marketSeenB) pools.push({ kind: 'q', clubs: S.market.serieB });
+    if (S.marketSeenA) { pools.push({ kind: 'q', clubs: S.market.serieA }); pools.push({ kind: 'ovr', clubs: S.market.euro }); }
+    const allClubs = [];
+    pools.forEach(({ kind, clubs }) => Object.keys(clubs).forEach((name) => allClubs.push({ kind, clubs, name })));
+    if (allClubs.length < 2) return;
+    // ---- trasferimenti: uno scambio vero fra due club (un giocatore per uno), anche fra
+    // campionati diversi (un italiano può finire in un club europeo e viceversa) — così le
+    // rose restano della stessa dimensione invece di gonfiarsi o svuotarsi stagione dopo
+    // stagione.
+    const convertTo = (player, kind) => {
+      if (kind === (player.ovr != null ? 'ovr' : 'q')) return player;
+      const ovr = player.q != null ? Q_TO_OVR(player.q) : player.ovr;
+      return kind === 'ovr' ? { n: player.n, pos: player.pos, ovr } : { n: player.n, pos: player.pos, q: OVR_TO_Q(ovr) };
+    };
+    const transferCount = clamp(Math.round(allClubs.length * 0.3), 4, 40);
+    for (let i = 0; i < transferCount; i++) {
+      const a = pick(allClubs), b = pick(allClubs);
+      if (a === b) continue;
+      const rosterA = a.clubs[a.name], rosterB = b.clubs[b.name];
+      if (!rosterA || !rosterB || !rosterA.length || !rosterB.length) continue;
+      const idxA = rnd(rosterA.length), idxB = rnd(rosterB.length);
+      const playerA = rosterA[idxA], playerB = rosterB[idxB];
+      rosterA[idxA] = convertTo(playerB, a.kind);
+      rosterB[idxB] = convertTo(playerA, b.kind);
+    }
+    // ---- ricambio generazionale: qualche giocatore si ritira, un giovane generato prende
+    // il suo posto nella stessa rosa (mantiene il livello approssimativo del club) ----
+    allClubs.forEach(({ kind, clubs, name }) => {
+      const roster = clubs[name];
+      if (!roster.length || Math.random() >= 0.35) return;
+      const idx = rnd(roster.length);
+      const old = roster[idx];
+      const baseOvr = old.q != null ? Q_TO_OVR(old.q) : old.ovr;
+      const newOvr = clamp(baseOvr + gaussInt(-2, 5), 40, 99);
+      const nat = pickNationality(4);
+      const fresh = { n: genName(nat), pos: randOppPos() };
+      if (kind === 'ovr') fresh.ovr = newOvr; else fresh.q = OVR_TO_Q(newOvr);
+      roster[idx] = fresh;
+    });
+  }
+
   // Genera `count` gol con minuto e marcatore. Per la nostra squadra pesca dalla rosa (e
   // aggiorna le statistiche stagionali di marcatore e assistman, l'80% dei gol con
-  // assist); per l'avversario, se è un club di Serie A con una rosa reale nota la usa,
-  // altrimenti (categorie inferiori, club senza dati) genera un nome plausibile.
+  // assist); per l'avversario, se è un club con una rosa reale nota la usa, altrimenti
+  // (categorie inferiori, club senza dati) genera un nome plausibile.
   function genGoals(count, isUs, oppClub, lineup) {
     const mins = []; for (let i = 0; i < count; i++) mins.push(1 + rnd(90));
     mins.sort((a, b) => a - b);
-    const oppRoster = !isUs && oppClub ? (SERIE_A_ROSTERS[oppClub] || SERIE_B_ROSTERS[oppClub]) : null;
+    const oppRoster = !isUs && oppClub ? rostersFor(oppClub) : null;
     return mins.map((min) => {
       if (!isUs) { const rp = oppRoster ? pickRealScorer(oppRoster) : null; return { min, name: rp ? rp.n : genName() }; }
       const p = pickScorer(lineup);
@@ -462,6 +546,9 @@
     if (!S.crestShape) S.crestShape = CREST_DEFAULT.shape;
     if (S.scoutLevel == null) S.scoutLevel = 0;
     if (S.scoutProspectSeason == null) S.scoutProspectSeason = 0;
+    if (S.marketSeenB == null) S.marketSeenB = S.div >= 3;
+    if (S.marketSeenA == null) S.marketSeenA = S.div >= 4;
+    if (S.market === undefined) S.market = null;
     S.squad.forEach((p) => { if (p.yrs == null) p.yrs = 2 + rnd(2); if (p.pid == null) p.pid = newPid(); if (!p.pos) p.pos = randPos(); if (p.seasonGoals == null) p.seasonGoals = 0; if (p.seasonAssists == null) p.seasonAssists = 0; if (p.seasonCleanSheets == null) p.seasonCleanSheets = 0; if (p.seasonApps == null) p.seasonApps = 0; if (!p.nat) p.nat = pickNationality(S.div); if (p.outWeeks == null) p.outWeeks = 0; if (p.suspMatches == null) p.suspMatches = 0; });
   }
 
@@ -631,6 +718,7 @@
       pidNext: 1, offers: [],
       crestShape: crestShape, crestColors: crestColors.slice(),
       scoutLevel: 0, scoutProspect: null, scoutProspectSeason: 0,
+      market: null, marketSeenB: div >= 3, marketSeenA: div >= 4,
     };
     normSquad();
     S.peakWorth = computeWorth();
@@ -982,6 +1070,9 @@
     if (e.relegated) S.div = Math.max(0, S.div - 1);
     S.euro = !!S.euroCompNext && S.div === 4;
     S.euroComp = S.euro ? S.euroCompNext : null;
+    // Mercato semi-realistico: si sblocca e si muove appena si mette piede in una categoria
+    // con rose reali note (Serie B, poi Serie A + club europei), non prima.
+    simulateTransferWindow();
     // Spirale degli stipendi: la promozione porta aumenti in tutta la rosa, restare in
     // alto significa inflazione annuale, la retrocessione permette tagli. È il freno che
     // impedisce ai soldi di accumularsi semplicemente una volta stabiliti.
