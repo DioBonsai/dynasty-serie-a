@@ -233,19 +233,35 @@
     tickAbsences();
     const available = squad.filter((p) => !(p.outWeeks > 0) && !(p.suspMatches > 0));
     const pool = available.length >= Math.min(11, squad.length) ? available : squad;   // rosa decimata: si gioca comunque con chi c'è
+    const availPids = new Set(pool.map((p) => p.pid));
+    const target = Math.min(11, pool.length);
     // Margine di casualità a partita stretto (±7%, non più ±18%): la forma stagionale
     // pesa già parecchio da sola, qui serve solo a rompere i pareggi, non a far scavalcare
     // un titolare più forte a un panchinaro mediocre su un colpo di fortuna.
     const rated = pool.map((p) => ({ p, eff: p.ovr * (p.formSeason || 1) * (0.93 + Math.random() * 0.14) }));
-    const byPos = { POR: [], DIF: [], CEN: [], ATT: [] };
-    rated.forEach((r) => { if (byPos[r.p.pos]) byPos[r.p.pos].push(r); });
-    Object.keys(byPos).forEach((k) => byPos[k].sort((a, b) => b.eff - a.eff));
-    const need = { POR: 1, DIF: 4, CEN: 3, ATT: 3 };
     const starters = new Set();
-    Object.keys(need).forEach((k) => byPos[k].slice(0, need[k]).forEach((r) => starters.add(r.p.pid)));
-    const target = Math.min(11, pool.length);
+    // La formazione scelta a mano in "Probabile formazione" (S.previewXI) non è più solo
+    // grafica: se valida (stesso numero di titolari, tutti ancora in rosa) è LEI a
+    // decidere chi scende in campo davvero — presenze, gol, assist e rendimento seguono
+    // chi hai messo titolare, non un undici scelto automaticamente per overall. Un
+    // titolare indisponibile (infortunato/squalificato/ceduto) viene rimpiazzato dal
+    // miglior disponibile rimasto, così si gioca comunque in undici.
+    const manualPids = (S.previewXI && Array.isArray(S.previewXI.pids)) ? S.previewXI.pids.filter((pid) => pid != null) : [];
+    if (manualPids.length) {
+      const missing = [];
+      manualPids.forEach((pid) => { if (availPids.has(pid)) starters.add(pid); else missing.push(pid); });
+      if (missing.length) {
+        const fillers = rated.filter((r) => !starters.has(r.p.pid)).sort((a, b) => b.eff - a.eff);
+        missing.forEach(() => { const f = fillers.shift(); if (f) starters.add(f.p.pid); });
+      }
+    }
     if (starters.size < target) {
-      rated.slice().sort((a, b) => b.eff - a.eff).forEach((r) => { if (starters.size < target) starters.add(r.p.pid); });
+      const byPos = { POR: [], DIF: [], CEN: [], ATT: [] };
+      rated.forEach((r) => { if (!starters.has(r.p.pid) && byPos[r.p.pos]) byPos[r.p.pos].push(r); });
+      Object.keys(byPos).forEach((k) => byPos[k].sort((a, b) => b.eff - a.eff));
+      const need = { POR: 1, DIF: 4, CEN: 3, ATT: 3 };
+      Object.keys(need).forEach((k) => byPos[k].slice(0, Math.max(0, need[k] - [...starters].filter((pid) => squad.find((p) => p.pid === pid)?.pos === k).length)).forEach((r) => starters.add(r.p.pid)));
+      if (starters.size < target) rated.slice().sort((a, b) => b.eff - a.eff).forEach((r) => { if (starters.size < target) starters.add(r.p.pid); });
     }
     const bench = pool.filter((p) => !starters.has(p.pid));
     const subsCount = Math.min(bench.length, 1 + rnd(3));
