@@ -624,7 +624,7 @@
     {n:'Emilio Butragueño',pos:'ATT',ovr:88,nat:'ESP'},{n:'Michel González',pos:'CEN',ovr:87,nat:'ESP'},{n:'José Luis Sanchís',pos:'DIF',ovr:85,nat:'ESP'},
     {n:'Fernando Hierro',pos:'DIF',ovr:89,nat:'ESP'},{n:'Andoni Zubizarreta',pos:'POR',ovr:87,nat:'ESP'},{n:'Luis Enrique Martínez',pos:'CEN',ovr:87,nat:'ESP'},
     {n:'Pep Guardiola',pos:'CEN',ovr:87,nat:'ESP'},{n:'David Villa',pos:'ATT',ovr:89,nat:'ESP'},{n:'Fernando Torres',pos:'ATT',ovr:88,nat:'ESP'},
-    {n:'Xabi Alonso',pos:'CEN',ovr:89,nat:'ESP'},{n:'Carlos Puyol B.',pos:'DIF',ovr:85,nat:'ESP'},{n:'Julio Salinas',pos:'ATT',ovr:85,nat:'ESP'},
+    {n:'Xabi Alonso',pos:'CEN',ovr:89,nat:'ESP'},{n:'Rafael Gordillo',pos:'DIF',ovr:85,nat:'ESP'},{n:'Julio Salinas',pos:'ATT',ovr:85,nat:'ESP'},
     {n:'Míchel Salgado',pos:'DIF',ovr:85,nat:'ESP'},{n:'Joaquín Sánchez',pos:'CEN',ovr:85,nat:'ESP'},{n:'Santiago Cañizares',pos:'POR',ovr:85,nat:'ESP'},
     {n:'José Antonio Camacho',pos:'DIF',ovr:86,nat:'ESP'},{n:'Cesc Fàbregas',pos:'CEN',ovr:87,nat:'ESP'},{n:'Julen Guerrero',pos:'ATT',ovr:85,nat:'ESP'},
     {n:'Aitor Karanka',pos:'DIF',ovr:85,nat:'ESP'},{n:'Vicente del Bosque',pos:'CEN',ovr:85,nat:'ESP'},

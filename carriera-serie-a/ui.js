@@ -711,7 +711,7 @@
     overlay(`
       <h2>${premium ? '💎 Lo scout torna' : '🎰 Lo scout torna'}</h2>
       <div class="ow-spin-card${p.real ? ' is-real' : ''}">
-        ${p.icon ? '<div class="real-badge icon-badge">🏆 LEGGENDA RITIRATA</div>' : p.real && p.fromClub ? `<div class="real-badge">🌟 GIOCATORE REALE · da ${p.fromClub}</div>` : ''}
+        ${p.icon ? '<div class="real-badge icon-badge">🏆 LEGGENDA</div>' : p.real && p.fromClub ? `<div class="real-badge">🌟 GIOCATORE REALE · da ${p.fromClub}</div>` : ''}
         <div class="big" style="color:${ovrTier(p.ovr).c}">${p.ovr}</div>
         <div class="nm">${flagOf(p)}${p.n} <span class="postag postag-${p.pos}" style="vertical-align:middle">${p.pos}</span></div>
         <div class="meta">${POS_LABEL[p.pos]} · età ${p.age} · chiede <b>${fmtYr(p.wage)}</b></div>
@@ -750,7 +750,7 @@
     overlay(`
       <h2>Scheda giocatore</h2>
       <div class="ow-spin-card${p.real ? ' is-real' : ''}">
-        ${p.icon ? '<div class="real-badge icon-badge">🏆 LEGGENDA RITIRATA</div>' : p.real && p.fromClub ? `<div class="real-badge">🌟 GIOCATORE REALE · da ${p.fromClub}</div>` : ''}
+        ${p.icon ? '<div class="real-badge icon-badge">🏆 LEGGENDA</div>' : p.real && p.fromClub ? `<div class="real-badge">🌟 GIOCATORE REALE · da ${p.fromClub}</div>` : ''}
         <div class="big" style="color:${ovrTier(p.ovr).c}">${p.ovr}</div>
         <div class="nm">${flagOf(p)}${p.n} <span class="postag postag-${p.pos}" style="vertical-align:middle">${p.pos}</span></div>
         <div class="meta">${POS_LABEL[p.pos]} · ${p.nat ? p.nat.name : '-'} · età ${p.age}</div>
