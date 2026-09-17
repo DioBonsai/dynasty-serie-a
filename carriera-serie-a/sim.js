@@ -626,7 +626,7 @@
   // (reale o generato) che ci stia dentro, così un lusso non può più regalare un nome vero
   // ma scarso preso a caso da una rosa di Serie B.
   // Squadra Icone: leggende ritirate (vedi ICON_PLAYERS in data.js), pescabili con gli spin
-  // solo una volta arrivati in Serie A, con 1 probabilità su 7 a ogni spin (prima ancora del
+  // solo una volta arrivati in Serie A, con 1 probabilità su 12 a ogni spin (prima ancora del
   // tiro sul giocatore reale "contemporaneo"). Età fissa a centrocampo di carriera: sono
   // fenomeni ritirati che tornano in campo, non ex bandiere a fine carriera.
   function iconPlayer(role) {
@@ -645,7 +645,7 @@
   function spinPlayer(premium, role) {
     const d = divOf(), scout = scoutTier();
     const band = premium ? { lo: d.avg + 3, hi: d.avg + 22 } : { lo: d.avg - 9, hi: d.avg + 11 };
-    if (S.div === 5 && Math.random() < 1 / 7) {
+    if (S.div === 5 && Math.random() < 1 / 12) {
       const icon = iconPlayer(role);
       if (icon) return icon;
     }
