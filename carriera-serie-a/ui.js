@@ -364,7 +364,7 @@
     const squadRows = squadFiltered.length ? squadFiltered.map((p) => {
       const fy = !p.loan && finalYear(p);
       return `
-      <div class="ow-player${fy ? ' final' : ''}"><span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span>
+      <div class="ow-player${fy ? ' final' : ''}" data-pid="${p.pid}"><span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span>
         <span class="postag postag-${p.pos}">${p.pos}</span>
         <span class="nm">${flagOf(p)}${p.n}<small>età ${p.age}</small></span>
         ${p.outWeeks > 0 ? `<span class="stat-tag inj" title="Infortunato">🚑 ${p.outWeeks}</span>` : p.suspMatches > 0 ? '<span class="stat-tag susp" title="Squalificato">🟥</span>' : ''}
@@ -503,6 +503,12 @@
       </div>`;
     // colleghiamo tutto
     body.querySelectorAll('[data-tab]').forEach((el) => el.addEventListener('click', () => { boardTab = el.dataset.tab; renderBoard(); }));
+    // Scheda giocatore: tocca la riga per aprirla, ma non se il tocco è su uno dei bottoni
+    // di azione della riga stessa (Vendi/Rinnova/Riscatta), che hanno il loro handler.
+    body.querySelectorAll('.ow-player[data-pid]').forEach((el) => el.addEventListener('click', (ev) => {
+      if (ev.target.closest('button')) return;
+      openPlayerDetail(+el.dataset.pid);
+    }));
     body.querySelectorAll('.ow-x').forEach((el) => el.addEventListener('click', () => {
       const i = S.squad.findIndex((x) => x.pid === +el.dataset.rel); const p = S.squad[i]; if (!p) return;
       const fee = Math.round(playerValue(p) * 0.3);
@@ -722,6 +728,37 @@
       toast('Passi. Lo scout ti restituisce ' + fmtMoney(refund) + ' (40% dello spin).');
       renderBoard(); saveGame();
     };
+  }
+
+  // Scheda dettagliata di un calciatore in rosa: anagrafica, contratto e statistiche della
+  // stagione in corso, richiamabile toccando la sua riga nell'elenco Rosa.
+  function openPlayerDetail(pid) {
+    const p = S.squad.find((x) => x.pid === pid); if (!p) return;
+    const isGK = p.pos === 'POR';
+    const statRows = isGK
+      ? `<div class="ow-fin-row"><span>Presenze stagionali</span><b>🎽 ${p.seasonApps || 0}</b></div>
+         <div class="ow-fin-row"><span>Clean sheet stagionali</span><b>🧤 ${p.seasonCleanSheets || 0}</b></div>`
+      : `<div class="ow-fin-row"><span>Presenze stagionali</span><b>🎽 ${p.seasonApps || 0}</b></div>
+         <div class="ow-fin-row"><span>Gol stagionali</span><b>⚽ ${p.seasonGoals || 0}</b></div>
+         <div class="ow-fin-row"><span>Assist stagionali</span><b>👟 ${p.seasonAssists || 0}</b></div>`;
+    overlay(`
+      <h2>Scheda giocatore</h2>
+      <div class="ow-spin-card${p.real ? ' is-real' : ''}">
+        ${p.real && p.fromClub ? `<div class="real-badge">🌟 GIOCATORE REALE · da ${p.fromClub}</div>` : ''}
+        <div class="big" style="color:${ovrTier(p.ovr).c}">${p.ovr}</div>
+        <div class="nm">${flagOf(p)}${p.n} <span class="postag postag-${p.pos}" style="vertical-align:middle">${p.pos}</span></div>
+        <div class="meta">${POS_LABEL[p.pos]} · ${p.nat ? p.nat.name : '-'} · età ${p.age}</div>
+      </div>
+      <div class="ow-sec" style="margin-top:4px">
+        ${statRows}
+        <div class="ow-fin-row"><span>Stipendio</span><b>${fmtYr(p.wage)}</b></div>
+        <div class="ow-fin-row"><span>Contratto</span><b>${p.loan ? 'In prestito' : p.yrs + ' ann' + (p.yrs === 1 ? 'o' : 'i') + ' rimast' + (p.yrs === 1 ? 'o' : 'i')}</b></div>
+        <div class="ow-fin-row"><span>Valore di mercato stimato</span><b>${fmtMoney(playerValue(p))}</b></div>
+        ${p.outWeeks > 0 ? `<div class="ow-fin-row bad"><span>Infortunato</span><b>🚑 fuori ${p.outWeeks} partit${p.outWeeks === 1 ? 'a' : 'e'}</b></div>` : ''}
+        ${p.suspMatches > 0 ? `<div class="ow-fin-row bad"><span>Squalificato</span><b>🟥 salta la prossima</b></div>` : ''}
+      </div>
+      <div class="dyn-modal-actions"><button class="dyn-btn" id="ovDetailClose">Chiudi</button></div>`);
+    $('ovDetailClose').onclick = closeOverlay;
   }
 
   function confirmSell() {

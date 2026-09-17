@@ -486,16 +486,13 @@
     mins.sort((a, b) => a - b);
     const oppRoster = !isUs && oppClub ? rostersFor(oppClub) : null;
     return mins.map((min) => {
-      if (!isUs) {
-        const rp = oppRoster ? pickRealScorer(oppRoster) : null;
-        return { min, name: rp ? rp.n : genName(), nat: rp && rp.nat ? natByCode(rp.nat) : null };
-      }
+      if (!isUs) { const rp = oppRoster ? pickRealScorer(oppRoster) : null; return { min, name: rp ? rp.n : genName() }; }
       const p = pickScorer(lineup);
       if (p) {
         p.seasonGoals = (p.seasonGoals || 0) + 1;
         if (Math.random() < 0.8) { const a = pickAssister(p.pid, lineup); if (a) a.seasonAssists = (a.seasonAssists || 0) + 1; }
       }
-      return { min, name: p ? p.n : 'Autorete', nat: p ? p.nat : null };
+      return { min, name: p ? p.n : 'Autorete' };
     });
   }
 
@@ -511,8 +508,8 @@
   function fmtScorers(goals) {
     if (!goals || !goals.length) return '';
     const byName = [];
-    goals.forEach((g) => { let e = byName.find((x) => x.name === g.name); if (!e) { e = { name: g.name, nat: g.nat, mins: [] }; byName.push(e); } e.mins.push(g.min); });
-    return byName.map((e) => flagOf(e) + e.name + ' ' + e.mins.map((m) => m + "'").join(', ')).join(' · ');
+    goals.forEach((g) => { let e = byName.find((x) => x.name === g.name); if (!e) { e = { name: g.name, mins: [] }; byName.push(e); } e.mins.push(g.min); });
+    return byName.map((e) => e.name + ' ' + e.mins.map((m) => m + "'").join(', ')).join(' · ');
   }
 
   let S = null;
