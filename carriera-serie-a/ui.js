@@ -680,6 +680,7 @@
         <div class="big" style="color:${ovrTier(p.ovr).c}">${p.ovr}</div>
         <div class="nm">${flagOf(p)}${p.n} <span class="postag postag-${p.pos}" style="vertical-align:middle">${p.pos}</span></div>
         <div class="meta">${POS_LABEL[p.pos]} · età ${p.age} · chiede <b>${fmtYr(p.wage)}</b></div>
+        ${p.real && p.fromClub ? `<div class="meta">🌟 Giocatore vero, in arrivo da <b>${p.fromClub}</b></div>` : ''}
         <div class="meta">Hai <b>${fmtMoney(freeToSpend())}</b> liberi dopo gli stipendi</div>
         ${p.ovr >= d.avg + 7 ? '<div class="gem">⭐ Un colpo da titoli di giornale per questo livello</div>' : ''}
       </div>
@@ -745,7 +746,7 @@
         <div class="ow-jan-head">
           <span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span>
           <span class="postag postag-${p.pos}">${p.pos}</span>
-          <span class="nm">${flagOf(p)}${p.n}<small>${POS_LABEL[p.pos]} · età ${p.age} · chiede ${fmtYr(p.wage)}</small></span>
+          <span class="nm">${flagOf(p)}${p.n}<small>${POS_LABEL[p.pos]} · età ${p.age} · chiede ${fmtYr(p.wage)}${p.real && p.fromClub ? ` · 🌟 da ${p.fromClub}` : ''}</small></span>
           ${!S._janSwitchUsed ? `<button class="ow-jan-switch" data-jan-switch="${i}" title="Cambia questo giocatore (una sola volta)">🔄</button>` : ''}
         </div>
         <div class="ow-jan-actions">

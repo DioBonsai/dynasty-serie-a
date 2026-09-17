@@ -493,29 +493,67 @@
     }
   }
 
-  // Solo in Serie B: ogni tanto lo spin pesca un giocatore VERO dalle rose reali
-  // (SERIE_B_ROSTERS, finora usate solo per gli avversari) invece di generarne uno di
-  // fantasia. La quotazione fantacalcio (q) diventa un overall tarato sulla media della
-  // categoria: i migliori nomi reali restano comunque sotto il tetto degli spin generati.
-  function realBPlayer() {
-    const teams = Object.keys(SERIE_B_ROSTERS);
-    for (let i = 0; i < 5; i++) {
-      const roster = SERIE_B_ROSTERS[pick(teams)];
+  // Range di quotazione (min-max) per ruolo, calcolato una sola volta dalle rose reali
+  // statiche: serve a capire chi è il più forte/più debole di ogni ruolo in un campionato,
+  // dato che la quotazione fantacalcio non è un overall e le due leghe usano scale diverse
+  // fra loro (i numeri di Serie B, ad es. Palermo, arrivano più in alto di quelli di Serie A).
+  let _qRanges = null;
+  function qRangesFor(rosters) {
+    const ranges = {};
+    Object.values(rosters).forEach((roster) => roster.forEach((p) => {
+      const r = ranges[p.pos] || (ranges[p.pos] = { min: p.q, max: p.q });
+      if (p.q < r.min) r.min = p.q;
+      if (p.q > r.max) r.max = p.q;
+    }));
+    return ranges;
+  }
+  function qRanges() {
+    if (!_qRanges) _qRanges = { serieA: qRangesFor(SERIE_A_ROSTERS), serieB: qRangesFor(SERIE_B_ROSTERS) };
+    return _qRanges;
+  }
+  // Overall di un giocatore reale (Serie A o B) a partire dalla sua quotazione fantacalcio:
+  // non un calcolo preciso (la quotazione non è pensata per quello), ma la sua posizione
+  // relativa fra i pari ruolo dello stesso campionato dice bene chi è più forte e chi meno.
+  // Le due fasce di arrivo restano separate e quella di Serie B è tutta più bassa, coerente
+  // con le rispettive medie di categoria (66 contro 77).
+  const REAL_OVR_BAND = { serieA: { lo: 60, hi: 94 }, serieB: { lo: 48, hi: 78 } };
+  function qToRealOvr(pos, q, league) {
+    const range = (qRanges()[league] || {})[pos] || { min: 1, max: 40 };
+    const band = REAL_OVR_BAND[league];
+    const t = range.max > range.min ? (q - range.min) / (range.max - range.min) : 0.5;
+    return clamp(Math.round(band.lo + t * (band.hi - band.lo)), 40, 99);
+  }
+
+  // In Serie B e Serie A, ogni tanto lo spin pesca un giocatore VERO (dalle rose di Serie A,
+  // Serie B o dei club europei — S.market se già "vivo", altrimenti i database statici)
+  // invece di generarne uno di fantasia. Le rose italiane usano la quotazione fantacalcio
+  // (vedi qToRealOvr), quelle europee hanno già un `ovr` assegnato che va bene com'è.
+  function realLeaguePlayer() {
+    const sources = [
+      { league: 'serieB', rosters: S.market ? S.market.serieB : SERIE_B_ROSTERS },
+      { league: 'serieA', rosters: S.market ? S.market.serieA : SERIE_A_ROSTERS },
+      { league: 'euro', rosters: S.market ? S.market.euro : EURO_ROSTERS },
+    ];
+    for (let i = 0; i < 6; i++) {
+      const src = pick(sources);
+      const clubs = Object.keys(src.rosters);
+      if (!clubs.length) continue;
+      const club = pick(clubs);
+      const roster = src.rosters[club];
       if (!roster || !roster.length) continue;
       const rp = pick(roster);
       const count = S.squad.filter((p) => p.pos === rp.pos).length;
       if (count >= POS_CAP[rp.pos]) continue;
-      const d = divOf();
-      const ovr = clamp(Math.round(d.avg - 6 + rp.q * 0.4), 40, d.avg + 14);
-      const nat = pickNationality(S.div);
-      return { n: rp.n, nat, ovr, age: genAge(26, 4.5, 19, 34), wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: rp.pos, seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0, real: true };
+      const ovr = src.league === 'euro' ? rp.ovr : qToRealOvr(rp.pos, rp.q, src.league);
+      const nat = src.league === 'euro' ? pickNationality(4) : pickNationality(S.div);
+      return { n: rp.n, nat, ovr, age: genAge(26, 4.5, 19, 34), wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: rp.pos, seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0, real: true, fromClub: club };
     }
     return null;
   }
   function spinPlayer(premium) {
     const d = divOf(), scout = scoutTier();
-    if (S.div === 3 && Math.random() < (premium ? 0.30 : 0.18)) {
-      const real = realBPlayer();
+    if ((S.div === 3 || S.div === 4) && Math.random() < 0.40) {
+      const real = realLeaguePlayer();
       if (real) return real;
     }
     // Ricalibratura generale: base più stretta (3.3 invece di 4) su tutte le divisioni, così
