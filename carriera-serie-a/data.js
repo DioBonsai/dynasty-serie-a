@@ -571,22 +571,22 @@
     {n:'Falcão',pos:'CEN',ovr:89,nat:'BRA'},{n:'Cafu',pos:'DIF',ovr:89,nat:'BRA'},{n:'Roberto Carlos',pos:'DIF',ovr:90,nat:'BRA'},
     {n:'Kaká',pos:'CEN',ovr:90,nat:'BRA'},{n:'Bebeto',pos:'ATT',ovr:88,nat:'BRA'},{n:'Djalma Santos',pos:'DIF',ovr:87,nat:'BRA'},
     {n:'Nilton Santos',pos:'DIF',ovr:87,nat:'BRA'},{n:'Jairzinho',pos:'ATT',ovr:89,nat:'BRA'},{n:'Tostão',pos:'ATT',ovr:87,nat:'BRA'},
-    {n:'Gérson',pos:'CEN',ovr:86,nat:'BRA'},{n:'Rivelino',pos:'CEN',ovr:88,nat:'BRA'},{n:'Dida',pos:'POR',ovr:85,nat:'BRA'},
-    {n:'Taffarel',pos:'POR',ovr:86,nat:'BRA'},{n:'Dunga',pos:'CEN',ovr:85,nat:'BRA'},{n:'Aldair',pos:'DIF',ovr:86,nat:'BRA'},
-    {n:'Lúcio',pos:'DIF',ovr:87,nat:'BRA'},{n:'Edmilson',pos:'DIF',ovr:85,nat:'BRA'},{n:'Emerson',pos:'CEN',ovr:85,nat:'BRA'},
-    {n:'Denílson',pos:'ATT',ovr:85,nat:'BRA'},{n:'Edmundo',pos:'ATT',ovr:86,nat:'BRA'},{n:'Müller',pos:'ATT',ovr:85,nat:'BRA'},
+    {n:'Gérson',pos:'CEN',ovr:86,nat:'BRA'},{n:'Rivelino',pos:'CEN',ovr:88,nat:'BRA'},
+    {n:'Taffarel',pos:'POR',ovr:86,nat:'BRA'},{n:'Aldair',pos:'DIF',ovr:86,nat:'BRA'},
+    {n:'Lúcio',pos:'DIF',ovr:87,nat:'BRA'},
+    {n:'Edmundo',pos:'ATT',ovr:86,nat:'BRA'},
     {n:'Leônidas',pos:'ATT',ovr:88,nat:'BRA'},{n:'Zizinho',pos:'CEN',ovr:88,nat:'BRA'},{n:'Vavá',pos:'ATT',ovr:86,nat:'BRA'},
-    {n:'Amarildo',pos:'ATT',ovr:85,nat:'BRA'},
+
     // --- Argentina ---
     {n:'Diego Maradona',pos:'ATT',ovr:97,nat:'ARG'},{n:'Alfredo Di Stéfano',pos:'ATT',ovr:96,nat:'ARG'},{n:'Gabriel Batistuta',pos:'ATT',ovr:92,nat:'ARG'},
     {n:'Mario Kempes',pos:'ATT',ovr:90,nat:'ARG'},{n:'Daniel Passarella',pos:'DIF',ovr:88,nat:'ARG'},{n:'Juan Román Riquelme',pos:'CEN',ovr:90,nat:'ARG'},
     {n:'Fernando Redondo',pos:'CEN',ovr:89,nat:'ARG'},{n:'Diego Simeone',pos:'CEN',ovr:87,nat:'ARG'},{n:'Hernán Crespo',pos:'ATT',ovr:88,nat:'ARG'},
     {n:'Gonzalo Higuaín',pos:'ATT',ovr:87,nat:'ARG'},{n:'Javier Zanetti',pos:'DIF',ovr:87,nat:'ARG'},{n:'Roberto Ayala',pos:'DIF',ovr:86,nat:'ARG'},
-    {n:'Oscar Ruggeri',pos:'DIF',ovr:85,nat:'ARG'},{n:'Ossie Ardiles',pos:'CEN',ovr:85,nat:'ARG'},{n:'Ariel Ortega',pos:'CEN',ovr:86,nat:'ARG'},
+    {n:'Ariel Ortega',pos:'CEN',ovr:86,nat:'ARG'},
     {n:'Claudio Caniggia',pos:'ATT',ovr:87,nat:'ARG'},{n:'Jorge Valdano',pos:'ATT',ovr:86,nat:'ARG'},{n:'Ubaldo Fillol',pos:'POR',ovr:86,nat:'ARG'},
-    {n:'Sergio Goycochea',pos:'POR',ovr:85,nat:'ARG'},{n:'Esteban Cambiasso',pos:'CEN',ovr:86,nat:'ARG'},{n:'Juan Sebastián Verón',pos:'CEN',ovr:88,nat:'ARG'},
-    {n:'Walter Samuel',pos:'DIF',ovr:87,nat:'ARG'},{n:'Nicolás Burdisso',pos:'DIF',ovr:85,nat:'ARG'},{n:'Carlos Tevez',pos:'ATT',ovr:87,nat:'ARG'},
-    {n:'Javier Saviola',pos:'ATT',ovr:85,nat:'ARG'},{n:'Marcelo Gallardo',pos:'CEN',ovr:85,nat:'ARG'},
+    {n:'Esteban Cambiasso',pos:'CEN',ovr:86,nat:'ARG'},{n:'Juan Sebastián Verón',pos:'CEN',ovr:88,nat:'ARG'},
+    {n:'Walter Samuel',pos:'DIF',ovr:87,nat:'ARG'},{n:'Carlos Tevez',pos:'ATT',ovr:87,nat:'ARG'},
+
     // --- Italia ---
     {n:'Franco Baresi',pos:'DIF',ovr:93,nat:'ITA'},{n:'Paolo Maldini',pos:'DIF',ovr:95,nat:'ITA'},{n:'Roberto Baggio',pos:'ATT',ovr:93,nat:'ITA'},
     {n:'Gianluigi Buffon',pos:'POR',ovr:93,nat:'ITA'},{n:'Alessandro Del Piero',pos:'ATT',ovr:91,nat:'ITA'},{n:'Francesco Totti',pos:'ATT',ovr:91,nat:'ITA'},
@@ -595,9 +595,9 @@
     {n:'Sandro Mazzola',pos:'ATT',ovr:88,nat:'ITA'},{n:'Gianni Rivera',pos:'CEN',ovr:89,nat:'ITA'},{n:'Alessandro Nesta',pos:'DIF',ovr:90,nat:'ITA'},
     {n:'Filippo Inzaghi',pos:'ATT',ovr:87,nat:'ITA'},{n:'Christian Vieri',pos:'ATT',ovr:88,nat:'ITA'},{n:'Demetrio Albertini',pos:'CEN',ovr:86,nat:'ITA'},
     {n:'Antonio Cabrini',pos:'DIF',ovr:86,nat:'ITA'},{n:'Marco Tardelli',pos:'CEN',ovr:86,nat:'ITA'},{n:'Bruno Conti',pos:'CEN',ovr:86,nat:'ITA'},
-    {n:'Salvatore Schillaci',pos:'ATT',ovr:85,nat:'ITA'},{n:'Roberto Mancini',pos:'ATT',ovr:86,nat:'ITA'},{n:'Gianluca Vialli',pos:'ATT',ovr:87,nat:'ITA'},
+    {n:'Roberto Mancini',pos:'ATT',ovr:86,nat:'ITA'},{n:'Gianluca Vialli',pos:'ATT',ovr:87,nat:'ITA'},
     {n:'Giuseppe Bergomi',pos:'DIF',ovr:87,nat:'ITA'},{n:'Beppe Signori',pos:'ATT',ovr:86,nat:'ITA'},{n:'Angelo Peruzzi',pos:'POR',ovr:86,nat:'ITA'},
-    {n:'Ciro Ferrara',pos:'DIF',ovr:86,nat:'ITA'},{n:'Fabio Grosso',pos:'DIF',ovr:85,nat:'ITA'},{n:'Alessandro Costacurta',pos:'DIF',ovr:87,nat:'ITA'},
+    {n:'Ciro Ferrara',pos:'DIF',ovr:86,nat:'ITA'},{n:'Alessandro Costacurta',pos:'DIF',ovr:87,nat:'ITA'},
     {n:'Marco Materazzi',pos:'DIF',ovr:86,nat:'ITA'},{n:'Gennaro Gattuso',pos:'CEN',ovr:86,nat:'ITA'},{n:'Claudio Gentile',pos:'DIF',ovr:86,nat:'ITA'},
     // --- Germania ---
     {n:'Franz Beckenbauer',pos:'DIF',ovr:96,nat:'GER'},{n:'Gerd Müller',pos:'ATT',ovr:95,nat:'GER'},{n:'Lothar Matthäus',pos:'CEN',ovr:93,nat:'GER'},
@@ -606,8 +606,8 @@
     {n:'Sepp Maier',pos:'POR',ovr:88,nat:'GER'},{n:'Rudi Völler',pos:'ATT',ovr:88,nat:'GER'},{n:'Andreas Brehme',pos:'DIF',ovr:87,nat:'GER'},
     {n:'Jürgen Kohler',pos:'DIF',ovr:86,nat:'GER'},{n:'Matthias Sammer',pos:'DIF',ovr:88,nat:'GER'},{n:'Thomas Häßler',pos:'CEN',ovr:86,nat:'GER'},
     {n:'Stefan Effenberg',pos:'CEN',ovr:87,nat:'GER'},{n:'Bastian Schweinsteiger',pos:'CEN',ovr:88,nat:'GER'},{n:'Miroslav Klose',pos:'ATT',ovr:88,nat:'GER'},
-    {n:'Philipp Lahm',pos:'DIF',ovr:89,nat:'GER'},{n:'Bernd Schuster',pos:'CEN',ovr:88,nat:'GER'},{n:'Lukas Podolski',pos:'ATT',ovr:85,nat:'GER'},
-    {n:'Per Mertesacker',pos:'DIF',ovr:85,nat:'GER'},{n:'Christoph Metzelder',pos:'DIF',ovr:85,nat:'GER'},{n:'Mario Basler',pos:'CEN',ovr:85,nat:'GER'},
+    {n:'Philipp Lahm',pos:'DIF',ovr:89,nat:'GER'},{n:'Bernd Schuster',pos:'CEN',ovr:88,nat:'GER'},
+
     // --- Francia ---
     {n:'Zinedine Zidane',pos:'CEN',ovr:96,nat:'FRA'},{n:'Michel Platini',pos:'CEN',ovr:94,nat:'FRA'},{n:'Thierry Henry',pos:'ATT',ovr:92,nat:'FRA'},
     {n:'Just Fontaine',pos:'ATT',ovr:90,nat:'FRA'},{n:'Raymond Kopa',pos:'CEN',ovr:90,nat:'FRA'},{n:'Marcel Desailly',pos:'DIF',ovr:89,nat:'FRA'},
@@ -615,30 +615,30 @@
     {n:'Youri Djorkaeff',pos:'CEN',ovr:88,nat:'FRA'},{n:'David Trezeguet',pos:'ATT',ovr:88,nat:'FRA'},{n:'Lilian Thuram',pos:'DIF',ovr:89,nat:'FRA'},
     {n:'Bixente Lizarazu',pos:'DIF',ovr:87,nat:'FRA'},{n:'Emmanuel Petit',pos:'CEN',ovr:86,nat:'FRA'},{n:'Claude Makélélé',pos:'CEN',ovr:88,nat:'FRA'},
     {n:'Eric Cantona',pos:'ATT',ovr:88,nat:'FRA'},{n:'Jean-Pierre Papin',pos:'ATT',ovr:89,nat:'FRA'},{n:'David Ginola',pos:'CEN',ovr:86,nat:'FRA'},
-    {n:'Robert Pirès',pos:'CEN',ovr:87,nat:'FRA'},{n:'Fabien Barthez',pos:'POR',ovr:87,nat:'FRA'},{n:'William Gallas',pos:'DIF',ovr:85,nat:'FRA'},
+    {n:'Robert Pirès',pos:'CEN',ovr:87,nat:'FRA'},{n:'Fabien Barthez',pos:'POR',ovr:87,nat:'FRA'},
     {n:'Alain Giresse',pos:'CEN',ovr:87,nat:'FRA'},{n:'Jean Tigana',pos:'CEN',ovr:87,nat:'FRA'},
     {n:'Luis Fernández',pos:'CEN',ovr:86,nat:'FRA'},{n:'Nicolas Anelka',pos:'ATT',ovr:87,nat:'FRA'},
     // --- Spagna ---
     {n:'Xavi Hernández',pos:'CEN',ovr:93,nat:'ESP'},{n:'Andrés Iniesta',pos:'CEN',ovr:93,nat:'ESP'},
     {n:'Raúl González',pos:'ATT',ovr:91,nat:'ESP'},{n:'Iker Casillas',pos:'POR',ovr:91,nat:'ESP'},{n:'Carles Puyol',pos:'DIF',ovr:89,nat:'ESP'},
-    {n:'Emilio Butragueño',pos:'ATT',ovr:88,nat:'ESP'},{n:'Michel González',pos:'CEN',ovr:87,nat:'ESP'},{n:'José Luis Sanchís',pos:'DIF',ovr:85,nat:'ESP'},
+    {n:'Emilio Butragueño',pos:'ATT',ovr:88,nat:'ESP'},{n:'Michel González',pos:'CEN',ovr:87,nat:'ESP'},
     {n:'Fernando Hierro',pos:'DIF',ovr:89,nat:'ESP'},{n:'Andoni Zubizarreta',pos:'POR',ovr:87,nat:'ESP'},{n:'Luis Enrique Martínez',pos:'CEN',ovr:87,nat:'ESP'},
     {n:'Pep Guardiola',pos:'CEN',ovr:87,nat:'ESP'},{n:'David Villa',pos:'ATT',ovr:89,nat:'ESP'},{n:'Fernando Torres',pos:'ATT',ovr:88,nat:'ESP'},
-    {n:'Xabi Alonso',pos:'CEN',ovr:89,nat:'ESP'},{n:'Rafael Gordillo',pos:'DIF',ovr:85,nat:'ESP'},{n:'Julio Salinas',pos:'ATT',ovr:85,nat:'ESP'},
-    {n:'Míchel Salgado',pos:'DIF',ovr:85,nat:'ESP'},{n:'Joaquín Sánchez',pos:'CEN',ovr:85,nat:'ESP'},{n:'Santiago Cañizares',pos:'POR',ovr:85,nat:'ESP'},
-    {n:'José Antonio Camacho',pos:'DIF',ovr:86,nat:'ESP'},{n:'Cesc Fàbregas',pos:'CEN',ovr:87,nat:'ESP'},{n:'Julen Guerrero',pos:'ATT',ovr:85,nat:'ESP'},
-    {n:'Aitor Karanka',pos:'DIF',ovr:85,nat:'ESP'},{n:'Vicente del Bosque',pos:'CEN',ovr:85,nat:'ESP'},
+    {n:'Xabi Alonso',pos:'CEN',ovr:89,nat:'ESP'},
+
+    {n:'José Antonio Camacho',pos:'DIF',ovr:86,nat:'ESP'},{n:'Cesc Fàbregas',pos:'CEN',ovr:87,nat:'ESP'},
+
     // --- Inghilterra ---
     {n:'Bobby Moore',pos:'DIF',ovr:92,nat:'ENG'},{n:'Bobby Charlton',pos:'CEN',ovr:92,nat:'ENG'},{n:'Gary Lineker',pos:'ATT',ovr:89,nat:'ENG'},
     {n:'Alan Shearer',pos:'ATT',ovr:89,nat:'ENG'},{n:'Paul Gascoigne',pos:'CEN',ovr:89,nat:'ENG'},{n:'David Beckham',pos:'CEN',ovr:89,nat:'ENG'},
     {n:'Steven Gerrard',pos:'CEN',ovr:90,nat:'ENG'},{n:'Frank Lampard',pos:'CEN',ovr:89,nat:'ENG'},{n:'Paul Scholes',pos:'CEN',ovr:88,nat:'ENG'},
     {n:'Ryan Giggs',pos:'CEN',ovr:88,nat:'ENG'},{n:'Rio Ferdinand',pos:'DIF',ovr:87,nat:'ENG'},{n:'John Terry',pos:'DIF',ovr:87,nat:'ENG'},
-    {n:'Ashley Cole',pos:'DIF',ovr:87,nat:'ENG'},{n:'Gary Neville',pos:'DIF',ovr:85,nat:'ENG'},{n:'Michael Owen',pos:'ATT',ovr:87,nat:'ENG'},
+    {n:'Ashley Cole',pos:'DIF',ovr:87,nat:'ENG'},{n:'Michael Owen',pos:'ATT',ovr:87,nat:'ENG'},
     {n:'Peter Shilton',pos:'POR',ovr:88,nat:'ENG'},{n:'David Seaman',pos:'POR',ovr:86,nat:'ENG'},{n:'Kevin Keegan',pos:'ATT',ovr:88,nat:'ENG'},
-    {n:'Gordon Banks',pos:'POR',ovr:89,nat:'ENG'},{n:'Geoff Hurst',pos:'ATT',ovr:87,nat:'ENG'},{n:'Martin Peters',pos:'CEN',ovr:85,nat:'ENG'},
-    {n:'Trevor Brooking',pos:'CEN',ovr:85,nat:'ENG'},{n:'Glenn Hoddle',pos:'CEN',ovr:86,nat:'ENG'},{n:'Teddy Sheringham',pos:'ATT',ovr:86,nat:'ENG'},
-    {n:'Les Ferdinand',pos:'ATT',ovr:85,nat:'ENG'},{n:'Sol Campbell',pos:'DIF',ovr:86,nat:'ENG'},{n:'Wayne Rooney',pos:'ATT',ovr:89,nat:'ENG'},
-    {n:'Jamie Carragher',pos:'DIF',ovr:85,nat:'ENG'},{n:'Emile Heskey',pos:'ATT',ovr:85,nat:'ENG'},{n:'Robbie Fowler',pos:'ATT',ovr:86,nat:'ENG'},
+    {n:'Gordon Banks',pos:'POR',ovr:89,nat:'ENG'},{n:'Geoff Hurst',pos:'ATT',ovr:87,nat:'ENG'},
+    {n:'Glenn Hoddle',pos:'CEN',ovr:86,nat:'ENG'},{n:'Teddy Sheringham',pos:'ATT',ovr:86,nat:'ENG'},
+    {n:'Sol Campbell',pos:'DIF',ovr:86,nat:'ENG'},{n:'Wayne Rooney',pos:'ATT',ovr:89,nat:'ENG'},
+    {n:'Robbie Fowler',pos:'ATT',ovr:86,nat:'ENG'},
     {n:'Ian Wright',pos:'ATT',ovr:86,nat:'ENG'},
     // --- Olanda ---
     {n:'Johan Cruijff',pos:'ATT',ovr:96,nat:'NED'},{n:'Marco van Basten',pos:'ATT',ovr:93,nat:'NED'},{n:'Ruud Gullit',pos:'CEN',ovr:92,nat:'NED'},
@@ -646,80 +646,80 @@
     {n:'Clarence Seedorf',pos:'CEN',ovr:88,nat:'NED'},{n:'Edgar Davids',pos:'CEN',ovr:87,nat:'NED'},{n:'Patrick Kluivert',pos:'ATT',ovr:87,nat:'NED'},
     {n:'Edwin van der Sar',pos:'POR',ovr:89,nat:'NED'},{n:'Johan Neeskens',pos:'CEN',ovr:88,nat:'NED'},{n:'Ronald Koeman',pos:'DIF',ovr:88,nat:'NED'},
     {n:'Frank de Boer',pos:'DIF',ovr:86,nat:'NED'},{n:'Robin van Persie',pos:'ATT',ovr:87,nat:'NED'},{n:'Wesley Sneijder',pos:'CEN',ovr:88,nat:'NED'},
-    {n:'Rafael van der Vaart',pos:'CEN',ovr:86,nat:'NED'},{n:'Giovanni van Bronckhorst',pos:'DIF',ovr:85,nat:'NED'},{n:'Arjen Robben',pos:'ATT',ovr:87,nat:'NED'},
-    {n:'Jaap Stam',pos:'DIF',ovr:87,nat:'NED'},{n:'Phillip Cocu',pos:'CEN',ovr:85,nat:'NED'},
+    {n:'Rafael van der Vaart',pos:'CEN',ovr:86,nat:'NED'},{n:'Arjen Robben',pos:'ATT',ovr:87,nat:'NED'},
+    {n:'Jaap Stam',pos:'DIF',ovr:87,nat:'NED'},
     // --- Portogallo ---
     {n:'Eusébio',pos:'ATT',ovr:94,nat:'POR'},{n:'Luís Figo',pos:'CEN',ovr:91,nat:'POR'},{n:'Rui Costa',pos:'CEN',ovr:89,nat:'POR'},
     {n:'Paulo Futre',pos:'ATT',ovr:88,nat:'POR'},{n:'Fernando Couto',pos:'DIF',ovr:86,nat:'POR'},{n:'Vítor Baía',pos:'POR',ovr:86,nat:'POR'},
-    {n:'Deco',pos:'CEN',ovr:88,nat:'POR'},{n:'Nuno Gomes',pos:'ATT',ovr:85,nat:'POR'},{n:'Pauleta',pos:'ATT',ovr:86,nat:'POR'},
-    {n:'Simão Sabrosa',pos:'CEN',ovr:85,nat:'POR'},{n:'Costinha',pos:'CEN',ovr:85,nat:'POR'},{n:'Maniche',pos:'CEN',ovr:85,nat:'POR'},
+    {n:'Deco',pos:'CEN',ovr:88,nat:'POR'},{n:'Pauleta',pos:'ATT',ovr:86,nat:'POR'},
+
     // --- Uruguay ---
     {n:'Enzo Francescoli',pos:'ATT',ovr:90,nat:'URU'},{n:'Diego Forlán',pos:'ATT',ovr:88,nat:'URU'},{n:'Álvaro Recoba',pos:'ATT',ovr:87,nat:'URU'},
-    {n:'Óbdulio Varela',pos:'DIF',ovr:87,nat:'URU'},{n:'Rubén Sosa',pos:'ATT',ovr:85,nat:'URU'},{n:'José Nasazzi',pos:'DIF',ovr:85,nat:'URU'},
-    {n:'Héctor Scarone',pos:'ATT',ovr:86,nat:'URU'},{n:'Fernando Morena',pos:'ATT',ovr:85,nat:'URU'},{n:'Paolo Montero',pos:'DIF',ovr:85,nat:'URU'},
-    {n:'Gustavo Poyet',pos:'CEN',ovr:85,nat:'URU'},
+    {n:'Óbdulio Varela',pos:'DIF',ovr:87,nat:'URU'},
+    {n:'Héctor Scarone',pos:'ATT',ovr:86,nat:'URU'},
+
     // --- Colombia ---
     {n:'Carlos Valderrama',pos:'CEN',ovr:90,nat:'COL'},{n:'René Higuita',pos:'POR',ovr:86,nat:'COL'},{n:'Faustino Asprilla',pos:'ATT',ovr:86,nat:'COL'},
-    {n:'Freddy Rincón',pos:'CEN',ovr:86,nat:'COL'},{n:'Iván Córdoba',pos:'DIF',ovr:86,nat:'COL'},{n:'Andrés Escobar',pos:'DIF',ovr:85,nat:'COL'},
-    {n:'Mario Yepes',pos:'DIF',ovr:85,nat:'COL'},{n:'Willington Ortiz',pos:'ATT',ovr:85,nat:'COL'},
+    {n:'Freddy Rincón',pos:'CEN',ovr:86,nat:'COL'},{n:'Iván Córdoba',pos:'DIF',ovr:86,nat:'COL'},
+
     // --- Cile / Paraguay / Perù / Ecuador / Bolivia / Venezuela ---
     {n:'Iván Zamorano',pos:'ATT',ovr:87,nat:'CHI'},{n:'Marcelo Salas',pos:'ATT',ovr:87,nat:'CHI'},{n:'Elías Figueroa',pos:'DIF',ovr:87,nat:'CHI'},
-    {n:'José Luis Chilavert',pos:'POR',ovr:88,nat:'PAR'},{n:'Roque Santa Cruz',pos:'ATT',ovr:85,nat:'PAR'},{n:'Julio César Cáceres',pos:'DIF',ovr:85,nat:'PAR'},
-    {n:'Teófilo Cubillas',pos:'ATT',ovr:89,nat:'PER'},{n:'Hugo Sotil',pos:'ATT',ovr:85,nat:'PER'},
-    {n:'Alex Aguinaga',pos:'CEN',ovr:85,nat:'ECU'},{n:'Marco Etcheverry',pos:'CEN',ovr:85,nat:'BOL'},
+    {n:'José Luis Chilavert',pos:'POR',ovr:88,nat:'PAR'},
+    {n:'Teófilo Cubillas',pos:'ATT',ovr:89,nat:'PER'},
+
     // --- Messico / USA / Costa Rica / Honduras ---
     {n:'Hugo Sánchez',pos:'ATT',ovr:91,nat:'MEX'},{n:'Rafael Márquez',pos:'DIF',ovr:87,nat:'MEX'},{n:'Cuauhtémoc Blanco',pos:'ATT',ovr:86,nat:'MEX'},
-    {n:'Jorge Campos',pos:'POR',ovr:85,nat:'MEX'},{n:'Luis Hernández',pos:'ATT',ovr:85,nat:'MEX'},{n:'Landon Donovan',pos:'ATT',ovr:86,nat:'USA'},
-    {n:'Claudio Reyna',pos:'CEN',ovr:85,nat:'USA'},{n:'Kasey Keller',pos:'POR',ovr:85,nat:'USA'},{n:'Paulo Wanchope',pos:'ATT',ovr:85,nat:'CRC'},
-    {n:'Amado Guevara',pos:'CEN',ovr:85,nat:'HON'},
+    {n:'Landon Donovan',pos:'ATT',ovr:86,nat:'USA'},
+
+
     // --- Belgio ---
     {n:'Enzo Scifo',pos:'CEN',ovr:88,nat:'BEL'},{n:'Jean-Marie Pfaff',pos:'POR',ovr:87,nat:'BEL'},{n:'Jan Ceulemans',pos:'CEN',ovr:86,nat:'BEL'},
-    {n:'Éric Gerets',pos:'DIF',ovr:86,nat:'BEL'},{n:'Marc Wilmots',pos:'CEN',ovr:85,nat:'BEL'},
+    {n:'Éric Gerets',pos:'DIF',ovr:86,nat:'BEL'},
     // --- Croazia / ex Jugoslavia ---
     {n:'Davor Šuker',pos:'ATT',ovr:89,nat:'CRO'},{n:'Zvonimir Boban',pos:'CEN',ovr:88,nat:'CRO'},{n:'Robert Prosinečki',pos:'CEN',ovr:87,nat:'CRO'},
     {n:'Dragan Džajić',pos:'ATT',ovr:88,nat:'SRB'},{n:'Dejan Savićević',pos:'ATT',ovr:88,nat:'MNE'},{n:'Predrag Mijatović',pos:'ATT',ovr:87,nat:'MNE'},
     {n:'Siniša Mihajlović',pos:'DIF',ovr:86,nat:'SRB'},{n:'Dragan Stojković',pos:'CEN',ovr:88,nat:'SRB'},{n:'Safet Sušić',pos:'CEN',ovr:87,nat:'BIH'},
-    {n:'Darko Pančev',pos:'ATT',ovr:86,nat:'MKD'},{n:'Vladimir Jugović',pos:'CEN',ovr:85,nat:'SRB'},{n:'Slaven Bilić',pos:'DIF',ovr:85,nat:'CRO'},
+    {n:'Darko Pančev',pos:'ATT',ovr:86,nat:'MKD'},
     // --- Repubblica Ceca / Slovacchia / Polonia / Ungheria / Romania / Bulgaria ---
     {n:'Pavel Nedvěd',pos:'CEN',ovr:90,nat:'CZE'},{n:'Antonín Panenka',pos:'CEN',ovr:86,nat:'CZE'},{n:'Tomáš Rosický',pos:'CEN',ovr:87,nat:'CZE'},
-    {n:'Karel Poborský',pos:'CEN',ovr:85,nat:'CZE'},{n:'Petr Čech',pos:'POR',ovr:88,nat:'CZE'},{n:'Ľubomír Moravčík',pos:'CEN',ovr:85,nat:'SVK'},
+    {n:'Petr Čech',pos:'POR',ovr:88,nat:'CZE'},
     {n:'Zbigniew Boniek',pos:'ATT',ovr:90,nat:'POL'},{n:'Grzegorz Lato',pos:'ATT',ovr:88,nat:'POL'},{n:'Kazimierz Deyna',pos:'CEN',ovr:88,nat:'POL'},
     {n:'Włodzimierz Lubański',pos:'ATT',ovr:87,nat:'POL'},{n:'Ferenc Puskás',pos:'ATT',ovr:96,nat:'HUN'},{n:'Sándor Kocsis',pos:'ATT',ovr:90,nat:'HUN'},
     {n:'Nándor Hidegkuti',pos:'ATT',ovr:88,nat:'HUN'},{n:'József Bozsik',pos:'CEN',ovr:87,nat:'HUN'},{n:'Gheorghe Hagi',pos:'CEN',ovr:91,nat:'ROU'},
-    {n:'Gheorghe Popescu',pos:'DIF',ovr:86,nat:'ROU'},{n:'Marius Lăcătuș',pos:'ATT',ovr:85,nat:'ROU'},{n:'Cristian Chivu',pos:'DIF',ovr:85,nat:'ROU'},
+    {n:'Gheorghe Popescu',pos:'DIF',ovr:86,nat:'ROU'},
     {n:'Hristo Stoichkov',pos:'ATT',ovr:91,nat:'BUL'},{n:'Krasimir Balakov',pos:'CEN',ovr:86,nat:'BUL'},
     // --- Svezia / Danimarca / Norvegia ---
     {n:'Zlatan Ibrahimović',pos:'ATT',ovr:90,nat:'SWE'},{n:'Henrik Larsson',pos:'ATT',ovr:89,nat:'SWE'},{n:'Tomas Brolin',pos:'ATT',ovr:86,nat:'SWE'},
-    {n:'Kennet Andersson',pos:'ATT',ovr:85,nat:'SWE'},{n:'Gunnar Nordahl',pos:'ATT',ovr:88,nat:'SWE'},{n:'Nils Liedholm',pos:'CEN',ovr:88,nat:'SWE'},
+    {n:'Gunnar Nordahl',pos:'ATT',ovr:88,nat:'SWE'},{n:'Nils Liedholm',pos:'CEN',ovr:88,nat:'SWE'},
     {n:'Michael Laudrup',pos:'CEN',ovr:92,nat:'DEN'},{n:'Brian Laudrup',pos:'ATT',ovr:89,nat:'DEN'},{n:'Peter Schmeichel',pos:'POR',ovr:90,nat:'DEN'},
-    {n:'Preben Elkjær',pos:'ATT',ovr:87,nat:'DEN'},{n:'Allan Simonsen',pos:'ATT',ovr:87,nat:'DEN'},{n:'Jon Dahl Tomasson',pos:'ATT',ovr:85,nat:'DEN'},
-    {n:'Ole Gunnar Solskjær',pos:'ATT',ovr:85,nat:'NOR'},{n:'John Carew',pos:'ATT',ovr:85,nat:'NOR'},
+    {n:'Preben Elkjær',pos:'ATT',ovr:87,nat:'DEN'},{n:'Allan Simonsen',pos:'ATT',ovr:87,nat:'DEN'},
+
     // --- Russia / URSS / Ucraina / Georgia / Armenia ---
     {n:'Lev Yashin',pos:'POR',ovr:93,nat:'RUS'},{n:'Oleg Blokhin',pos:'ATT',ovr:90,nat:'UKR'},{n:'Igor Belanov',pos:'ATT',ovr:87,nat:'UKR'},
     {n:'Andriy Shevchenko',pos:'ATT',ovr:91,nat:'UKR'},{n:'Rinat Dasayev',pos:'POR',ovr:87,nat:'RUS'},{n:'Igor Netto',pos:'CEN',ovr:86,nat:'RUS'},
-    {n:'Alexander Mostovoi',pos:'CEN',ovr:85,nat:'RUS'},{n:'Valeri Karpin',pos:'CEN',ovr:85,nat:'RUS'},{n:'Kakhaber Kaladze',pos:'DIF',ovr:85,nat:'GEO'},
+
     // --- Turchia / Grecia ---
-    {n:'Hakan Şükür',pos:'ATT',ovr:87,nat:'TUR'},{n:'Rüştü Reçber',pos:'POR',ovr:87,nat:'TUR'},{n:'Emre Belözoğlu',pos:'CEN',ovr:85,nat:'TUR'},
-    {n:'Tugay Kerimoğlu',pos:'CEN',ovr:85,nat:'TUR'},{n:'Theodoros Zagorakis',pos:'CEN',ovr:86,nat:'GRE'},{n:'Nikos Anastopoulos',pos:'ATT',ovr:85,nat:'GRE'},
+    {n:'Hakan Şükür',pos:'ATT',ovr:87,nat:'TUR'},{n:'Rüştü Reçber',pos:'POR',ovr:87,nat:'TUR'},
+    {n:'Theodoros Zagorakis',pos:'CEN',ovr:86,nat:'GRE'},
     // --- Scozia / Galles / Irlanda ---
     {n:'Kenny Dalglish',pos:'ATT',ovr:90,nat:'SCO'},{n:'Denis Law',pos:'ATT',ovr:89,nat:'SCO'},{n:'Graeme Souness',pos:'CEN',ovr:87,nat:'SCO'},
-    {n:'Ally McCoist',pos:'ATT',ovr:85,nat:'SCO'},{n:'Ian Rush',pos:'ATT',ovr:88,nat:'WAL'},{n:'John Charles',pos:'ATT',ovr:88,nat:'WAL'},
-    {n:'Roy Keane',pos:'CEN',ovr:88,nat:'IRL'},{n:'Paul McGrath',pos:'DIF',ovr:86,nat:'IRL'},{n:'Damien Duff',pos:'ATT',ovr:85,nat:'IRL'},
+    {n:'Ian Rush',pos:'ATT',ovr:88,nat:'WAL'},{n:'John Charles',pos:'ATT',ovr:88,nat:'WAL'},
+    {n:'Roy Keane',pos:'CEN',ovr:88,nat:'IRL'},{n:'Paul McGrath',pos:'DIF',ovr:86,nat:'IRL'},
     // --- Austria / Svizzera ---
-    {n:'Herbert Prohaska',pos:'CEN',ovr:86,nat:'AUT'},{n:'Hans Krankl',pos:'ATT',ovr:87,nat:'AUT'},{n:'Stéphane Chapuisat',pos:'ATT',ovr:85,nat:'SUI'},
-    {n:'Alexander Frei',pos:'ATT',ovr:85,nat:'SUI'},
+    {n:'Herbert Prohaska',pos:'CEN',ovr:86,nat:'AUT'},{n:'Hans Krankl',pos:'ATT',ovr:87,nat:'AUT'},
+
     // --- Ghana / Nigeria / Camerun / Senegal / Costa d'Avorio / Egitto / Marocco / Algeria ---
     {n:'Abédi Pelé',pos:'CEN',ovr:89,nat:'GHA'},{n:'Tony Yeboah',pos:'ATT',ovr:86,nat:'GHA'},{n:'Jay-Jay Okocha',pos:'CEN',ovr:88,nat:'NGA'},
-    {n:'Nwankwo Kanu',pos:'ATT',ovr:86,nat:'NGA'},{n:'Rashidi Yekini',pos:'ATT',ovr:85,nat:'NGA'},{n:'Samuel Eto\'o',pos:'ATT',ovr:90,nat:'CMR'},
-    {n:'Roger Milla',pos:'ATT',ovr:88,nat:'CMR'},{n:'Rigobert Song',pos:'DIF',ovr:85,nat:'CMR'},{n:'Patrick M\'Boma',pos:'ATT',ovr:85,nat:'CMR'},
-    {n:'El Hadji Diouf',pos:'ATT',ovr:85,nat:'SEN'},{n:'Didier Drogba',pos:'ATT',ovr:90,nat:'CIV'},{n:'Yaya Touré',pos:'CEN',ovr:89,nat:'CIV'},
-    {n:'Kolo Touré',pos:'DIF',ovr:85,nat:'CIV'},{n:'Salomon Kalou',pos:'ATT',ovr:85,nat:'CIV'},{n:'Mohamed Aboutrika',pos:'CEN',ovr:86,nat:'EGY'},
-    {n:'Ahmed Hassan',pos:'CEN',ovr:85,nat:'EGY'},{n:'Mustapha Hadji',pos:'CEN',ovr:86,nat:'MAR'},{n:'Rachid Daoudi',pos:'ATT',ovr:85,nat:'MAR'},
-    {n:'Rabah Madjer',pos:'ATT',ovr:87,nat:'ALG'},{n:'Lakhdar Belloumi',pos:'CEN',ovr:85,nat:'ALG'},
+    {n:'Nwankwo Kanu',pos:'ATT',ovr:86,nat:'NGA'},{n:'Samuel Eto\'o',pos:'ATT',ovr:90,nat:'CMR'},
+    {n:'Roger Milla',pos:'ATT',ovr:88,nat:'CMR'},
+    {n:'Didier Drogba',pos:'ATT',ovr:90,nat:'CIV'},{n:'Yaya Touré',pos:'CEN',ovr:89,nat:'CIV'},
+    {n:'Mohamed Aboutrika',pos:'CEN',ovr:86,nat:'EGY'},
+    {n:'Mustapha Hadji',pos:'CEN',ovr:86,nat:'MAR'},
+    {n:'Rabah Madjer',pos:'ATT',ovr:87,nat:'ALG'},
     // --- Sudafrica / Arabia Saudita / Giappone / Corea del Sud / Australia ---
-    {n:'Lucas Radebe',pos:'DIF',ovr:85,nat:'RSA'},{n:'Sami Al-Jaber',pos:'ATT',ovr:85,nat:'KSA'},{n:'Mohamed Al-Deayea',pos:'POR',ovr:85,nat:'KSA'},
-    {n:'Hidetoshi Nakata',pos:'CEN',ovr:87,nat:'JPN'},{n:'Kazuyoshi Miura',pos:'ATT',ovr:85,nat:'JPN'},{n:'Hong Myung-bo',pos:'DIF',ovr:86,nat:'KOR'},
-    {n:'Cha Bum-kun',pos:'ATT',ovr:87,nat:'KOR'},{n:'Harry Kewell',pos:'ATT',ovr:86,nat:'AUS'},{n:'Mark Viduka',pos:'ATT',ovr:85,nat:'AUS'},
+
+    {n:'Hidetoshi Nakata',pos:'CEN',ovr:87,nat:'JPN'},{n:'Hong Myung-bo',pos:'DIF',ovr:86,nat:'KOR'},
+    {n:'Cha Bum-kun',pos:'ATT',ovr:87,nat:'KOR'},{n:'Harry Kewell',pos:'ATT',ovr:86,nat:'AUS'}
   ];
   const EURO_CLUB_PREFIX = ['Dynamo', 'Slavia', 'Sporting', 'Real', 'Atletico', 'Union', 'Rapid', 'Steaua', 'Partizan', 'Spartak', 'Legia', 'CSKA', 'Olympique', 'Girondins', 'Racing', 'FC'];
 
