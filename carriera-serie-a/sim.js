@@ -625,9 +625,30 @@
   // veri pescati dalle rose reali: prima si decide la fascia, poi si cerca un giocatore
   // (reale o generato) che ci stia dentro, così un lusso non può più regalare un nome vero
   // ma scarso preso a caso da una rosa di Serie B.
+  // Squadra Icone: leggende ritirate (vedi ICON_PLAYERS in data.js), pescabili con gli spin
+  // solo una volta arrivati in Serie A, con 1 probabilità su 7 a ogni spin (prima ancora del
+  // tiro sul giocatore reale "contemporaneo"). Età fissa a centrocampo di carriera: sono
+  // fenomeni ritirati che tornano in campo, non ex bandiere a fine carriera.
+  function iconPlayer(role) {
+    const candidates = role ? ICON_PLAYERS.filter((p) => p.pos === role) : ICON_PLAYERS;
+    if (!candidates.length) return null;
+    for (let i = 0; i < 10; i++) {
+      const ic = pick(candidates);
+      const count = S.squad.filter((p) => p.pos === ic.pos).length;
+      if (count >= POS_CAP[ic.pos]) continue;
+      const nat = natByCode(ic.nat) || pickNationality(4);
+      return { n: ic.n, nat, ovr: ic.ovr, age: genAge(27, 3, 24, 32), wage: wageFor(ic.ovr), yrs: 3 + rnd(2), pid: newPid(), pos: ic.pos, seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0, real: true, icon: true, fromClub: 'Squadra Icone' };
+    }
+    return null;
+  }
+
   function spinPlayer(premium, role) {
     const d = divOf(), scout = scoutTier();
     const band = premium ? { lo: d.avg + 3, hi: d.avg + 22 } : { lo: d.avg - 9, hi: d.avg + 11 };
+    if (S.div === 5 && Math.random() < 1 / 7) {
+      const icon = iconPlayer(role);
+      if (icon) return icon;
+    }
     const realChance = S.div === 5 ? 0.68 : S.div === 4 ? 0.55 : 0;
     if (realChance && Math.random() < realChance) {
       const real = realLeaguePlayer(band.lo, band.hi, role);

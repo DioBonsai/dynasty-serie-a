@@ -461,6 +461,10 @@ body{
   background:rgba(255,210,74,.06); box-shadow:0 0 0 1px rgba(255,210,74,.18), 0 10px 22px rgba(255,210,74,.16);
 }
 .ow-spin-card.is-real .real-badge{ margin-bottom:8px; }
+/* Le leggende ritirate (Squadra Icone) usano un accento viola invece dell'oro dei
+   giocatori reali "contemporanei", per distinguerle a colpo d'occhio. */
+.real-badge.icon-badge{ background:linear-gradient(180deg,#c9a6ff,#8a5cf0); color:#1c0e33; }
+.ow-spin-card.is-real:has(.icon-badge){ border-color:#8a5cf0; background:rgba(138,92,240,.08); box-shadow:0 0 0 1px rgba(138,92,240,.22), 0 10px 22px rgba(138,92,240,.18); }
 .ow-jan-card.is-real{
   border:2px solid var(--gold); background:rgba(255,210,74,.06); box-shadow:0 0 0 1px rgba(255,210,74,.18);
 }
