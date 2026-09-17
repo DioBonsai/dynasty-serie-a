@@ -903,8 +903,7 @@
     };
     const h = heads[how] || heads.retired;
     const honours = [];
-    const divShort = ['Eccellenza', 'Serie D', 'Serie C', 'Serie B', 'Serie A'];
-    S.trophies.titles.forEach((n, i) => { if (n) honours.push(n + 'x Titolo ' + divShort[i]); });
+    S.trophies.titles.forEach((n, i) => { if (n) honours.push(n + 'x Titolo ' + (DIVS[i] ? DIVS[i].name : '')); });
     if (S.trophies.nat) honours.push(S.trophies.nat + 'x Coppa Italia');
     ['ucl', 'uel', 'conf'].forEach((k) => { if (S.trophies[k]) honours.push(S.trophies[k] + 'x ' + EURO_COMPS[k].name); });
     const topDiv = S.history.reduce((a, hh) => Math.max(a, DIVS.findIndex((x) => x.name === hh.div)), S.div);
@@ -973,12 +972,14 @@
 
   function renderCups() {
     const wrap = $('owCups'); if (!S.cups) { wrap.innerHTML = ''; return; }
-    wrap.innerHTML = Object.values(S.cups).map((c) => {
-      const st = c.won ? 'win' : c.out ? 'out' : '';
+    wrap.innerHTML = Object.entries(S.cups).map(([key, c]) => {
+      const compClass = key === 'nat' ? 'nat' : (S.euroComp || '');
+      const st = (c.won ? 'win' : c.out ? 'out' : '') + (compClass ? ' ' + compClass : '');
       let label;
       if (c.won) label = 'Vincitori';
-      else if (c.out) label = c.phase === 'group' ? 'Eliminati nel girone' : (c.rounds[c.at - 1] || 'Eliminati');
-      else if (c.phase === 'group') label = 'Girone: ' + (c.groupPts || 0) + 'pt';
+      else if (c.out) label = c.phase === 'league' ? 'Eliminati nella fase campionato' : c.phase === 'playoff' ? 'Eliminati allo spareggio' : (c.rounds[c.at - 1] || 'Eliminati');
+      else if (c.phase === 'league') label = 'Fase campionato: ' + (c.leaguePts || 0) + 'pt (' + c.leagueAt + '/' + c.legLen + ')';
+      else if (c.phase === 'playoff') label = 'Spareggio ottavi';
       else label = c.at ? c.rounds[c.at - 1] : 'Iscritti';
       return `<span class="cup-pill ${st}">${c.name}: <b>${label}</b></span>`;
     }).join('');
@@ -1011,6 +1012,22 @@
     row.innerHTML = `<div class="mrow-mw">${name.split(' ')[0]}</div>
       <div class="mrow-main"><div class="mrow-fix">${name} ${round} <span class="ha">vs ${oppName}</span></div><div class="mrow-you">${label} · ${ptsSoFar} pt nel girone</div>${scorersHTML}</div>
       <div class="mrow-res ${res}">${gf}-${ga}</div>`;
+    $('owLog').prepend(row);
+  }
+
+  // Una singola gara di un doppio confronto (andata/ritorno, come ottavi/quarti/semifinale
+  // e lo spareggio pre-ottavi nel formato UEFA reale): solo il punteggio, senza verdetto
+  // "passa/eliminato" perché quello si decide sull'aggregato, loggato subito dopo con logCup.
+  function logCupLeg(name, round, legLabel, gf, ga, goalsFor, goalsAgainst, oppName) {
+    const row = document.createElement('div'); row.className = 'mrow cup leg';
+    const usSc = fmtScorers(goalsFor), themSc = fmtScorers(goalsAgainst);
+    const scorersHTML = (usSc || themSc) ? `<div class="mrow-scorers">
+        ${usSc ? '<div class="sc us">⚽ ' + usSc + '</div>' : ''}
+        ${themSc ? '<div class="sc them">🥅 ' + themSc + '</div>' : ''}
+      </div>` : '';
+    row.innerHTML = `<div class="mrow-mw">${name.split(' ')[0]}</div>
+      <div class="mrow-main"><div class="mrow-fix">${name} ${round} · ${legLabel} <span class="ha">vs ${oppName}</span></div>${scorersHTML}</div>
+      <div class="mrow-res">${gf}-${ga}</div>`;
     $('owLog').prepend(row);
   }
 

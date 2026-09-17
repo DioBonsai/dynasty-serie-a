@@ -10,7 +10,7 @@
    ============================================================ */
 
   /* ---------------- la piramide ---------------- */
-  // Cinque categorie, dal basso in alto. teams determina il numero di giornate ((teams-1)*2).
+  // Sei categorie, dal basso in alto. teams determina il numero di giornate ((teams-1)*2).
   // avg = il rating medio tipico della squadra in quella categoria (gli spin sono centrati lì).
   // demand = quanti tifosi verrebbero a vedere un club ben gestito a prezzi standard.
   // prize = base premio TV/montepremi di stagione, perPlace = extra per posizione scalata,
@@ -24,18 +24,20 @@
   // già qualificate, poi finale). Eccellenza: prime 2 dirette.
   // Serie D: prime 3 + playoff (4°-7°), ultime 2 retrocedono. Serie C: prime 2 +
   // playoff (3°-6°), ultime 4 giù. Serie B: prime 2 + playoff (3°-8°, come nella
-  // vera Serie B), ultime 3 giù. Serie A: ultime 3 giù.
+  // vera Serie B), ultime 3 giù. Serie A: ultime 3 giù. Promozione: come Eccellenza,
+  // prime 2 dirette + playoff, nessuna retrocessione modellata sotto di lei.
   const DIVS = [
-    { name: 'Eccellenza', teams: 24, avg: 47, demand: 4200, ticket: 14, prize: 0.15e6, perPlace: 6e3, promoted: 2, playoff: 0, releg: 0, promoBonus: 0.6e6, titleBonus: 0.25e6, spin: 75e3, premium: 225e3, cupBase: 35e3, admin: 120e3, mgrBase: 52, investor: 300e3 },
+    { name: 'Promozione', teams: 24, avg: 40, demand: 2200, ticket: 9, prize: 0.06e6, perPlace: 3e3, promoted: 2, playoff: 4, releg: 0, promoBonus: 0.3e6, titleBonus: 0.12e6, spin: 40e3, premium: 120e3, cupBase: 18e3, admin: 60e3, mgrBase: 46, investor: 150e3 },
+    { name: 'Eccellenza', teams: 24, avg: 47, demand: 4200, ticket: 14, prize: 0.15e6, perPlace: 6e3, promoted: 2, playoff: 4, releg: 3, promoBonus: 0.6e6, titleBonus: 0.25e6, spin: 75e3, premium: 225e3, cupBase: 35e3, admin: 120e3, mgrBase: 52, investor: 300e3 },
     { name: 'Serie D', teams: 24, avg: 54, demand: 7500, ticket: 17, prize: 1.0e6, perPlace: 15e3, promoted: 3, playoff: 4, releg: 2, promoBonus: 1.2e6, titleBonus: 0.5e6, spin: 200e3, premium: 600e3, cupBase: 70e3, admin: 250e3, mgrBase: 58, investor: 600e3 },
     { name: 'Serie C', teams: 24, avg: 60, demand: 13000, ticket: 21, prize: 1.6e6, perPlace: 25e3, promoted: 2, playoff: 4, releg: 4, promoBonus: 3e6, titleBonus: 1e6, spin: 500e3, premium: 2.5e6, cupBase: 140e3, admin: 450e3, mgrBase: 63, investor: 1.2e6 },
     { name: 'Serie B', teams: 24, avg: 66, demand: 24000, ticket: 28, prize: 9e6, perPlace: 120e3, promoted: 2, playoff: 6, releg: 3, promoBonus: 130e6, titleBonus: 3e6, spin: 1.5e6, premium: 8e6, cupBase: 500e3, admin: 1.5e6, mgrBase: 69, investor: 5e6 },
     { name: 'Serie A', teams: 20, avg: 77, demand: 52000, ticket: 42, prize: 105e6, perPlace: 3.1e6, promoted: 0, playoff: 0, releg: 3, euroSpots: 4, uelPos: 5, confPos: 6, promoBonus: 0, titleBonus: 30e6, spin: 6e6, premium: 30e6, cupBase: 2e6, admin: 6e6, mgrBase: 76, investor: 15e6 },
   ];
 
-  const WORTH_BASE = [4e6, 10e6, 25e6, 90e6, 450e6];
+  const WORTH_BASE = [1.5e6, 4e6, 10e6, 25e6, 90e6, 450e6];
 
-  const TROPHY_WORTH = [0.6e6, 1.5e6, 4e6, 20e6, 280e6];   // il valore di brand duraturo di uno scudetto/titolo, per categoria
+  const TROPHY_WORTH = [0.25e6, 0.6e6, 1.5e6, 4e6, 20e6, 280e6];   // il valore di brand duraturo di uno scudetto/titolo, per categoria
 
   // Le tre coppe europee raggiungibili solo dalla Serie A: 1°-4° Champions League,
   // 5° Europa League, 6° Conference League. Ogni livello ha un montepremi, un premio
@@ -51,6 +53,14 @@
   function euroTierFor(pos) { return pos <= 4 ? 'ucl' : pos === 5 ? 'uel' : pos === 6 ? 'conf' : null; }
 
   const POOLS = [
+    [ // Promozione (un gradino sotto l'Eccellenza)
+      { n: 'Torrenova', s: 45 }, { n: 'Palmarola', s: 44 }, { n: 'Casal Bernocchi', s: 44 }, { n: 'Ostia Antica', s: 43 },
+      { n: 'Bufalotta', s: 43 }, { n: 'Fiumicino', s: 42 }, { n: 'Ardea', s: 42 }, { n: 'Cerveteri', s: 41 },
+      { n: 'Nettuno', s: 41 }, { n: 'Velletri', s: 40 }, { n: 'Genzano', s: 40 }, { n: 'Marino', s: 40 },
+      { n: 'Zagarolo', s: 39 }, { n: 'Palestrina', s: 39 }, { n: 'Frascati', s: 38 }, { n: 'Ciampino', s: 38 },
+      { n: 'Monterotondo Scalo', s: 38 }, { n: 'Fonte Nuova', s: 37 }, { n: 'Mentana', s: 37 }, { n: 'Palombara', s: 36 },
+      { n: 'Tivoli Terme', s: 36 }, { n: 'Vicovaro Alta', s: 35 }, { n: 'Subiaco', s: 35 }, { n: 'Cave', s: 34 },
+    ],
     [ // Eccellenza
       { n: 'Nuova Florida', s: 54 }, { n: 'Vis Artena', s: 53 }, { n: 'Aurelia Antica', s: 52 }, { n: 'Boreale', s: 51 },
       { n: 'Grifone Gialloverde', s: 50 }, { n: 'Real Monterotondo', s: 50 }, { n: 'Palocco', s: 49 }, { n: 'Almas Roma', s: 49 },
@@ -336,7 +346,7 @@
 
   // Quota di italiani per categoria (indice = S.div, 0=Eccellenza … 4=Serie A): scende
   // gradualmente, come la vera piramide del calcio italiano.
-  const ITA_SHARE = [0.97, 0.90, 0.75, 0.55, 0.35];
+  const ITA_SHARE = [0.98, 0.97, 0.90, 0.75, 0.55, 0.35];
 
   const CREST_DEFAULT = { shape: 'shield', colors: ['#f0c869', '#7a4f16'] };
 

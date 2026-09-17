@@ -391,8 +391,8 @@
   // Chiamata a ogni cambio di stagione (in advance(), dopo l'aggiornamento di S.div): sblocca
   // le categorie appena raggiunte per la prima volta e fa "muovere" quelle già sbloccate.
   function simulateTransferWindow() {
-    if (S.div >= 3) S.marketSeenB = true;
-    if (S.div >= 4) S.marketSeenA = true;
+    if (S.div >= 4) S.marketSeenB = true;
+    if (S.div >= 5) S.marketSeenA = true;
     if (!S.marketSeenB && !S.marketSeenA) return;
     if (!S.market) initMarket();
     const pools = [];
@@ -486,7 +486,14 @@
   // budget da Serie D.
   function roundWage(w) { if (w >= 50e3) return Math.round(w / 1e3) * 1e3; if (w >= 5e3) return Math.round(w / 5e2) * 5e2; return Math.max(250, Math.round(w / 50) * 50); }
 
-  const wageFor = (ovr) => roundWage(600 * Math.pow(1.135, ovr - 45) * (0.88 + Math.random() * 0.28));
+  // Base abbassata (-10% circa) per tenere gli stipendi un po' più contenuti ovunque, più
+  // uno sconto extra solo in Serie A (dove le cifre salivano troppo per gli ovr più alti,
+  // gli unici che in Serie A si vedono davvero).
+  const wageFor = (ovr) => {
+    let w = 540 * Math.pow(1.135, ovr - 45) * (0.88 + Math.random() * 0.28);
+    if (S && S.div === 5) w *= 0.82;
+    return roundWage(w);
+  };
 
   const scoutTier = () => SCOUT_TIERS[S.scoutLevel || 0];
 
@@ -540,13 +547,13 @@
   // Serie B o dei club europei — S.market se già "vivo", altrimenti i database statici)
   // invece di generarne uno di fantasia. Le rose italiane usano la quotazione fantacalcio
   // (vedi qToRealOvr), quelle europee hanno già un `ovr` assegnato che va bene com'è.
-  function realLeaguePlayer() {
+  function realLeaguePlayer(minOvr, maxOvr) {
     const sources = [
       { league: 'serieB', rosters: S.market ? S.market.serieB : SERIE_B_ROSTERS },
       { league: 'serieA', rosters: S.market ? S.market.serieA : SERIE_A_ROSTERS },
       { league: 'euro', rosters: S.market ? S.market.euro : EURO_ROSTERS },
     ];
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 14; i++) {
       const src = pick(sources);
       const clubs = Object.keys(src.rosters);
       if (!clubs.length) continue;
@@ -557,25 +564,37 @@
       const count = S.squad.filter((p) => p.pos === rp.pos).length;
       if (count >= POS_CAP[rp.pos]) continue;
       const ovr = src.league === 'euro' ? rp.ovr : qToRealOvr(rp.pos, rp.q, src.league);
+      if (minOvr != null && (ovr < minOvr || ovr > maxOvr)) continue;
       const nat = rp.nat ? natByCode(rp.nat) : (src.league === 'euro' ? pickNationality(4) : pickNationality(S.div));
       return { n: rp.n, nat, ovr, age: genAge(26, 4.5, 19, 34), wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: rp.pos, seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0, real: true, fromClub: club };
     }
     return null;
   }
+  // Le due fasce sono separate per costruzione, non solo per media statistica: un lusso
+  // deve SEMPRE dare un giocatore chiaramente sopra la media di categoria (in Serie A,
+  // avg 77, un minimo intorno a 80), un base resta in un intervallo più largo attorno alla
+  // media (in Serie A circa 68-88). Questo vale sia per i giocatori generati sia per quelli
+  // veri pescati dalle rose reali: prima si decide la fascia, poi si cerca un giocatore
+  // (reale o generato) che ci stia dentro, così un lusso non può più regalare un nome vero
+  // ma scarso preso a caso da una rosa di Serie B.
   function spinPlayer(premium) {
     const d = divOf(), scout = scoutTier();
-    const realChance = S.div === 4 ? 0.50 : S.div === 3 ? 0.40 : 0;
+    const band = premium ? { lo: d.avg + 3, hi: d.avg + 22 } : { lo: d.avg - 9, hi: d.avg + 11 };
+    const realChance = S.div === 5 ? 0.50 : S.div === 4 ? 0.40 : 0;
     if (realChance && Math.random() < realChance) {
-      const real = realLeaguePlayer();
+      const real = realLeaguePlayer(band.lo, band.hi);
       if (real) return real;
     }
-    // Ricalibratura generale: base più stretta (3.3 invece di 4) su tutte le divisioni, così
-    // uno spin "normale" resta vicino alla media di categoria più spesso; il colpo da
-    // titoli di giornale (gem) resta possibile ma non deve più essere la norma nemmeno
-    // con lo scouting al massimo.
-    let ovr = gaussInt(d.avg + (premium ? 6 : 1) + scout.bonus, clamp(3.3 + scout.varDelta, 1.8, 3.3));
-    if (Math.random() < (premium ? 0.09 : 0) + scout.gem) ovr += 4 + rnd(4);   // lo scout scopre un gioiello
-    ovr = clamp(ovr, 40, 99);
+    let ovr;
+    if (premium) {
+      ovr = gaussInt(d.avg + 10 + scout.bonus, clamp(3.0 + scout.varDelta, 1.6, 3.0));
+      if (Math.random() < 0.12 + scout.gem) ovr += 4 + rnd(4);   // lo scout scopre un gioiello
+      ovr = clamp(ovr, band.lo, 99);
+    } else {
+      ovr = gaussInt(d.avg + 1 + scout.bonus, clamp(3.3 + scout.varDelta, 1.8, 3.3));
+      if (Math.random() < scout.gem) ovr += 4 + rnd(4);
+      ovr = clamp(ovr, band.lo, band.hi + 7);
+    }
     const age = premium && Math.random() < 0.35 ? 16 + rnd(6) : genAge(24, 5, 17, 36);
     const nat = pickNationality(S.div);
     return { n: genName(nat), nat, ovr, age, wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 };
@@ -607,8 +626,8 @@
     if (!S.crestShape) S.crestShape = CREST_DEFAULT.shape;
     if (S.scoutLevel == null) S.scoutLevel = 0;
     if (S.scoutProspectSeason == null) S.scoutProspectSeason = 0;
-    if (S.marketSeenB == null) S.marketSeenB = S.div >= 3;
-    if (S.marketSeenA == null) S.marketSeenA = S.div >= 4;
+    if (S.marketSeenB == null) S.marketSeenB = S.div >= 4;
+    if (S.marketSeenA == null) S.marketSeenA = S.div >= 5;
     if (S.market === undefined) S.market = null;
     S.squad.forEach((p) => { if (p.yrs == null) p.yrs = 2 + rnd(2); if (p.pid == null) p.pid = newPid(); if (!p.pos) p.pos = randPos(); if (p.seasonGoals == null) p.seasonGoals = 0; if (p.seasonAssists == null) p.seasonAssists = 0; if (p.seasonCleanSheets == null) p.seasonCleanSheets = 0; if (p.seasonApps == null) p.seasonApps = 0; if (!p.nat) p.nat = pickNationality(S.div); if (p.outWeeks == null) p.outWeeks = 0; if (p.suspMatches == null) p.suspMatches = 0; });
     if (S.manager && !S.manager.nat) S.manager.nat = S.manager.real ? natByCode(REAL_MANAGERS.find((m) => m.n === S.manager.n)?.nat) || pickNationality(S.div) : pickNationality(S.div);
@@ -635,10 +654,21 @@
     return v >= 1e6 ? Math.round(v / 1e5) * 1e5 : Math.round(v / 1e4) * 1e4;
   }
 
-  function buyerClub() {
-    const up = Math.min(4, S.div + 1 + rnd(2));   // un club una o due categorie sopra si fa avanti
-    const pool = (POOLS[up] || POOLS[4]).filter((c) => c.n !== S.club);
-    return pool.length ? pick(pool).n : 'un club più grande';
+  // Sceglie il club offerente in base alla cifra da pagare, non a caso: un tetto di spesa
+  // plausibile per categoria (3 volte il costo di uno spin di lusso lì, una proxy ragionevole
+  // di "cosa si può permettere un club di quel livello"), poi fra i club di quella fascia
+  // pesca preferibilmente i più forti (quindi i più ricchi) quando la cifra è alta — niente
+  // più squadre di provincia che offrono cifre da big.
+  function buyerClub(fee) {
+    const CAP = DIVS.map((dv) => dv.premium * 3);
+    let tier = CAP.findIndex((cap) => fee <= cap);
+    if (tier < 0) tier = 4;
+    tier = clamp(Math.max(tier, S.div + 1), 0, DIVS.length - 1);
+    const pool = (POOLS[tier] || POOLS[DIVS.length - 1]).filter((c) => c.n !== S.club);
+    if (!pool.length) return 'un club più grande';
+    const sorted = pool.slice().sort((a, b) => b.s - a.s);
+    const topN = fee > CAP[tier] * 0.45 ? Math.max(1, Math.round(sorted.length * 0.3)) : sorted.length;
+    return pick(sorted.slice(0, topN)).n;
   }
 
   // I rivali fanno offerte per i tuoi giocatori migliori: quelli chiaramente sopra il
@@ -651,7 +681,7 @@
       .sort((a, b) => (b.ovr + (b.age <= 21 ? 4 : 0)) - (a.ovr + (a.age <= 21 ? 4 : 0)))
       .slice(0, 2);
     const offers = [];
-    targets.forEach((p, i) => { if (Math.random() < (i === 0 ? 0.7 : 0.45)) offers.push({ pid: p.pid, club: buyerClub(), fee: offerFee(p) }); });
+    targets.forEach((p, i) => { if (Math.random() < (i === 0 ? 0.7 : 0.45)) { const fee = offerFee(p); offers.push({ pid: p.pid, club: buyerClub(fee), fee }); } });
     return offers;
   }
 
@@ -697,7 +727,7 @@
     // più soldi in ballo. Dalla Serie B in su un mega-sponsor globale sostituisce lo
     // sponsor di comunità, con un accordo regionale a fare da via di mezzo in entrambi
     // i casi.
-    return S.div >= 3
+    return S.div >= 4
       ? [mk('standard', 1.5, 3, 0), mk('regional', 1.9, 3, 0), mk('betting', 2.3, 2, -2), mk('global', 3.0, 4, 0)]
       : [mk('community', 0.9, 3, 2), mk('regional', 1.2, 3, 0), mk('standard', 1.5, 2, 0), mk('betting', 2.0, 2, -2)];
   }
@@ -751,7 +781,7 @@
   // qualunque livello si parta.
   // low = Eccellenza/Serie D/Serie C, mid = Serie B, high = Serie A: ogni situazione ha un
   // racconto diverso a seconda di dove si parte (vedi SITUATIONS.variants in data.js).
-  const situationTier = (div) => (div >= 4 ? 'high' : div === 3 ? 'mid' : 'low');
+  const situationTier = (div) => (div >= 5 ? 'high' : div === 4 ? 'mid' : 'low');
   function genTakeovers(div) {
     div = div || 0;
     const tier = situationTier(div);
@@ -782,12 +812,12 @@
       squad, manager: (function () { const r = clamp(DIVS[div].mgrBase - 2 + rnd(8), 45, 92); const nat = pickNationality(div); return { n: genName(nat), rating: r, salary: mgrSalaryFor(r), nat }; })(),
       sponsor: null, sent: 55, ownerRating: 62, prestige: 0, debtSeasons: 0,
       euro: false, euroComp: null, form: 0, spinsBought: 0,
-      trophies: { titles: [0, 0, 0, 0, 0], nat: 0, ucl: 0, uel: 0, conf: 0, total: 0 },
+      trophies: { titles: [0, 0, 0, 0, 0, 0], nat: 0, ucl: 0, uel: 0, conf: 0, total: 0 },
       history: [], over: false, peakWorth: 0,
       pidNext: 1, offers: [],
       crestShape: crestShape, crestColors: crestColors.slice(),
       scoutLevel: 0, scoutProspect: null, scoutProspectSeason: 0,
-      market: null, marketSeenB: div >= 3, marketSeenA: div >= 4,
+      market: null, marketSeenB: div >= 4, marketSeenA: div >= 5,
     };
     normSquad();
     S.peakWorth = computeWorth();
@@ -832,10 +862,18 @@
     S.opps.forEach((o, i) => { fx.push({ opp: i, home: true }); fx.push({ opp: i, home: false }); });
     shuffle(fx); S.fixtures = fx.map((f, i) => ({ ...f, mw: i + 1 }));
     S.cups = { nat: { name: 'Coppa Italia', rounds: ['Turno 2', 'Turno 3', 'Turno 4', 'Quarti', 'Semifinale', 'Finale'], at: 0, out: false, won: false } };
-    // Le coppe europee iniziano con una fase a gironi (4 partite, come il girone unico
-    // UEFA in miniatura): servono almeno 7 punti su 12 per passare alla fase a eliminazione
-    // diretta (Ottavi in poi); sotto quella soglia l'avventura europea finisce lì.
-    if (S.euro && S.div === 4) S.cups.euro = { name: EURO_COMPS[S.euroComp].name, phase: 'group', groupAt: 0, groupPts: 0, groupGF: 0, groupGA: 0, rounds: ['Ottavi', 'Quarti', 'Semifinale', 'Finale'], at: 0, out: false, won: false };
+    // Formato UEFA reale dal 2024/25: fase campionato a classifica unica (8 partite in
+    // Champions/Europa League, 6 in Conference League), poi 1°-8° diretti agli ottavi,
+    // 9°-24° giocano uno spareggio andata/ritorno per l'ultimo posto, 25°+ eliminati. Da
+    // qui in poi ottavi/quarti/semifinale sono andata/ritorno, la finale è gara secca.
+    if (S.euro && S.div === 5) {
+      const legLen = S.euroComp === 'conf' ? 6 : 8;
+      S.cups.euro = {
+        name: EURO_COMPS[S.euroComp].name, phase: 'league', legLen,
+        leagueAt: 0, leaguePts: 0, leagueGF: 0, leagueGA: 0, faced: [],
+        rounds: ['Ottavi', 'Quarti', 'Semifinale', 'Finale'], at: 0, out: false, won: false,
+      };
+    }
     show('owSeasonScreen'); $('owLog').innerHTML = ''; renderHud(); renderCups(); saveGame();
   }
 
@@ -865,32 +903,43 @@
   function simToEnd() { while (S.seasonActive && S.played < gp() && !S._pause) { const b = S.played; simMatch(); if (S._pause) break; if (S.played === b) break; } }
 
   /* ---------------- coppe (checkpoint scalati sulla lunghezza di stagione) ---------------- */
-  // La Coppa Italia resta a eliminazione diretta pura. La coppa europea ha invece due fasi:
-  // 4 partite di girone (checkpoint euroGroup) e poi, solo se qualificata, l'eliminazione
-  // diretta a partire dagli Ottavi (checkpoint euroKO).
+  // La Coppa Italia resta a eliminazione diretta pura, gara secca. La coppa europea segue
+  // invece il formato UEFA reale in vigore dal 2024/25: una fase campionato a classifica
+  // unica (8 partite in Champions/Europa League, 6 in Conference League — checkpoint
+  // euroLeague), poi 1°-8° virtuali vanno dritti agli ottavi, 9°-24° giocano uno spareggio
+  // andata/ritorno (checkpoint euroPlayoff), 25°+ sono eliminati (niente più "discesa"
+  // automatica verso la coppa inferiore, il vecchio formato a gironi l'aveva ma è stato
+  // abolito). Da qui in poi ottavi/quarti/semifinale sono andata/ritorno (checkpoint
+  // euroKO), la finale è una gara secca in sede neutra.
   function maybeCupRound() {
     const G = gp();
     const f = (fr) => Math.max(1, Math.min(G - 1, Math.round(G * fr)));
+    const euro = S.cups.euro;
+    const legLen = euro ? euro.legLen : 8;
+    const leagueFracs = Array.from({ length: legLen }, (_, idx) => 0.10 + idx * (0.44 / Math.max(1, legLen - 1)));
     const checkpoints = {
       nat: [f(0.10), f(0.24), f(0.40), f(0.57), f(0.74), f(0.92)],
-      euroGroup: [f(0.12), f(0.26), f(0.40), f(0.54)],
-      euroKO: [f(0.66), f(0.76), f(0.86), f(0.95)],
+      euroLeague: leagueFracs.map(f),
+      euroPlayoff: f(0.60),
+      euroKO: [f(0.68), f(0.78), f(0.88), f(0.96)],
     };
     const nat = S.cups.nat;
     if (nat && !nat.out && !nat.won && nat.at < nat.rounds.length && S.played >= checkpoints.nat[nat.at]) resolveCupRound('nat');
-    const euro = S.cups.euro;
     if (euro && !euro.out && !euro.won) {
-      if (euro.phase === 'group') { if (euro.groupAt < 4 && S.played >= checkpoints.euroGroup[euro.groupAt]) resolveEuroGroupMatch(); }
+      if (euro.phase === 'league') { if (euro.leagueAt < euro.legLen && S.played >= checkpoints.euroLeague[euro.leagueAt]) resolveEuroLeagueMatch(); }
+      else if (euro.phase === 'playoff') { if (!euro.playoffDone && S.played >= checkpoints.euroPlayoff) resolveEuroPlayoff(); }
       else if (euro.at < euro.rounds.length && S.played >= checkpoints.euroKO[euro.at]) resolveCupRound('euro');
     }
   }
 
-  // Una partita di girone: punti, non solo passaggio/eliminazione secca — il pareggio
-  // esiste, e serve un bottino minimo (7 punti su 12) per accedere alla fase a eliminazione
-  // diretta. Gli avversari di girone sono leggermente più abbordabili di quelli degli Ottavi.
-  function resolveEuroGroupMatch() {
-    const cup = S.cups.euro, i = cup.groupAt, ec = EURO_COMPS[S.euroComp];
-    const oppStr = ec.oppBase - 4 + i * 2 + rnd(6);
+  // Una partita della fase campionato: punti pieni (3/1/0) su una classifica unica, non un
+  // girone da 4. Gli avversari sono via via più abbordabili all'inizio e più forti verso la
+  // fine (fasce di sorteggio, semplificate). A fine fase campionato la classifica decide
+  // tutto: soglia alta = ottavi diretti, soglia media = spareggio, sotto = eliminati.
+  function resolveEuroLeagueMatch() {
+    const cup = S.cups.euro, i = cup.leagueAt, ec = EURO_COMPS[S.euroComp];
+    const span = cup.legLen > 1 ? 12 / (cup.legLen - 1) : 0;
+    const oppStr = ec.oppBase - 6 + i * span + rnd(6);
     const faced = cup.faced || (cup.faced = []);
     const oppName = cupOpponentName('euro', oppStr, faced);
     faced.push(oppName);
@@ -903,40 +952,82 @@
     if (draw) { const avgg = Math.round((gf + ga) / 2); gf = avgg; ga = avgg; }
     else if (won && gf <= ga) gf = ga + 1;
     else if (!won && gf >= ga) ga = gf + 1;
-    cup.groupAt++;
-    cup.groupPts += won ? 3 : draw ? 1 : 0;
-    cup.groupGF += gf; cup.groupGA += ga;
-    if (won) S.euroMoney += ec.roundWin * 0.4; else if (draw) S.euroMoney += ec.roundWin * 0.15;
+    cup.leagueAt++;
+    cup.leaguePts += won ? 3 : draw ? 1 : 0;
+    cup.leagueGF += gf; cup.leagueGA += ga;
+    if (won) S.euroMoney += ec.roundWin * 0.3; else if (draw) S.euroMoney += ec.roundWin * 0.12;
     const lineup = pickMatchLineup(S.squad);
     registerAppearances(lineup);
-    logEuroGroup(cup.name, 'Girone ' + cup.groupAt, won ? 'W' : draw ? 'D' : 'L', gf, ga, genGoals(gf, true, null, lineup), genGoals(ga, false, oppName), oppName, cup.groupPts);
+    logEuroGroup(cup.name, 'Fase campionato ' + cup.leagueAt + '/' + cup.legLen, won ? 'W' : draw ? 'D' : 'L', gf, ga, genGoals(gf, true, null, lineup), genGoals(ga, false, oppName), oppName, cup.leaguePts);
     registerCleanSheet(ga, lineup);
-    if (cup.groupAt >= 4) { if (cup.groupPts >= 7) cup.phase = 'knockout'; else cup.out = true; }
+    if (cup.leagueAt >= cup.legLen) {
+      const top8 = cup.legLen === 6 ? 12 : 15, playoffLine = cup.legLen === 6 ? 6 : 9;
+      if (cup.leaguePts >= top8) cup.phase = 'knockout';
+      else if (cup.leaguePts >= playoffLine) cup.phase = 'playoff';
+      else cup.out = true;
+    }
+    renderCups();
+  }
+
+  // Spareggio pre-ottavi (9°-24° virtuali della fase campionato): andata e ritorno contro
+  // un avversario un gradino sotto quelli degli ottavi, come nel vero tabellone UEFA.
+  function resolveEuroPlayoff() {
+    const cup = S.cups.euro, ec = EURO_COMPS[S.euroComp];
+    const oppStr = ec.oppBase - 3 + rnd(6);
+    const faced = cup.faced || (cup.faced = []);
+    const oppName = cupOpponentName('euro', oppStr, faced);
+    faced.push(oppName);
+    let aggGF = 0, aggGA = 0;
+    for (let leg = 0; leg < 2; leg++) {
+      const diff = teamEff() - oppStr;
+      let gf = poisson(clamp(1.3 + diff * 0.05, 0.2, 4)), ga = poisson(clamp(1.3 - diff * 0.05, 0.2, 4));
+      aggGF += gf; aggGA += ga;
+      const lineup = pickMatchLineup(S.squad);
+      registerAppearances(lineup);
+      logCupLeg(cup.name, 'Spareggio', leg === 0 ? 'Andata' : 'Ritorno', gf, ga, genGoals(gf, true, null, lineup), genGoals(ga, false, oppName), oppName);
+      registerCleanSheet(ga, lineup);
+    }
+    const advanced = aggGF > aggGA || (aggGF === aggGA && Math.random() < 0.5);
+    cup.playoffDone = true;
+    if (advanced) { S.euroMoney += EURO_COMPS[S.euroComp].roundWin * 0.6; cup.phase = 'knockout'; } else cup.out = true;
+    logCup(cup.name, 'Spareggio (aggregato)', advanced, aggGF, aggGA, [], [], oppName);
     renderCups();
   }
 
   function resolveCupRound(key) {
     const cup = S.cups[key], d = divOf(), i = cup.at;
+    const isEuroFinal = key === 'euro' && i === cup.rounds.length - 1;
+    const legs = key === 'euro' && !isEuroFinal ? 2 : 1;   // ottavi/quarti/semifinale: andata/ritorno. Coppa Italia e finale euro: gara secca.
     const oppStr = key === 'euro' ? EURO_COMPS[S.euroComp].oppBase + i * 3 + rnd(5) : Math.min(90, d.avg + 2 + i * 4 + rnd(6));
     const faced = cup.faced || (cup.faced = []);
     const oppName = cupOpponentName(key, oppStr, faced);
     faced.push(oppName);
-    const diff = teamEff() - oppStr;
-    const winP = 1 / (1 + Math.exp(-diff / 6.5));
-    const won = Math.random() < winP;
-    let gf = poisson(clamp(1.3 + diff * 0.05, 0.2, 4)), ga = poisson(clamp(1.3 - diff * 0.05, 0.2, 4));
-    // manteniamo il risultato coerente con l'esito (parità = passaggio/eliminazione ai rigori)
-    if (won && gf < ga) { const t = gf; gf = ga; ga = t; }
-    else if (!won && gf > ga) { const t = gf; gf = ga; ga = t; }
+    let aggGF = 0, aggGA = 0;
+    for (let leg = 0; leg < legs; leg++) {
+      const diff = teamEff() - oppStr;
+      const winP = 1 / (1 + Math.exp(-diff / 6.5));
+      const wonLeg = Math.random() < winP;
+      let gf = poisson(clamp(1.3 + diff * 0.05, 0.2, 4)), ga = poisson(clamp(1.3 - diff * 0.05, 0.2, 4));
+      if (legs === 1) {
+        // gara secca: manteniamo il risultato coerente con l'esito (parità = rigori)
+        if (wonLeg && gf < ga) { const t = gf; gf = ga; ga = t; }
+        else if (!wonLeg && gf > ga) { const t = gf; gf = ga; ga = t; }
+      }
+      aggGF += gf; aggGA += ga;
+      const cupLineup = pickMatchLineup(S.squad);
+      registerAppearances(cupLineup);
+      const golsF = genGoals(gf, true, null, cupLineup), golsA = genGoals(ga, false, oppName);
+      registerCleanSheet(ga, cupLineup);
+      if (legs > 1) logCupLeg(cup.name, cup.rounds[i], leg === 0 ? 'Andata' : 'Ritorno', gf, ga, golsF, golsA, oppName);
+      else logCup(cup.name, cup.rounds[i], gf >= ga, gf, ga, golsF, golsA, oppName);
+    }
+    const won = legs > 1 ? (aggGF > aggGA || (aggGF === aggGA && Math.random() < 0.5)) : aggGF >= aggGA;
+    if (legs > 1) logCup(cup.name, cup.rounds[i] + ' (aggregato)', won, aggGF, aggGA, [], [], oppName);
     cup.at++;
     if (won) {
       if (key === 'nat') S.cupMoney += d.cupBase * (i + 1);
       else S.euroMoney += EURO_COMPS[S.euroComp].roundWin;
     }
-    const cupLineup = pickMatchLineup(S.squad);
-    registerAppearances(cupLineup);
-    logCup(cup.name, cup.rounds[i], won, gf, ga, genGoals(gf, true, null, cupLineup), genGoals(ga, false, oppName), oppName);
-    registerCleanSheet(ga, cupLineup);
     if (!won) cup.out = true; else if (cup.at >= cup.rounds.length) cup.won = true;
     renderCups();
   }
@@ -1051,11 +1142,11 @@
     const net = matchday + merch + sponsorMoney + prize + S.cupMoney + S.euroMoney + euroTitleBonus - upkeep;
     S.budget += net;
     // ----- qualificazione europea di quest'anno (determina la coppa della prossima stagione) -----
-    const qualTier = S.div === 4 ? euroTierFor(pos) : null;
+    const qualTier = S.div === 5 ? euroTierFor(pos) : null;
     // ----- trofei + prestigio -----
     const trophies = [];
     if (title) { trophies.push(d.name + ' - Titolo'); S.trophies.titles[S.div]++; S.trophies.total++; S.prestige += TROPHY_WORTH[S.div]; }
-    if (natWon) { trophies.push('Coppa Italia'); S.trophies.nat++; S.trophies.total++; S.prestige += S.div >= 3 ? 45e6 : 2e6; }
+    if (natWon) { trophies.push('Coppa Italia'); S.trophies.nat++; S.trophies.total++; S.prestige += S.div >= 4 ? 45e6 : 2e6; }
     if (euroWon) { const ec = EURO_COMPS[S.euroComp]; trophies.push(ec.name); S.trophies[S.euroComp]++; S.trophies.total++; S.prestige += ec.prestige; }
     if (qualTier) S.prestige += EURO_COMPS[qualTier].qualPrestige;   // la qualificazione europea costruisce il brand
     // ----- umore -----
@@ -1135,9 +1226,9 @@
 
   function advance() {
     const e = S._end;
-    if (e.promoted) S.div = Math.min(4, S.div + 1);
+    if (e.promoted) S.div = Math.min(DIVS.length - 1, S.div + 1);
     if (e.relegated) S.div = Math.max(0, S.div - 1);
-    S.euro = !!S.euroCompNext && S.div === 4;
+    S.euro = !!S.euroCompNext && S.div === 5;
     S.euroComp = S.euro ? S.euroCompNext : null;
     // Mercato semi-realistico: si sblocca e si muove appena si mette piede in una categoria
     // con rose reali note (Serie B, poi Serie A + club europei), non prima.
@@ -1147,7 +1238,7 @@
     // impedisce ai soldi di accumularsi semplicemente una volta stabiliti.
     if (e.promoted) { S.squad.forEach((p) => p.wage = roundWage(p.wage * 1.25)); toast('Aumenti da promozione: il monte ingaggi della rosa sale del 25%.'); }
     else if (e.relegated) { S.squad.forEach((p) => p.wage = roundWage(p.wage * 0.85)); }
-    else if (S.div === 4) { S.squad.forEach((p) => p.wage = roundWage(p.wage * 1.08)); }
+    else if (S.div === 5) { S.squad.forEach((p) => p.wage = roundWage(p.wage * 1.08)); }
     // il contratto sponsor scende
     if (S.sponsor) { S.sponsor.left--; S.sent = clamp(S.sent + (S.sponsor.sent || 0), 0, 100); if (S.sponsor.left <= 0) { toast('L\'accordo con ' + S.sponsor.name + ' scade.'); S.sponsor = null; } }
     // Età e overall sono già stati aggiornati a fine stagione (endSeason), per poterli

@@ -18,6 +18,7 @@
   --shadow:0 16px 46px rgba(0,0,0,.55);
   /* "dyn" resta il nome storico della variabile d'azione: qui è il bronzo dello Scudetto. */
   --dyn:#c9902f;
+  --coppa:#4f8cff;
   --dyn-deep:#7a4f16;
   --dyn-ink:#170e05;
   --serif:'Fraunces','Georgia',serif;
@@ -102,8 +103,22 @@ body{
 .dyn-cups{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
 .cup-pill{ font-size:11px; font-weight:800; padding:6px 11px; border-radius:999px; border:1px solid var(--line); color:var(--muted); background:var(--panel); }
 .cup-pill b{ color:var(--txt); }
+/* Ogni coppa ha il suo colore anche mentre è in corso, non solo a vittoria ottenuta:
+   Coppa Italia in blu, Champions nel bronzo dello Scudetto, Europa League in oro,
+   Conference in verde — coerenti con le fasce colorate già usate in classifica. */
+.cup-pill.nat{ border-color:var(--coppa); color:var(--coppa); }
+.cup-pill.ucl{ border-color:var(--dyn); color:var(--dyn); }
+.cup-pill.uel{ border-color:var(--gold); color:var(--gold); }
+.cup-pill.conf{ border-color:var(--good); color:var(--good); }
 .cup-pill.win{ border-color:var(--gold); color:var(--gold); background:rgba(255,210,74,.08); }
 .cup-pill.out{ opacity:.5; }
+/* Tinta di sfondo leggera sulle righe di classifica, oltre al bordo colorato: rende le
+   fasce (Champions/Europa/Conference/playoff/retrocessione) leggibili a colpo d'occhio. */
+.dyn-table tr.ucl{ background:rgba(201,144,47,.07); }
+.dyn-table tr.uel{ background:rgba(255,210,74,.06); }
+.dyn-table tr.conf{ background:rgba(40,217,160,.06); }
+.dyn-table tr.po{ background:rgba(255,157,77,.06); }
+.dyn-table tr.rel{ background:rgba(255,77,94,.07); }
 
 .dyn-manage-row{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
 .dyn-mini{ appearance:none; background:var(--panel2); border:1px solid var(--line); color:var(--txt); border-radius:10px; padding:10px; font:800 13px var(--sans); cursor:pointer; transition:border-color .15s ease; }
