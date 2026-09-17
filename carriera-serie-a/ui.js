@@ -685,7 +685,7 @@
   function pickPremiumRole(cost) {
     const counts = { POR: 0, DIF: 0, CEN: 0, ATT: 0 };
     S.squad.forEach((p) => { if (counts[p.pos] != null) counts[p.pos]++; });
-    const ROLE_ICON = { POR: '🧤', DIF: '🛡️', CEN: '🎯', ATT: '⚽' };
+    const ROLE_ICON = { POR: '🧤', DIF: '🛡️', CEN: '👟', ATT: '⚽' };
     overlay(`
       <h2>🎯 Scegli il ruolo</h2>
       <p>Lo scout andrà a cercare un giocatore per lo spin di lusso in questo ruolo. Puoi farlo una sola volta a stagione: i prossimi spin di lusso torneranno casuali.</p>

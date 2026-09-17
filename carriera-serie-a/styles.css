@@ -350,7 +350,7 @@ body{
 .ow-ticket b{ font-size:13px; font-weight:900; display:block; }
 .ow-ticket small{ font-size:10.5px; color:var(--muted); font-weight:600; line-height:1.35; display:block; margin-top:2px; }
 
-.ow-spins{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px; }
+.ow-spins{ display:grid; grid-template-columns:3fr 1fr; gap:8px; margin-bottom:8px; }
 .ow-spins.one{ grid-template-columns:1fr; }
 @media(max-width:460px){ .ow-spins{ grid-template-columns:1fr; } }
 .ow-role-btn{ border-color:rgba(138,92,240,.4); color:#c9a6ff; }
