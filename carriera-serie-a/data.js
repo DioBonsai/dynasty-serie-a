@@ -482,15 +482,15 @@
   // Allenatori reali: si aggiungono ai candidati generati (non li sostituiscono), pescati
   // solo quando il loro rating è vicino a quello richiesto dal club che offre il posto.
   const REAL_MANAGERS = [
-    { n: 'Pep Guardiola', rating: 93 }, { n: 'Carlo Ancelotti', rating: 91 }, { n: 'Jurgen Klopp', rating: 90 },
-    { n: 'Antonio Conte', rating: 88 }, { n: 'Luciano Spalletti', rating: 81 }, { n: 'Simone Inzaghi', rating: 85 },
-    { n: 'Massimiliano Allegri', rating: 84 }, { n: 'Gian Piero Gasperini', rating: 82 }, { n: 'Thiago Motta', rating: 78 },
-    { n: 'Stefano Pioli', rating: 77 }, { n: 'Roberto Mancini', rating: 76 }, { n: 'Claudio Ranieri', rating: 75 },
-    { n: 'Vincenzo Italiano', rating: 76 }, { n: 'Gennaro Gattuso', rating: 73 }, { n: 'Ivan Juric', rating: 69 },
-    { n: 'Walter Mazzarri', rating: 70 }, { n: 'Marco Baroni', rating: 67 }, { n: 'Raffaele Palladino', rating: 71 },
-    { n: 'Eusebio Di Francesco', rating: 65 }, { n: 'Alberto Gilardino', rating: 64 }, { n: 'Davide Nicola', rating: 63 },
-    { n: 'Paolo Zanetti', rating: 66 }, { n: 'Fabio Pecchia', rating: 61 }, { n: 'Rolando Maran', rating: 60 },
-    { n: 'Fabio Liverani', rating: 58 }, { n: 'Fabio Cannavaro', rating: 59 }, { n: 'Cristian Bucchi', rating: 56 },
+    { n: 'Pep Guardiola', rating: 93, nat: 'ESP' }, { n: 'Carlo Ancelotti', rating: 91, nat: 'ITA' }, { n: 'Jurgen Klopp', rating: 90, nat: 'GER' },
+    { n: 'Antonio Conte', rating: 88, nat: 'ITA' }, { n: 'Luciano Spalletti', rating: 81, nat: 'ITA' }, { n: 'Simone Inzaghi', rating: 85, nat: 'ITA' },
+    { n: 'Massimiliano Allegri', rating: 84, nat: 'ITA' }, { n: 'Gian Piero Gasperini', rating: 82, nat: 'ITA' }, { n: 'Thiago Motta', rating: 78, nat: 'ITA' },
+    { n: 'Stefano Pioli', rating: 77, nat: 'ITA' }, { n: 'Roberto Mancini', rating: 76, nat: 'ITA' }, { n: 'Claudio Ranieri', rating: 75, nat: 'ITA' },
+    { n: 'Vincenzo Italiano', rating: 76, nat: 'ITA' }, { n: 'Gennaro Gattuso', rating: 73, nat: 'ITA' }, { n: 'Ivan Juric', rating: 69, nat: 'CRO' },
+    { n: 'Walter Mazzarri', rating: 70, nat: 'ITA' }, { n: 'Marco Baroni', rating: 67, nat: 'ITA' }, { n: 'Raffaele Palladino', rating: 71, nat: 'ITA' },
+    { n: 'Eusebio Di Francesco', rating: 65, nat: 'ITA' }, { n: 'Alberto Gilardino', rating: 64, nat: 'ITA' }, { n: 'Davide Nicola', rating: 63, nat: 'ITA' },
+    { n: 'Paolo Zanetti', rating: 66, nat: 'ITA' }, { n: 'Fabio Pecchia', rating: 61, nat: 'ITA' }, { n: 'Rolando Maran', rating: 60, nat: 'ITA' },
+    { n: 'Fabio Liverani', rating: 58, nat: 'ITA' }, { n: 'Fabio Cannavaro', rating: 59, nat: 'ITA' }, { n: 'Cristian Bucchi', rating: 56, nat: 'ITA' },
   ];
 
   /* ---------------- stato ---------------- */

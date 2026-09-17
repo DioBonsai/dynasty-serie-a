@@ -55,6 +55,18 @@
     return Math.random() < itaChance ? ITA_NAT : pick(NATIONS);
   }
 
+  // Risolve un codice nazione (es. 'BRA') nell'oggetto {code,name,flag} usato ovunque nel
+  // gioco: cerca prima fra le nazioni note (ITA + NATIONS), altrimenti prova a decorarlo con
+  // un'emoji bandiera generica calcolata dal codice ISO, così anche un codice non ancora in
+  // NATIONS mostra comunque qualcosa invece di restare vuoto.
+  function natByCode(code) {
+    if (!code) return null;
+    if (code === 'ITA') return ITA_NAT;
+    const found = NATIONS.find((n) => n.code === code);
+    if (found) return found;
+    return { code, name: code, flag: '' };
+  }
+
   // Disegna una bandiera in SVG (16x11) a partire da una ricetta di FLAG_SPECS: strisce
   // orizzontali/verticali, croce nordica (con eventuale bordo), saltire diagonale, cerchio
   // centrato o stella. Semplificate, ma nei colori veri — al contrario dell'emoji, si
@@ -396,7 +408,7 @@
     const convertTo = (player, kind) => {
       if (kind === (player.ovr != null ? 'ovr' : 'q')) return player;
       const ovr = player.q != null ? Q_TO_OVR(player.q) : player.ovr;
-      return kind === 'ovr' ? { n: player.n, pos: player.pos, ovr } : { n: player.n, pos: player.pos, q: OVR_TO_Q(ovr) };
+      return kind === 'ovr' ? { n: player.n, pos: player.pos, ovr, nat: player.nat } : { n: player.n, pos: player.pos, q: OVR_TO_Q(ovr), nat: player.nat };
     };
     const transferCount = clamp(Math.round(allClubs.length * 0.3), 4, 40);
     for (let i = 0; i < transferCount; i++) {
@@ -419,7 +431,7 @@
       const baseOvr = old.q != null ? Q_TO_OVR(old.q) : old.ovr;
       const newOvr = clamp(baseOvr + gaussInt(-2, 5), 40, 99);
       const nat = pickNationality(4);
-      const fresh = { n: genName(nat), pos: randOppPos() };
+      const fresh = { n: genName(nat), pos: randOppPos(), nat: nat.code };
       if (kind === 'ovr') fresh.ovr = newOvr; else fresh.q = OVR_TO_Q(newOvr);
       roster[idx] = fresh;
     });
@@ -545,14 +557,15 @@
       const count = S.squad.filter((p) => p.pos === rp.pos).length;
       if (count >= POS_CAP[rp.pos]) continue;
       const ovr = src.league === 'euro' ? rp.ovr : qToRealOvr(rp.pos, rp.q, src.league);
-      const nat = src.league === 'euro' ? pickNationality(4) : pickNationality(S.div);
+      const nat = rp.nat ? natByCode(rp.nat) : (src.league === 'euro' ? pickNationality(4) : pickNationality(S.div));
       return { n: rp.n, nat, ovr, age: genAge(26, 4.5, 19, 34), wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: rp.pos, seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0, real: true, fromClub: club };
     }
     return null;
   }
   function spinPlayer(premium) {
     const d = divOf(), scout = scoutTier();
-    if ((S.div === 3 || S.div === 4) && Math.random() < 0.40) {
+    const realChance = S.div === 4 ? 0.50 : S.div === 3 ? 0.40 : 0;
+    if (realChance && Math.random() < realChance) {
       const real = realLeaguePlayer();
       if (real) return real;
     }
@@ -598,6 +611,7 @@
     if (S.marketSeenA == null) S.marketSeenA = S.div >= 4;
     if (S.market === undefined) S.market = null;
     S.squad.forEach((p) => { if (p.yrs == null) p.yrs = 2 + rnd(2); if (p.pid == null) p.pid = newPid(); if (!p.pos) p.pos = randPos(); if (p.seasonGoals == null) p.seasonGoals = 0; if (p.seasonAssists == null) p.seasonAssists = 0; if (p.seasonCleanSheets == null) p.seasonCleanSheets = 0; if (p.seasonApps == null) p.seasonApps = 0; if (!p.nat) p.nat = pickNationality(S.div); if (p.outWeeks == null) p.outWeeks = 0; if (p.suspMatches == null) p.suspMatches = 0; });
+    if (S.manager && !S.manager.nat) S.manager.nat = S.manager.real ? natByCode(REAL_MANAGERS.find((m) => m.n === S.manager.n)?.nat) || pickNationality(S.div) : pickNationality(S.div);
   }
 
   const finalYear = (p) => (p.yrs || 0) <= 1;   // ultimo anno di contratto -> rinnova o lo perdi a zero
@@ -667,9 +681,10 @@
     const r = clamp(divOf().mgrBase - 4 + rnd(12) + (bonus || 0), 45, 92);
     if (Math.random() < 0.22) {
       const near = REAL_MANAGERS.filter((m) => Math.abs(m.rating - r) <= 8);
-      if (near.length) { const m = pick(near); return { n: m.n, rating: m.rating, salary: mgrSalaryFor(m.rating), real: true }; }
+      if (near.length) { const m = pick(near); return { n: m.n, rating: m.rating, salary: mgrSalaryFor(m.rating), nat: natByCode(m.nat), real: true }; }
     }
-    return { n: genName(), rating: r, salary: mgrSalaryFor(r) };
+    const nat = pickNationality(S.div);
+    return { n: genName(nat), rating: r, salary: mgrSalaryFor(r), nat };
   }
 
   const mgrBonus = () => clamp((S.manager.rating - divOf().mgrBase) / 3.5, -3, 4);
@@ -764,7 +779,7 @@
       owner, club: (customClub || '').slice(0, 24) || pick(POOLS[div]).n, div: div, season: 1,
       budget: Math.round(t.budget), fanbase: Math.round(t.fanbase * 100) / 100,
       stadiumTier: t.stadiumTier, stadiumSpent: 0.6e6 + (t.stadiumTier ? STADIUM[1].cost : 0), ticket: 1,
-      squad, manager: (function () { const r = clamp(DIVS[div].mgrBase - 2 + rnd(8), 45, 92); return { n: genName(), rating: r, salary: mgrSalaryFor(r) }; })(),
+      squad, manager: (function () { const r = clamp(DIVS[div].mgrBase - 2 + rnd(8), 45, 92); const nat = pickNationality(div); return { n: genName(nat), rating: r, salary: mgrSalaryFor(r), nat }; })(),
       sponsor: null, sent: 55, ownerRating: 62, prestige: 0, debtSeasons: 0,
       euro: false, euroComp: null, form: 0, spinsBought: 0,
       trophies: { titles: [0, 0, 0, 0, 0], nat: 0, ucl: 0, uel: 0, conf: 0, total: 0 },

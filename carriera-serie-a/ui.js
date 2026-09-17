@@ -414,9 +414,9 @@
     const rosaHTML = `
       <div class="ow-sec">
         <div class="ow-sec-title">🧠 Allenatore</div>
-        <div class="ow-mgr"><span class="ovr">${S.manager.rating}</span><span class="nm">${S.manager.n}<small>${fmtMoney(S.manager.salary)}/anno</small></span><span class="tag">In carica</span></div>
+        <div class="ow-mgr"><span class="ovr">${S.manager.rating}</span><span class="nm">${flagOf(S.manager)}${S.manager.n}<small>${fmtMoney(S.manager.salary)}/anno</small></span><span class="tag">In carica</span></div>
         <div class="ow-sub">Candidati (l'esonero paga il 30% di buonuscita):</div>
-        ${S.mgrOpts.map((m, i) => `<div class="ow-mgr cand"><span class="ovr">${m.rating}</span><span class="nm">${m.n}<small>${fmtMoney(m.salary)}/anno</small></span><button class="dyn-mini ow-hire" data-hire="${i}">Assumi</button></div>`).join('')}
+        ${S.mgrOpts.map((m, i) => `<div class="ow-mgr cand"><span class="ovr">${m.rating}</span><span class="nm">${flagOf(m)}${m.n}<small>${fmtMoney(m.salary)}/anno</small></span><button class="dyn-mini ow-hire" data-hire="${i}">Assumi</button></div>`).join('')}
       </div>
       <div class="ow-sec">
         <div class="ow-sec-title">🔭 Settore giovanile</div>
@@ -676,11 +676,11 @@
     S._spin = p; saveGame();
     overlay(`
       <h2>${premium ? '💎 Lo scout torna' : '🎰 Lo scout torna'}</h2>
-      <div class="ow-spin-card">
+      <div class="ow-spin-card${p.real ? ' is-real' : ''}">
+        ${p.real && p.fromClub ? `<div class="real-badge">🌟 GIOCATORE REALE · da ${p.fromClub}</div>` : ''}
         <div class="big" style="color:${ovrTier(p.ovr).c}">${p.ovr}</div>
         <div class="nm">${flagOf(p)}${p.n} <span class="postag postag-${p.pos}" style="vertical-align:middle">${p.pos}</span></div>
         <div class="meta">${POS_LABEL[p.pos]} · età ${p.age} · chiede <b>${fmtYr(p.wage)}</b></div>
-        ${p.real && p.fromClub ? `<div class="meta">🌟 Giocatore vero, in arrivo da <b>${p.fromClub}</b></div>` : ''}
         <div class="meta">Hai <b>${fmtMoney(freeToSpend())}</b> liberi dopo gli stipendi</div>
         ${p.ovr >= d.avg + 7 ? '<div class="gem">⭐ Un colpo da titoli di giornale per questo livello</div>' : ''}
       </div>
@@ -742,11 +742,12 @@
     const cardHTML = (p, i) => {
       const loanCost = janLoanCost(p), buyTotal = loanCost + janTransferFee(p);
       return `
-      <div class="ow-jan-card">
+      <div class="ow-jan-card${p.real ? ' is-real' : ''}">
+        ${p.real && p.fromClub ? `<div class="real-badge real-badge-inline">🌟 GIOCATORE REALE · da ${p.fromClub}</div>` : ''}
         <div class="ow-jan-head">
           <span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span>
           <span class="postag postag-${p.pos}">${p.pos}</span>
-          <span class="nm">${flagOf(p)}${p.n}<small>${POS_LABEL[p.pos]} · età ${p.age} · chiede ${fmtYr(p.wage)}${p.real && p.fromClub ? ` · 🌟 da ${p.fromClub}` : ''}</small></span>
+          <span class="nm">${flagOf(p)}${p.n}<small>${POS_LABEL[p.pos]} · età ${p.age} · chiede ${fmtYr(p.wage)}</small></span>
           ${!S._janSwitchUsed ? `<button class="ow-jan-switch" data-jan-switch="${i}" title="Cambia questo giocatore (una sola volta)">🔄</button>` : ''}
         </div>
         <div class="ow-jan-actions">
@@ -759,9 +760,9 @@
       <h2>❄️ Il mercato di gennaio</h2>
       <p>A metà strada. ${ord(currentPos())} in ${d.name}. Budget ${fmtMoney(S.budget)}.</p>
       ${cands.length ? cands.map(cardHTML).join('') : '<div class="ow-sub">Nessun altro candidato in questa finestra.</div>'}
-      <div class="ow-mgr"><span class="ovr" style="${ovrBadge(S.manager.rating)}">${S.manager.rating}</span><span class="nm">${S.manager.n}<small>Allenatore in carica</small></span><span class="tag">In carica</span></div>
+      <div class="ow-mgr"><span class="ovr" style="${ovrBadge(S.manager.rating)}">${S.manager.rating}</span><span class="nm">${flagOf(S.manager)}${S.manager.n}<small>Allenatore in carica</small></span><span class="tag">In carica</span></div>
       <div class="ow-sub" style="margin:8px 0 6px;text-align:left">Esonera (30% di buonuscita) e nomina:</div>
-      ${mgrCands.map((m, i) => `<div class="ow-mgr cand"><span class="ovr" style="${ovrBadge(m.rating)}">${m.rating}</span><span class="nm">${m.n}<small>${fmtMoney(m.salary)}/anno, metà pagata subito</small></span><button class="dyn-mini" data-wh="${i}">Assumi</button></div>`).join('')}
+      ${mgrCands.map((m, i) => `<div class="ow-mgr cand"><span class="ovr" style="${ovrBadge(m.rating)}">${m.rating}</span><span class="nm">${flagOf(m)}${m.n}<small>${fmtMoney(m.salary)}/anno, metà pagata subito</small></span><button class="dyn-mini" data-wh="${i}">Assumi</button></div>`).join('')}
       <div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovPlayOn">Continua così</button></div>`);
     $('ovPlayOn').onclick = () => { S.winterDone = true; S._pause = false; S._janCands = null; S._janSwitchUsed = false; S._janMgrCands = null; closeOverlay(); saveGame(); if (S.played >= gp()) endSeason(); };
     document.querySelectorAll('#owOverlayModal [data-jan-loan]').forEach((el) => el.addEventListener('click', () => {

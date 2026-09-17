@@ -412,6 +412,22 @@ body{
   background:rgba(255,210,74,.1); border:1px solid rgba(255,210,74,.35); border-radius:999px; padding:5px 11px;
 }
 
+/* ---------- giocatori veri (pescati dalle rose reali negli spin) ---------- */
+.real-badge{
+  display:inline-block; font-size:11.5px; font-weight:900; letter-spacing:.02em; color:#1b1204;
+  background:linear-gradient(180deg,#ffe27a,#e7b559); border-radius:999px; padding:6px 13px;
+  box-shadow:0 3px 10px rgba(231,181,89,.35);
+}
+.ow-spin-card.is-real{
+  border:2px solid var(--gold); border-radius:14px; padding-top:12px;
+  background:rgba(255,210,74,.06); box-shadow:0 0 0 1px rgba(255,210,74,.18), 0 10px 22px rgba(255,210,74,.16);
+}
+.ow-spin-card.is-real .real-badge{ margin-bottom:8px; }
+.ow-jan-card.is-real{
+  border:2px solid var(--gold); background:rgba(255,210,74,.06); box-shadow:0 0 0 1px rgba(255,210,74,.18);
+}
+.real-badge-inline{ margin-bottom:8px; }
+
 /* ---------- candidati del mercato di gennaio ---------- */
 .ow-jan-card{
   background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:11px 12px; margin-bottom:9px; text-align:left;
