@@ -439,9 +439,9 @@
         <div class="ow-sub">Rosa ${S.squad.length < MIN_SQUAD ? '<b style="color:var(--bad)">' + S.squad.length + ' su ' + MIN_SQUAD + ' giocatori necessari</b>' : S.squad.length + ' giocatori'} · rating <b>${squadStr()}</b> · media di categoria ${d.avg}${fyCount ? ' · <b style="color:var(--gold)">' + fyCount + ' in scadenza</b> (Rinnova o li perdi a zero)' : ''} · tocca 💷 per vendere</div>
         <div class="ow-spins">
           <button class="dyn-btn" id="spinStdBtn" ${S.budget < spinCostNow(false) ? 'disabled' : ''}>🎰 Spin giocatore · ${fmtMoney(spinCostNow(false))}</button>
-          <button class="dyn-btn" id="spinPremBtn" ${S.budget < spinCostNow(true) ? 'disabled' : ''}>💎 Spin di lusso · ${fmtMoney(spinCostNow(true))}</button>
+          <button class="dyn-btn" id="spinPremBtn" ${S.premiumSpinUsed || S.budget < spinCostNow(true) ? 'disabled' : ''}>💎 ${S.premiumSpinUsed ? 'Spin di lusso già fatto' : 'Spin di lusso · ' + fmtMoney(spinCostNow(true))}</button>
         </div>
-        <div class="ow-sub" style="margin:0 0 8px">${S.spinsBought ? 'Affaticamento scout: i prezzi sono saliti perché hai già fatto ' + S.spinsBought + ' spin quest\'estate.' : 'Ogni spin di questa estate costa più del precedente.'}</div>
+        <div class="ow-sub" style="margin:0 0 8px">${S.spinsBought ? 'Affaticamento scout: i prezzi sono saliti perché hai già fatto ' + S.spinsBought + ' spin quest\'estate.' : 'Ogni spin di questa estate costa più del precedente.'} Lo spin di lusso è uno solo a stagione, ma scegli tu il ruolo.</div>
         <button class="dyn-btn ow-investor" id="freeAgentBtn">🖊️ Ingaggia uno svincolato · Gratis</button>
         <div class="ow-squad-filters">
           ${['ALL', 'POR', 'DIF', 'CEN', 'ATT'].map((k) => `<button class="ow-filter-pill ${squadRoleFilter === k ? 'on' : ''}" data-role="${k}">${k === 'ALL' ? 'Tutti' : k}</button>`).join('')}
@@ -663,16 +663,38 @@
   }
 
   function doSpin(premium) {
+    if (premium && S.premiumSpinUsed) { toast('Hai già usato lo spin di lusso di questa stagione.'); return; }
     const cost = spinCostNow(premium);
     if (S.budget < cost) { toast('Budget non sufficiente.'); return; }
-    spendGuard(cost, premium ? 'Uno spin di lusso' : 'Uno spin', 'Se rifiuti il giocatore ti torna solo il 40% dello spin.', () => runSpin(premium, cost));
+    if (premium) { pickPremiumRole(cost); return; }
+    spendGuard(cost, 'Uno spin', 'Se rifiuti il giocatore ti torna solo il 40% dello spin.', () => runSpin(false, cost));
   }
 
-  function runSpin(premium, cost) {
+  // Lo spin di lusso, unico a disposizione ogni stagione, lascia scegliere IL RUOLO del
+  // giocatore in arrivo (non più casuale come lo spin normale): prima si sceglie il ruolo,
+  // poi si passa alla solita conferma di spesa.
+  function pickPremiumRole(cost) {
+    const counts = { POR: 0, DIF: 0, CEN: 0, ATT: 0 };
+    S.squad.forEach((p) => { if (counts[p.pos] != null) counts[p.pos]++; });
+    overlay(`
+      <h2>💎 Spin di lusso</h2>
+      <p>Scegli il ruolo del giocatore che lo scout andrà a cercare. Hai un solo spin di lusso a stagione.</p>
+      <div class="dyn-modal-actions" style="flex-wrap:wrap">
+        ${['POR', 'DIF', 'CEN', 'ATT'].map((r) => `<button class="dyn-btn ow-role-pick" data-role="${r}" ${counts[r] >= POS_CAP[r] ? 'disabled' : ''}>${POS_LABEL[r]}${counts[r] >= POS_CAP[r] ? ' (al completo)' : ''}</button>`).join('')}
+      </div>
+      <div class="dyn-modal-actions"><button class="dyn-btn" id="ovRoleCancel">Annulla</button></div>`);
+    $('owOverlayModal').querySelectorAll('.ow-role-pick').forEach((btn) => {
+      btn.addEventListener('click', () => { const role = btn.dataset.role; closeOverlay(); spendGuard(cost, 'Uno spin di lusso', 'Se rifiuti il giocatore ti torna solo il 40% dello spin.', () => runSpin(true, cost, role)); });
+    });
+    $('ovRoleCancel').onclick = closeOverlay;
+  }
+
+  function runSpin(premium, cost, role) {
     const d = divOf();
     S.budget -= cost;
     S.spinsBought = (S.spinsBought || 0) + 1;
-    const p = spinPlayer(premium);
+    if (premium) S.premiumSpinUsed = true;
+    const p = spinPlayer(premium, role);
     S._spin = p; saveGame();
     overlay(`
       <h2>${premium ? '💎 Lo scout torna' : '🎰 Lo scout torna'}</h2>

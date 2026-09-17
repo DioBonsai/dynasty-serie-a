@@ -338,7 +338,9 @@
     const noise = (Math.random() - 0.5) * 2;
     let delta = ageGrowthBase(p.age) + perf + noise;
     if (delta > 0) delta *= growthDamp(p.ovr);
-    return Math.round(delta);
+    // Tetto assoluto alla crescita in una singola stagione: anche un ragazzino in
+    // esplosione totale non può salire di più di 7 in un anno solo (i cali restano liberi).
+    return Math.round(clamp(delta, -99, 7));
   }
 
   // Marcatore per un avversario con una rosa reale nota: stesso peso ruolo+forza usato per
@@ -553,7 +555,7 @@
   // Serie B o dei club europei — S.market se già "vivo", altrimenti i database statici)
   // invece di generarne uno di fantasia. Le rose italiane usano la quotazione fantacalcio
   // (vedi qToRealOvr), quelle europee hanno già un `ovr` assegnato che va bene com'è.
-  function realLeaguePlayer(minOvr, maxOvr) {
+  function realLeaguePlayer(minOvr, maxOvr, role) {
     const sources = [
       { league: 'serieB', rosters: S.market ? S.market.serieB : SERIE_B_ROSTERS },
       { league: 'serieA', rosters: S.market ? S.market.serieA : SERIE_A_ROSTERS },
@@ -566,7 +568,9 @@
       const club = pick(clubs);
       const roster = src.rosters[club];
       if (!roster || !roster.length) continue;
-      const rp = pick(roster);
+      const candidates = role ? roster.filter((x) => x.pos === role) : roster;
+      if (!candidates.length) continue;
+      const rp = pick(candidates);
       const count = S.squad.filter((p) => p.pos === rp.pos).length;
       if (count >= POS_CAP[rp.pos]) continue;
       const ovr = src.league === 'euro' ? rp.ovr : qToRealOvr(rp.pos, rp.q, src.league);
@@ -583,12 +587,12 @@
   // veri pescati dalle rose reali: prima si decide la fascia, poi si cerca un giocatore
   // (reale o generato) che ci stia dentro, così un lusso non può più regalare un nome vero
   // ma scarso preso a caso da una rosa di Serie B.
-  function spinPlayer(premium) {
+  function spinPlayer(premium, role) {
     const d = divOf(), scout = scoutTier();
     const band = premium ? { lo: d.avg + 3, hi: d.avg + 22 } : { lo: d.avg - 9, hi: d.avg + 11 };
     const realChance = S.div === 5 ? 0.50 : S.div === 4 ? 0.40 : 0;
     if (realChance && Math.random() < realChance) {
-      const real = realLeaguePlayer(band.lo, band.hi);
+      const real = realLeaguePlayer(band.lo, band.hi, role);
       if (real) return real;
     }
     let ovr;
@@ -603,7 +607,7 @@
     }
     const age = premium && Math.random() < 0.35 ? 16 + rnd(6) : genAge(24, 5, 17, 36);
     const nat = pickNationality(S.div);
-    return { n: genName(nat), nat, ovr, age, wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 };
+    return { n: genName(nat), nat, ovr, age, wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: role || randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 };
   }
 
   // Svincolati: nessun costo di cartellino, rating scarso per il livello, stipendi modesti.
@@ -746,7 +750,12 @@
     return Math.round((avg + clamp((s.length - 11) * 0.25, 0, 2.5)) * 10) / 10;
   }
 
-  const teamEff = () => squadStr() + mgrBonus() + (S.form || 0);
+  // Chi viene promosso rincatenando una seconda promozione di fila (rosa e organizzazione
+  // ancora tarate sulla categoria precedente) fatica un filo in più ad ambientarsi rispetto
+  // a chi ha avuto una stagione intera per consolidarsi: un piccolo malus, non un muro.
+  const promoStreakMalus = () => (S.promoStreak > 0 ? 2.2 : 0);
+
+  const teamEff = () => squadStr() + mgrBonus() + (S.form || 0) - promoStreakMalus();
 
   function expectedPos() {
     const mine = squadStr() + mgrBonus();
@@ -817,7 +826,7 @@
       stadiumTier: t.stadiumTier, stadiumSpent: 0.6e6 + (t.stadiumTier ? STADIUM[1].cost : 0), ticket: 1,
       squad, manager: (function () { const r = clamp(DIVS[div].mgrBase - 2 + rnd(8), 45, 92); const nat = pickNationality(div); return { n: genName(nat), rating: r, salary: mgrSalaryFor(r), nat }; })(),
       sponsor: null, sent: 55, ownerRating: 62, prestige: 0, debtSeasons: 0,
-      euro: false, euroComp: null, form: 0, spinsBought: 0,
+      euro: false, euroComp: null, form: 0, spinsBought: 0, promoStreak: 0, premiumSpinUsed: false,
       trophies: { titles: [0, 0, 0, 0, 0, 0], nat: 0, ucl: 0, uel: 0, conf: 0, total: 0 },
       history: [], over: false, peakWorth: 0,
       pidNext: 1, offers: [],
@@ -1241,6 +1250,7 @@
     const e = S._end;
     if (e.promoted) S.div = Math.min(DIVS.length - 1, S.div + 1);
     if (e.relegated) S.div = Math.max(0, S.div - 1);
+    S.promoStreak = e.promoted ? (S.promoStreak || 0) + 1 : 0;
     S.euro = !!S.euroCompNext && S.div === 5;
     S.euroComp = S.euro ? S.euroCompNext : null;
     // Mercato semi-realistico: si sblocca e si muove appena si mette piede in una categoria
@@ -1270,7 +1280,7 @@
     S.squad = S.squad.filter((p) => { if ((p.yrs || 0) <= 0) { freed.push(p.n); return false; } return true; });
     if (freed.length) toast(freed.join(', ') + ' ' + (freed.length === 1 ? 'è andato' : 'sono andati') + ' in scadenza e ' + (freed.length === 1 ? 'parte' : 'partono') + ' a parametro zero.');
     S.season++;
-    S.mgrOpts = null; S.sponsorOpts = null; S.investorUsed = false; S.spinsBought = 0; S._end = null;
+    S.mgrOpts = null; S.sponsorOpts = null; S.investorUsed = false; S.spinsBought = 0; S.premiumSpinUsed = false; S._end = null;
     S.offers = genOffers();   // i club rivali fanno offerte per i tuoi giocatori migliori quest'estate
     renderBoard();
   }
