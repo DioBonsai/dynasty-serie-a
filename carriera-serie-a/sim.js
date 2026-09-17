@@ -474,6 +474,12 @@
 
   let S = null;
 
+  // Durante "Simula fino a fine stagione" le singole partite si susseguono in un unico ciclo
+  // sincrono: il browser non ridisegna nulla finché il ciclo non finisce, quindi salvare su
+  // localStorage (JSON.stringify dell'intero stato) ad ogni giornata è lavoro sprecato — lo
+  // rimandiamo a un solo salvataggio quando il ciclo si ferma (fine stagione o sosta invernale).
+  let BULK_SIM = false;
+
   const divOf = () => DIVS[S.div];
 
   const gp = () => (divOf().teams - 1) * 2;
@@ -895,12 +901,18 @@
     const row = { mw: fx.mw, opp: opp.name, home: fx.home, gf, ga, res, goalsFor, goalsAgainst, events: lineup.events };
     S.results.push(row); logMatch(row);
     maybeCupRound();
-    computeTable(); renderHud(); saveGame();
+    computeTable(); renderHud();
+    if (!BULK_SIM) saveGame();
     if (S.played === (gp() >> 1) && !S.winterDone) { openWinter(); return; }
     if (S.played >= gp()) endSeason();
   }
 
-  function simToEnd() { while (S.seasonActive && S.played < gp() && !S._pause) { const b = S.played; simMatch(); if (S._pause) break; if (S.played === b) break; } }
+  function simToEnd() {
+    BULK_SIM = true;
+    while (S.seasonActive && S.played < gp() && !S._pause) { const b = S.played; simMatch(); if (S._pause) break; if (S.played === b) break; }
+    BULK_SIM = false;
+    saveGame();
+  }
 
   /* ---------------- coppe (checkpoint scalati sulla lunghezza di stagione) ---------------- */
   // La Coppa Italia resta a eliminazione diretta pura, gara secca. La coppa europea segue
@@ -958,7 +970,7 @@
     if (won) S.euroMoney += ec.roundWin * 0.3; else if (draw) S.euroMoney += ec.roundWin * 0.12;
     const lineup = pickMatchLineup(S.squad);
     registerAppearances(lineup);
-    logEuroGroup(cup.name, 'Fase campionato ' + cup.leagueAt + '/' + cup.legLen, won ? 'W' : draw ? 'D' : 'L', gf, ga, genGoals(gf, true, null, lineup), genGoals(ga, false, oppName), oppName, cup.leaguePts);
+    logEuroGroup(cup.name, 'Fase campionato ' + cup.leagueAt + '/' + cup.legLen, won ? 'W' : draw ? 'D' : 'L', gf, ga, genGoals(gf, true, null, lineup), genGoals(ga, false, oppName), oppName, cup.leaguePts, S.euroComp);
     registerCleanSheet(ga, lineup);
     if (cup.leagueAt >= cup.legLen) {
       const top8 = cup.legLen === 6 ? 12 : 15, playoffLine = cup.legLen === 6 ? 6 : 9;
@@ -984,18 +996,19 @@
       aggGF += gf; aggGA += ga;
       const lineup = pickMatchLineup(S.squad);
       registerAppearances(lineup);
-      logCupLeg(cup.name, 'Spareggio', leg === 0 ? 'Andata' : 'Ritorno', gf, ga, genGoals(gf, true, null, lineup), genGoals(ga, false, oppName), oppName);
+      logCupLeg(cup.name, 'Spareggio', leg === 0 ? 'Andata' : 'Ritorno', gf, ga, genGoals(gf, true, null, lineup), genGoals(ga, false, oppName), oppName, S.euroComp);
       registerCleanSheet(ga, lineup);
     }
     const advanced = aggGF > aggGA || (aggGF === aggGA && Math.random() < 0.5);
     cup.playoffDone = true;
     if (advanced) { S.euroMoney += EURO_COMPS[S.euroComp].roundWin * 0.6; cup.phase = 'knockout'; } else cup.out = true;
-    logCup(cup.name, 'Spareggio (aggregato)', advanced, aggGF, aggGA, [], [], oppName);
+    logCup(cup.name, 'Spareggio (aggregato)', advanced, aggGF, aggGA, [], [], oppName, S.euroComp);
     renderCups();
   }
 
   function resolveCupRound(key) {
     const cup = S.cups[key], d = divOf(), i = cup.at;
+    const compKey = key === 'euro' ? S.euroComp : 'nat';
     const isEuroFinal = key === 'euro' && i === cup.rounds.length - 1;
     const legs = key === 'euro' && !isEuroFinal ? 2 : 1;   // ottavi/quarti/semifinale: andata/ritorno. Coppa Italia e finale euro: gara secca.
     const oppStr = key === 'euro' ? EURO_COMPS[S.euroComp].oppBase + i * 3 + rnd(5) : Math.min(90, d.avg + 2 + i * 4 + rnd(6));
@@ -1018,11 +1031,11 @@
       registerAppearances(cupLineup);
       const golsF = genGoals(gf, true, null, cupLineup), golsA = genGoals(ga, false, oppName);
       registerCleanSheet(ga, cupLineup);
-      if (legs > 1) logCupLeg(cup.name, cup.rounds[i], leg === 0 ? 'Andata' : 'Ritorno', gf, ga, golsF, golsA, oppName);
-      else logCup(cup.name, cup.rounds[i], gf >= ga, gf, ga, golsF, golsA, oppName);
+      if (legs > 1) logCupLeg(cup.name, cup.rounds[i], leg === 0 ? 'Andata' : 'Ritorno', gf, ga, golsF, golsA, oppName, compKey);
+      else logCup(cup.name, cup.rounds[i], gf >= ga, gf, ga, golsF, golsA, oppName, compKey);
     }
     const won = legs > 1 ? (aggGF > aggGA || (aggGF === aggGA && Math.random() < 0.5)) : aggGF >= aggGA;
-    if (legs > 1) logCup(cup.name, cup.rounds[i] + ' (aggregato)', won, aggGF, aggGA, [], [], oppName);
+    if (legs > 1) logCup(cup.name, cup.rounds[i] + ' (aggregato)', won, aggGF, aggGA, [], [], oppName, compKey);
     cup.at++;
     if (won) {
       if (key === 'nat') S.cupMoney += d.cupBase * (i + 1);

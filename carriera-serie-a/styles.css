@@ -125,23 +125,44 @@ body{
 .dyn-mini:hover{ border-color:var(--dyn); }
 .dyn-mini:active{ transform:translateY(1px); }
 .dyn-log{ display:flex; flex-direction:column; gap:6px; min-height:120px; margin-bottom:14px; }
-.mrow{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px 12px; display:flex; align-items:center; gap:10px; animation:mrowIn .25s ease; }
+.mrow{ background:var(--panel); border:1px solid var(--line); border-left:3px solid transparent; border-radius:12px; padding:10px 12px; display:flex; align-items:center; gap:10px; animation:mrowIn .3s ease; transition:border-color .15s ease, background-color .15s ease, transform .15s ease; }
+.mrow:hover{ transform:translateX(1px); border-color:rgba(255,255,255,.16); }
 @keyframes mrowIn{ from{ opacity:0; transform:translateY(6px);} to{opacity:1;transform:none;} }
-.mrow-mw{ font-size:9.5px; font-weight:800; color:var(--muted); width:52px; flex:0 0 auto; text-transform:uppercase; }
+.mrow-mw{ font-size:9.5px; font-weight:800; color:var(--muted); width:52px; flex:0 0 auto; text-transform:uppercase; display:flex; align-items:center; gap:3px; }
+.mrow-comp-ico{ font-size:12px; line-height:1; }
 .mrow-main{ flex:1; min-width:0; }
 .mrow-fix{ font-size:13px; font-weight:700; }
-.mrow-fix .ha{ color:var(--muted); font-weight:800; font-size:11px; }
+.mrow-fix .ha{ color:var(--muted); font-weight:800; font-size:11px; padding:1px 5px; border-radius:5px; background:rgba(255,255,255,.05); }
+.mrow-fix .ha.home{ color:var(--good); }
+.mrow-fix .ha.away{ color:var(--muted); }
 .mrow-you{ font-size:11px; color:var(--muted); margin-top:2px; }
 .mrow-scorers{ display:flex; flex-direction:column; gap:2px; margin-top:4px; }
 .mrow-scorers .sc{ font-size:11px; font-weight:600; line-height:1.4; white-space:normal; overflow-wrap:anywhere; }
 .mrow-scorers .sc.us{ color:var(--txt); }
 .mrow-scorers .sc.them{ color:var(--muted); }
-.mrow-res{ font-weight:900; font-size:16px; flex:0 0 auto; width:58px; text-align:center; border-radius:8px; padding:5px 0; }
+.mrow-res{ font-weight:900; font-size:16px; flex:0 0 auto; width:58px; text-align:center; border-radius:8px; padding:5px 0; animation:mrowResPop .3s ease; }
+@keyframes mrowResPop{ from{ transform:scale(.7); opacity:0; } to{ transform:scale(1); opacity:1; } }
 .mrow-res.W{ color:var(--good); background:rgba(40,217,160,.12); }
 .mrow-res.D{ color:var(--muted); background:rgba(255,255,255,.05); }
 .mrow-res.L{ color:var(--bad); background:rgba(255,84,112,.12); }
-.mrow.cup{ border-color:rgba(255,210,74,.35); }
+/* Partite di campionato: un filo di colore sul bordo sinistro, coerente con l'esito, per
+   distinguerle a colpo d'occhio dalle righe di coppa (che hanno invece il colore della coppa). */
+.mrow.res-W{ border-left-color:rgba(40,217,160,.45); }
+.mrow.res-D{ border-left-color:rgba(255,255,255,.16); }
+.mrow.res-L{ border-left-color:rgba(255,84,112,.45); }
+/* Ogni coppa mantiene in tabellino lo stesso colore già usato nei pallini sopra il log
+   (cup-pill) e in classifica: Coppa Italia blu, Champions bronzo, Europa oro, Conference
+   verde — così una riga si riconosce come "che coppa è" ancora prima di leggerla. */
+.mrow.cup{ border-left-color:rgba(255,210,74,.5); }
 .mrow.cup .mrow-mw{ color:var(--gold); }
+.mrow.cup.comp-nat{ border-left-color:var(--coppa); background:linear-gradient(90deg,rgba(79,140,255,.08),transparent 60%); }
+.mrow.cup.comp-nat .mrow-mw{ color:var(--coppa); }
+.mrow.cup.comp-ucl{ border-left-color:var(--dyn); background:linear-gradient(90deg,rgba(201,144,47,.09),transparent 60%); }
+.mrow.cup.comp-ucl .mrow-mw{ color:var(--dyn); }
+.mrow.cup.comp-uel{ border-left-color:var(--gold); background:linear-gradient(90deg,rgba(255,210,74,.08),transparent 60%); }
+.mrow.cup.comp-uel .mrow-mw{ color:var(--gold); }
+.mrow.cup.comp-conf{ border-left-color:var(--good); background:linear-gradient(90deg,rgba(40,217,160,.08),transparent 60%); }
+.mrow.cup.comp-conf .mrow-mw{ color:var(--good); }
 .dyn-season-actions{ display:flex; flex-direction:column; gap:9px; position:sticky; bottom:10px; }
 
 /* ---------- tabelle (fine stagione + classifiche) ---------- */

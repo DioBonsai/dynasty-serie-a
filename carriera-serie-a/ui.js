@@ -986,7 +986,7 @@
   }
 
   function logMatch(m) {
-    const row = document.createElement('div'); row.className = 'mrow';
+    const row = document.createElement('div'); row.className = 'mrow res-' + m.res;
     const usSc = fmtScorers(m.goalsFor), themSc = fmtScorers(m.goalsAgainst);
     const scorersHTML = (usSc || themSc) ? `<div class="mrow-scorers">
         ${usSc ? '<div class="sc us">⚽ ' + usSc + '</div>' : ''}
@@ -994,22 +994,32 @@
       </div>` : '';
     const eventsHTML = (m.events && m.events.length) ? `<div class="mrow-scorers">${m.events.map((ev) => `<div class="sc them">${ev.kind === 'inj' ? '🚑' : '🟥'} ${flagOf(ev)}${ev.n} ${ev.kind === 'inj' ? 'ko, fuori ' + ev.weeks + ' partit' + (ev.weeks === 1 ? 'a' : 'e') : 'squalificato per la prossima'}</div>`).join('')}</div>` : '';
     row.innerHTML = `<div class="mrow-mw">G${m.mw}</div>
-      <div class="mrow-main"><div class="mrow-fix"><span class="ha">${m.home ? 'C' : 'T'}</span> vs ${m.opp}</div>${scorersHTML}${eventsHTML}</div>
+      <div class="mrow-main"><div class="mrow-fix"><span class="ha ${m.home ? 'home' : 'away'}">${m.home ? 'C' : 'T'}</span> vs ${m.opp}</div>${scorersHTML}${eventsHTML}</div>
       <div class="mrow-res ${m.res}">${m.gf}-${m.ga}</div>`;
     $('owLog').prepend(row);
   }
 
+  // Icona + classe colore per la competizione di una riga del log: ogni coppa ha la stessa
+  // tinta usata già nei pallini sopra il log (dyn-cups), così il colpo d'occhio è coerente.
+  const COMP_ICON = { nat: '🇮🇹', ucl: '🌍', uel: '🟠', conf: '🟢' };
+  function compBadge(compKey) {
+    if (!compKey) return '';
+    const icon = COMP_ICON[compKey] || '';
+    return icon ? '<span class="mrow-comp-ico">' + icon + '</span>' : '';
+  }
+  function compClass(compKey) { return compKey ? ' comp-' + compKey : ''; }
+
   // Partita di girone europeo: a differenza di logCup non è "passa/eliminato" ma un
   // risultato con punteggio di classifica, perché nella fase a gironi si può anche pareggiare.
-  function logEuroGroup(name, round, res, gf, ga, goalsFor, goalsAgainst, oppName, ptsSoFar) {
-    const row = document.createElement('div'); row.className = 'mrow cup';
+  function logEuroGroup(name, round, res, gf, ga, goalsFor, goalsAgainst, oppName, ptsSoFar, compKey) {
+    const row = document.createElement('div'); row.className = 'mrow cup' + compClass(compKey);
     const usSc = fmtScorers(goalsFor), themSc = fmtScorers(goalsAgainst);
     const scorersHTML = (usSc || themSc) ? `<div class="mrow-scorers">
         ${usSc ? '<div class="sc us">⚽ ' + usSc + '</div>' : ''}
         ${themSc ? '<div class="sc them">🥅 ' + themSc + '</div>' : ''}
       </div>` : '';
     const label = res === 'W' ? 'Vittoria' : res === 'D' ? 'Pareggio' : 'Sconfitta';
-    row.innerHTML = `<div class="mrow-mw">${name.split(' ')[0]}</div>
+    row.innerHTML = `<div class="mrow-mw">${compBadge(compKey)}${name.split(' ')[0]}</div>
       <div class="mrow-main"><div class="mrow-fix">${name} ${round} <span class="ha">vs ${oppName}</span></div><div class="mrow-you">${label} · ${ptsSoFar} pt nel girone</div>${scorersHTML}</div>
       <div class="mrow-res ${res}">${gf}-${ga}</div>`;
     $('owLog').prepend(row);
@@ -1018,27 +1028,27 @@
   // Una singola gara di un doppio confronto (andata/ritorno, come ottavi/quarti/semifinale
   // e lo spareggio pre-ottavi nel formato UEFA reale): solo il punteggio, senza verdetto
   // "passa/eliminato" perché quello si decide sull'aggregato, loggato subito dopo con logCup.
-  function logCupLeg(name, round, legLabel, gf, ga, goalsFor, goalsAgainst, oppName) {
-    const row = document.createElement('div'); row.className = 'mrow cup leg';
+  function logCupLeg(name, round, legLabel, gf, ga, goalsFor, goalsAgainst, oppName, compKey) {
+    const row = document.createElement('div'); row.className = 'mrow cup leg' + compClass(compKey);
     const usSc = fmtScorers(goalsFor), themSc = fmtScorers(goalsAgainst);
     const scorersHTML = (usSc || themSc) ? `<div class="mrow-scorers">
         ${usSc ? '<div class="sc us">⚽ ' + usSc + '</div>' : ''}
         ${themSc ? '<div class="sc them">🥅 ' + themSc + '</div>' : ''}
       </div>` : '';
-    row.innerHTML = `<div class="mrow-mw">${name.split(' ')[0]}</div>
+    row.innerHTML = `<div class="mrow-mw">${compBadge(compKey)}${name.split(' ')[0]}</div>
       <div class="mrow-main"><div class="mrow-fix">${name} ${round} · ${legLabel} <span class="ha">vs ${oppName}</span></div>${scorersHTML}</div>
       <div class="mrow-res">${gf}-${ga}</div>`;
     $('owLog').prepend(row);
   }
 
-  function logCup(name, round, won, gf, ga, goalsFor, goalsAgainst, oppName) {
-    const row = document.createElement('div'); row.className = 'mrow cup';
+  function logCup(name, round, won, gf, ga, goalsFor, goalsAgainst, oppName, compKey) {
+    const row = document.createElement('div'); row.className = 'mrow cup' + compClass(compKey);
     const usSc = fmtScorers(goalsFor), themSc = fmtScorers(goalsAgainst);
     const scorersHTML = (usSc || themSc) ? `<div class="mrow-scorers">
         ${usSc ? '<div class="sc us">⚽ ' + usSc + '</div>' : ''}
         ${themSc ? '<div class="sc them">🥅 ' + themSc + '</div>' : ''}
       </div>` : '';
-    row.innerHTML = `<div class="mrow-mw">${name.split(' ')[0]}</div>
+    row.innerHTML = `<div class="mrow-mw">${compBadge(compKey)}${name.split(' ')[0]}</div>
       <div class="mrow-main"><div class="mrow-fix">${name} ${round}${oppName ? ' <span class="ha">vs ' + oppName + '</span>' : ''}</div><div class="mrow-you">${won ? (gf === ga ? 'Passa ai rigori' : 'Passa il turno') : (gf === ga ? 'Eliminato ai rigori' : 'Eliminato')}</div>${scorersHTML}</div>
       <div class="mrow-res ${won ? 'W' : 'L'}">${gf}-${ga}</div>`;
     $('owLog').prepend(row);
