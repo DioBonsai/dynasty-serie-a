@@ -351,7 +351,31 @@ body{
 .ow-ticket small{ font-size:10.5px; color:var(--muted); font-weight:600; line-height:1.35; display:block; margin-top:2px; }
 
 .ow-spins{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px; }
+.ow-spins.one{ grid-template-columns:1fr; }
 @media(max-width:460px){ .ow-spins{ grid-template-columns:1fr; } }
+.ow-role-btn{ border-color:rgba(138,92,240,.4); color:#c9a6ff; }
+.ow-role-btn:hover{ border-color:#8a5cf0; }
+/* Griglia di scelta ruolo nell'overlay "Scegli ruolo": una card per ruolo, colorata come i
+   postag già usati altrove (portiere verde, difensore blu, centrocampo bronzo, attacco arancio). */
+.ow-role-grid{ display:grid; grid-template-columns:1fr 1fr; gap:9px; margin:14px 0; }
+.ow-role-pick{
+  appearance:none; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;
+  background:var(--panel2); border:1.5px solid var(--line); border-radius:12px; padding:16px 8px;
+  font:800 13px var(--sans); color:var(--txt); transition:border-color .15s ease, transform .1s ease;
+}
+.ow-role-pick:hover{ transform:translateY(-1px); }
+.ow-role-pick:disabled{ opacity:.4; cursor:not-allowed; transform:none; }
+.ow-role-pick .ow-role-ico{ font-size:26px; line-height:1; }
+.ow-role-pick .ow-role-lbl{ font-size:13px; }
+.ow-role-pick small{ font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase; }
+.ow-role-pick.postag-POR{ border-color:rgba(40,217,160,.35); }
+.ow-role-pick.postag-DIF{ border-color:rgba(111,179,255,.35); }
+.ow-role-pick.postag-CEN{ border-color:rgba(201,144,47,.35); }
+.ow-role-pick.postag-ATT{ border-color:rgba(255,157,106,.35); }
+.ow-role-pick.postag-POR .ow-role-ico{ color:var(--good); }
+.ow-role-pick.postag-DIF .ow-role-ico{ color:#6fb3ff; }
+.ow-role-pick.postag-CEN .ow-role-ico{ color:var(--dyn); }
+.ow-role-pick.postag-ATT .ow-role-ico{ color:#ff9d6a; }
 .ow-investor{ width:100%; margin-bottom:8px; }
 .ow-squad-filters{ display:flex; flex-wrap:wrap; gap:6px; margin:2px 0 8px; }
 .ow-filter-pill{
