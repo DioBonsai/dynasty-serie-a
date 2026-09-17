@@ -375,13 +375,35 @@
   // originali restano lo stato "di lancio" identico per ogni nuova carriera.
   const Q_TO_OVR = (q) => clamp(Math.round(55 + q * 0.85), 40, 99);
   const OVR_TO_Q = (ovr) => clamp(Math.round((ovr - 55) / 0.85), 1, 65);
+  // I database statici non hanno un'età (sono solo nome/ruolo/forza): alla prima clonazione
+  // in S.market gliene assegnamo una plausibile, un filo più giovane per i più forti (i
+  // grandi nomi di oggi sono spesso già nel pieno o all'inizio carriera, non a fine corsa),
+  // così da qui in poi possono invecchiare stagione dopo stagione con la stessa curva della
+  // nostra rosa invece di restare congelati per sempre allo stesso livello.
   function cloneRosterPool(pool) {
     const out = {};
-    Object.keys(pool).forEach((club) => { out[club] = pool[club].map((p) => ({ ...p })); });
+    Object.keys(pool).forEach((club) => {
+      out[club] = pool[club].map((p) => {
+        const ovr = p.ovr != null ? p.ovr : Q_TO_OVR(p.q);
+        const center = ovr >= 85 ? 24 : ovr >= 75 ? 26 : 27;
+        return { ...p, age: p.age != null ? p.age : genAge(center, 4.5, 17, 37) };
+      });
+    });
     return out;
   }
   function initMarket() {
     S.market = { serieA: cloneRosterPool(SERIE_A_ROSTERS), serieB: cloneRosterPool(SERIE_B_ROSTERS), euro: cloneRosterPool(EURO_ROSTERS) };
+  }
+  // Stessa curva età→crescita/calo usata per la NOSTRA rosa (ageGrowthBase + growthDamp +
+  // tetto di +7/stagione), ma senza il fattore prestazione stagionale: per un giocatore
+  // avversario non simuliamo gol/assist singoli, solo l'invecchiamento anagrafico.
+  function agedOvr(ovr, age) {
+    // Leggero bias positivo (+0.6) sul rumore, assente nella crescita della nostra rosa:
+    // qui non c'è una stagione vera da giudicare (niente gol/assist da premiare o punire),
+    // quindi senza questo filo di ottimismo i giovani talenti stagnerebbero troppo presto.
+    let delta = ageGrowthBase(age) + gaussInt(0.6, 2.6);
+    if (delta > 0) delta *= growthDamp(ovr);
+    return clamp(ovr + Math.round(clamp(delta, -99, 7)), 40, 99);
   }
   // Un ruolo casuale con una distribuzione realistica di rosa (pochi portieri, il grosso fra
   // difesa e centrocampo, un po' meno attacco): indipendente dai tetti della TUA rosa, qui
@@ -410,7 +432,7 @@
     const convertTo = (player, kind) => {
       if (kind === (player.ovr != null ? 'ovr' : 'q')) return player;
       const ovr = player.q != null ? Q_TO_OVR(player.q) : player.ovr;
-      return kind === 'ovr' ? { n: player.n, pos: player.pos, ovr, nat: player.nat } : { n: player.n, pos: player.pos, q: OVR_TO_Q(ovr), nat: player.nat };
+      return kind === 'ovr' ? { n: player.n, pos: player.pos, ovr, nat: player.nat, age: player.age } : { n: player.n, pos: player.pos, q: OVR_TO_Q(ovr), nat: player.nat, age: player.age };
     };
     const transferCount = clamp(Math.round(allClubs.length * 0.3), 4, 40);
     for (let i = 0; i < transferCount; i++) {
@@ -423,17 +445,33 @@
       rosterA[idxA] = convertTo(playerB, a.kind);
       rosterB[idxB] = convertTo(playerA, b.kind);
     }
-    // ---- ricambio generazionale: qualche giocatore si ritira, un giovane generato prende
-    // il suo posto nella stessa rosa (mantiene il livello approssimativo del club) ----
+    // ---- invecchiamento: ogni giocatore di ogni rosa sbloccata invecchia di un anno e
+    // sale o scende di overall in base all'età, con la stessa curva (e lo stesso tetto di
+    // crescita) della nostra rosa — succede anche a chi non è mai passato per il nostro
+    // club, così un fenomeno giovane visto per la prima volta continua a crescere stagione
+    // dopo stagione anche restando al suo club. ----
+    allClubs.forEach(({ kind, clubs, name }) => {
+      clubs[name].forEach((p) => {
+        p.age = (p.age || genAge(26, 4.5, 17, 37)) + 1;
+        const ovr = kind === 'ovr' ? p.ovr : Q_TO_OVR(p.q);
+        const newOvr = agedOvr(ovr, p.age);
+        if (kind === 'ovr') p.ovr = newOvr; else p.q = OVR_TO_Q(newOvr);
+      });
+    });
+    // ---- ricambio generazionale: solo chi ha superato i 35 anni può ritirarsi (percentuale
+    // di rischio crescente con l'età), rimpiazzato da un giovane generato nella stessa rosa
+    // (mantiene il livello approssimativo del club) ----
     allClubs.forEach(({ kind, clubs, name }) => {
       const roster = clubs[name];
-      if (!roster.length || Math.random() >= 0.35) return;
-      const idx = rnd(roster.length);
+      if (!roster.length) return;
+      const candidates = roster.map((p, idx) => ({ p, idx })).filter(({ p }) => p.age >= 35 && Math.random() < 0.12 + (p.age - 35) * 0.08);
+      if (!candidates.length) return;
+      const { idx } = pick(candidates);
       const old = roster[idx];
       const baseOvr = old.q != null ? Q_TO_OVR(old.q) : old.ovr;
-      const newOvr = clamp(baseOvr + gaussInt(-2, 5), 40, 99);
+      const newOvr = clamp(baseOvr - 4 + rnd(6), 40, 99);
       const nat = pickNationality(4);
-      const fresh = { n: genName(nat), pos: randOppPos(), nat: nat.code };
+      const fresh = { n: genName(nat), pos: randOppPos(), nat: nat.code, age: genAge(19, 2, 17, 22) };
       if (kind === 'ovr') fresh.ovr = newOvr; else fresh.q = OVR_TO_Q(newOvr);
       roster[idx] = fresh;
     });
@@ -576,7 +614,7 @@
       const ovr = src.league === 'euro' ? rp.ovr : qToRealOvr(rp.pos, rp.q, src.league);
       if (minOvr != null && (ovr < minOvr || ovr > maxOvr)) continue;
       const nat = rp.nat ? natByCode(rp.nat) : (src.league === 'euro' ? pickNationality(4) : pickNationality(S.div));
-      return { n: rp.n, nat, ovr, age: genAge(26, 4.5, 19, 34), wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: rp.pos, seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0, real: true, fromClub: club };
+      return { n: rp.n, nat, ovr, age: rp.age != null ? rp.age : genAge(26, 4.5, 19, 34), wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: rp.pos, seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0, real: true, fromClub: club };
     }
     return null;
   }
@@ -590,7 +628,7 @@
   function spinPlayer(premium, role) {
     const d = divOf(), scout = scoutTier();
     const band = premium ? { lo: d.avg + 3, hi: d.avg + 22 } : { lo: d.avg - 9, hi: d.avg + 11 };
-    const realChance = S.div === 5 ? 0.50 : S.div === 4 ? 0.40 : 0;
+    const realChance = S.div === 5 ? 0.68 : S.div === 4 ? 0.55 : 0;
     if (realChance && Math.random() < realChance) {
       const real = realLeaguePlayer(band.lo, band.hi, role);
       if (real) return real;
