@@ -2,6 +2,13 @@
 <html lang="it">
 <head>
 <meta charset="utf-8" />
+<!-- Il server (Altervista) non manda header Cache-Control per l'HTML, quindi i browser
+     possono servirne una copia vecchia dopo un deploy: questi meta tag chiedono di non farlo.
+     Non sono affidabili quanto un vero header HTTP, ma su hosting condiviso senza mod_headers
+     abilitato sono la miglior difesa disponibile lato client. -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Presidente · Serie A</title>
 <meta name="description" content="Compra un club di Promozione e costruisci un impero. Ingaggia giocatori con gli spin, gestisci il monte ingaggi, fai crescere lo stadio e scala sei categorie fino alla Serie A." />
