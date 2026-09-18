@@ -229,6 +229,16 @@
     'Bruno', 'Gallo', 'Conti', 'De Luca', 'Mancini', 'Costa', 'Giordano', 'Rizzo', 'Lombardi', 'Moretti',
     'Barbieri', 'Fontana', 'Santoro', 'Mariani', 'Rinaldi', 'Caruso', 'Ferrara', 'Galli', 'Martini', 'Leone',
     'Longo', 'Gentile', 'Villa', 'Ferro', 'Marchetti', 'Bellini', 'Monti', 'Vitale', 'Amato', 'Testa',
+    'Bianco', 'Vitali', 'Pellegrini', 'Sala', 'Farina', 'Rizzi', 'Gatti', 'Serra', 'Coppola', 'De Santis',
+    'D\'Angelo', 'Marini', 'Grasso', 'Valentini', 'Messina', 'Fabbri', 'Guerra', 'Rossetti', 'Parisi', 'Sorrentino',
+    'Grimaldi', 'De Angelis', 'Palumbo', 'Riva', 'Basile', 'Milani', 'Bianchini', 'Piras', 'Ferretti', 'Bernardi',
+    'Neri', 'Piazza', 'Cattaneo', 'Negri', 'Orlando', 'Pagano', 'Rossini', 'D\'Amico', 'Trevisan', 'Angelini',
+    'Battaglia', 'Beretta', 'Bevilacqua', 'Bianconi', 'Bonetti', 'Borrelli', 'Bosco', 'Cannavaro', 'Capasso', 'Caputo',
+    'Carbone', 'Cassano', 'Cervi', 'Chiesa', 'Cirillo', 'Colella', 'Colonna', 'Corsini', 'Damiani', 'D\'Amato',
+    'De Rosa', 'Di Marco', 'Di Stefano', 'Donati', 'Fabbrini', 'Fanelli', 'Federici', 'Ferrante', 'Fiore', 'Franceschini',
+    'Franco', 'Gasperini', 'Genovese', 'Gianni', 'Grieco', 'Guidi', 'Iacobelli', 'Iannucci', 'Leoni', 'Lombardo',
+    'Lorenzini', 'Maggi', 'Malavolti', 'Manzo', 'Marra', 'Melis', 'Meloni', 'Merlo', 'Mirabelli', 'Montanari',
+    'Morandi', 'Nardi', 'Natali', 'Palermo', 'Palmieri', 'Pasquali', 'Pastore', 'Perrone', 'Piscopo', 'Pozzi',
     'Martinez', 'Fernandez', 'Garcia', 'Sanchez', 'Rodriguez', 'Lopez', 'Gonzalez', 'Perez', 'Diaz', 'Alonso',
     'Torres', 'Ramirez', 'Ortiz',
     'Silva', 'Santos', 'Oliveira', 'Pereira', 'Carvalho', 'Fonseca', 'Ribeiro', 'Moreira', 'Teixeira', 'Almeida',
@@ -269,9 +279,9 @@
   // Le prime voci di FIRST/LAST sono italiane in senso stretto (usate per i nazionali
   // italiani); il resto del pool è il mix multinazionale già esistente, riusato per
   // ogni giocatore straniero a prescindere dalla nazionalità estratta.
-  const ITA_FIRST = FIRST.slice(0, 38), ITA_LAST = LAST.slice(0, 40);
+  const ITA_FIRST = FIRST.slice(0, 38), ITA_LAST = LAST.slice(0, 140);
 
-  const FOREIGN_FIRST = FIRST.slice(38), FOREIGN_LAST = LAST.slice(40);
+  const FOREIGN_FIRST = FIRST.slice(38), FOREIGN_LAST = LAST.slice(140);
 
   /* ---------------- nazionalità ---------------- */
   // In Eccellenza la rosa è quasi tutta italiana; salendo di categoria la quota di
