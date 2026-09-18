@@ -588,25 +588,7 @@
     if (prem) prem.addEventListener('click', () => doSpin(true));
     if (premRole) premRole.addEventListener('click', () => doSpin(true, true));
     const fa = $('freeAgentBtn');
-    if (fa) fa.addEventListener('click', () => {
-      const p = freeAgent();
-      overlay(`
-        <h2>🖊️ Svincolato tesserato</h2>
-        <div class="ow-spin-card">
-          <div class="big" style="color:${ovrTier(p.ovr).c}">${p.ovr}</div>
-          <div class="nm">${flagOf(p)}${p.n} <span class="postag postag-${p.pos}" style="vertical-align:middle">${p.pos}</span></div>
-          <div class="meta">${POS_LABEL[p.pos]} · età ${p.age} · ${fmtYr(p.wage)}</div>
-        </div>
-        <div class="dyn-modal-actions">
-          <button class="dyn-btn dyn-btn-primary" id="ovFaOk">OK</button>
-        </div>`);
-      $('ovFaOk').onclick = () => {
-        S.squad.push(p);
-        closeOverlay();
-        toast('Lo svincolato ' + p.n + ' si aggrega alla rosa.');
-        renderBoard(); saveGame();
-      };
-    });
+    if (fa) fa.addEventListener('click', pickFreeAgentRole);
     const inv = $('investorBtn');
     if (inv) inv.addEventListener('click', () => {
       S.investorUsed = true; S.budget += divOf().investor;
@@ -699,6 +681,46 @@
       btn.addEventListener('click', () => { const role = btn.dataset.role; closeOverlay(); spendGuard(cost, 'Uno spin di lusso', 'Se rifiuti il giocatore ti torna solo il 40% dello spin.', () => runSpin(true, cost, role)); });
     });
     $('ovRoleCancel').onclick = closeOverlay;
+  }
+
+  // Anche uno svincolato (gratis) lascia scegliere il ruolo, invece di uscire a caso.
+  function pickFreeAgentRole() {
+    const counts = { POR: 0, DIF: 0, CEN: 0, ATT: 0 };
+    S.squad.forEach((p) => { if (counts[p.pos] != null) counts[p.pos]++; });
+    const ROLE_ICON = { POR: '🧤', DIF: '🛡️', CEN: '👟', ATT: '⚽' };
+    overlay(`
+      <h2>🖊️ Ingaggia uno svincolato</h2>
+      <p>Scegli il ruolo dello svincolato da tesserare gratis.</p>
+      <div class="ow-role-grid">
+        ${['POR', 'DIF', 'CEN', 'ATT'].map((r) => `<button class="ow-role-pick postag-${r}" data-role="${r}" ${counts[r] >= POS_CAP[r] ? 'disabled' : ''}>
+          <span class="ow-role-ico">${ROLE_ICON[r]}</span><span class="ow-role-lbl">${POS_LABEL[r]}</span>${counts[r] >= POS_CAP[r] ? '<small>al completo</small>' : ''}
+        </button>`).join('')}
+      </div>
+      <div class="dyn-modal-actions"><button class="dyn-btn" id="ovFaRoleCancel">Annulla</button></div>`);
+    $('owOverlayModal').querySelectorAll('.ow-role-pick').forEach((btn) => {
+      btn.addEventListener('click', () => { const role = btn.dataset.role; closeOverlay(); confirmFreeAgent(role); });
+    });
+    $('ovFaRoleCancel').onclick = closeOverlay;
+  }
+
+  function confirmFreeAgent(role) {
+    const p = freeAgent(role);
+    overlay(`
+      <h2>🖊️ Svincolato tesserato</h2>
+      <div class="ow-spin-card">
+        <div class="big" style="color:${ovrTier(p.ovr).c}">${p.ovr}</div>
+        <div class="nm">${flagOf(p)}${p.n} <span class="postag postag-${p.pos}" style="vertical-align:middle">${p.pos}</span></div>
+        <div class="meta">${POS_LABEL[p.pos]} · età ${p.age} · ${fmtYr(p.wage)}</div>
+      </div>
+      <div class="dyn-modal-actions">
+        <button class="dyn-btn dyn-btn-primary" id="ovFaOk">OK</button>
+      </div>`);
+    $('ovFaOk').onclick = () => {
+      S.squad.push(p);
+      closeOverlay();
+      toast('Lo svincolato ' + p.n + ' si aggrega alla rosa.');
+      renderBoard(); saveGame();
+    };
   }
 
   function runSpin(premium, cost, role) {

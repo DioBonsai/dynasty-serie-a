@@ -573,7 +573,7 @@
     S.scoutProspectSeason = S.season;
     if (Math.random() < scoutTier().prospectChance) {
       const d = divOf(), nat = pickNationality(S.div);
-      const ovr = clamp(gaussInt(d.avg - 5, 5), 40, 90);
+      const ovr = clamp(gaussInt(d.avg - 2, 5), 40, 92);
       S.scoutProspect = { n: genName(nat), nat, ovr, age: 16 + rnd(5), wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 };
     }
   }
@@ -691,7 +691,7 @@
 
   // Svincolati: nessun costo di cartellino, rating scarso per il livello, stipendi modesti.
   // Servono a portare un club in difficoltà al minimo di 16 giocatori, non a vincere partite.
-  const freeAgent = () => { const d = divOf(); const ovr = clamp(d.avg - 13 + rnd(6), 40, 99); const nat = pickNationality(S.div); return { n: genName(nat), nat, ovr, age: genAge(27, 5.5, 18, 37), wage: roundWage(wageFor(ovr) * 0.7), yrs: 1 + rnd(2), pid: newPid(), pos: randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 }; };
+  const freeAgent = (role) => { const d = divOf(); const ovr = clamp(d.avg - 13 + rnd(6), 40, 99); const nat = pickNationality(S.div); return { n: genName(nat), nat, ovr, age: genAge(27, 5.5, 18, 37), wage: roundWage(wageFor(ovr) * 0.7), yrs: 1 + rnd(2), pid: newPid(), pos: role || randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 }; };
 
   const playerValue = (p) => p.wage * 52 * (p.ovr >= 85 ? 9 : p.ovr >= 78 ? 7 : p.ovr >= 68 ? 5 : 3.5) * (p.age <= 23 ? 1.4 : p.age >= 31 ? 0.6 : 1);
 

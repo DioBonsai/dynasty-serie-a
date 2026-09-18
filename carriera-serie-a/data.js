@@ -784,9 +784,9 @@
   // livello 2 in su può anche regalare un giovane di prospettiva gratis a inizio stagione.
   const SCOUT_TIERS = [
     { name: 'Nessuno', bonus: 0, varDelta: 0, gem: 0, prospectChance: 0 },
-    { name: 'Base', bonus: 2, varDelta: -0.6, gem: 0.02, prospectChance: 0.20 },
-    { name: 'Avanzato', bonus: 4, varDelta: -1.1, gem: 0.05, prospectChance: 0.38 },
-    { name: 'Elite', bonus: 7, varDelta: -1.6, gem: 0.09, prospectChance: 0.60 },
+    { name: 'Base', bonus: 2, varDelta: -0.6, gem: 0.02, prospectChance: 0.28 },
+    { name: 'Avanzato', bonus: 4, varDelta: -1.1, gem: 0.05, prospectChance: 0.48 },
+    { name: 'Elite', bonus: 7, varDelta: -1.6, gem: 0.09, prospectChance: 0.72 },
   ];
 
   const MIN_SQUAD = 16;
