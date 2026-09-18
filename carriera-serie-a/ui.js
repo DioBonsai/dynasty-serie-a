@@ -85,7 +85,7 @@
   // non tocca lo stato di gioco.
   let squadRoleFilter = 'ALL', squadSortDesc = true;
 
-  // Tab attiva in Sala del Consiglio: solo preferenza di vista, non persistita.
+  // Tab attiva in Dirigenza: solo preferenza di vista, non persistita.
   let boardTab = 'finanze';
 
   function renderDivPicker() {
@@ -493,7 +493,7 @@
         <div class="cell free"><span>Libero da spendere</span><b class="${free < 0 ? 'bad' : ''}">${fmtMoney(free)}</b></div>
       </div>
       ${crestMarkup(S.crestShape, S.crestColors, 'ow-board-crest')}
-      <div class="dyn-top"><div class="dyn-top-title">La Sala del Consiglio</div><div class="dyn-top-sub">${S.owner} · ${S.club} · Stagione ${S.season} di ${MAX_SEASONS}</div></div>
+      <div class="dyn-top"><div class="dyn-top-title">Dirigenza</div><div class="dyn-top-sub">${S.owner} · ${S.club} · Stagione ${S.season} di ${MAX_SEASONS}</div></div>
       ${ladderHTML()}
       <div class="ow-tabs">${TABS.map((t) => `<button class="ow-tab ${boardTab === t.key ? 'on' : ''}" data-tab="${t.key}">${t.label}${t.warn ? '<span class="dot"></span>' : ''}</button>`).join('')}</div>
       <div id="boardTabBody">${activeTab.html}</div>

@@ -349,14 +349,18 @@
   function seasonOvrDelta(p) {
     const ratio = seasonPerformanceRatio(p);
     // sopra 1 = stagione da incorniciare, sotto 1 = deludente; pesa di più verso l'alto
-    // (le esplosioni improvvise fanno più notizia dei cali) ma può affondare parecchio.
-    const perf = clamp((ratio - 1) * 3.5, -4.5, 7);
-    const noise = (Math.random() - 0.5) * 2;
+    // (le esplosioni improvvise fanno più notizia dei cali) ma resta un contributo, non
+    // può bastare da solo a spingere qualcuno al tetto di crescita: quello richiede anche
+    // l'età giusta (vedi ageGrowthBase), altrimenti troppi giocatori ci finivano sempre.
+    const perf = clamp((ratio - 1) * 2.2, -3, 4);
+    const noise = (Math.random() - 0.5) * 1.5;
     let delta = ageGrowthBase(p.age) + perf + noise;
     if (delta > 0) delta *= growthDamp(p.ovr);
-    // Tetto assoluto alla crescita in una singola stagione: anche un ragazzino in
-    // esplosione totale non può salire di più di 7 in un anno solo (i cali restano liberi).
-    return Math.round(clamp(delta, -99, 7));
+    // Range -5/+7 in una singola stagione: +7 resta possibile solo per un giovane che ha
+    // fatto una stagione da incorniciare, un rendimento buono ma non eccezionale (o un
+    // giocatore più avanti con l'età) si ferma più in basso, sui +3/+5. Anche i cali sono
+    // ora limitati a -5, non più liberi di affondare senza fondo.
+    return Math.round(clamp(delta, -5, 7));
   }
 
   // Marcatore per un avversario con una rosa reale nota: stesso peso ruolo+forza usato per
@@ -1239,7 +1243,11 @@
     const net = matchday + merch + sponsorMoney + prize + S.cupMoney + S.euroMoney + euroTitleBonus - upkeep;
     S.budget += net;
     // ----- qualificazione europea di quest'anno (determina la coppa della prossima stagione) -----
-    const qualTier = S.div === 5 ? euroTierFor(pos) : null;
+    // Vincere la Champions o l'Europa League garantisce un posto in Champions l'anno dopo
+    // anche senza chiudere fra le prime 4 in campionato (come nel calcio vero, la coppa
+    // vinta vale come pass diretto). La Conference League non dà questo bonus.
+    const wonUclOrUel = euroWon && (S.euroComp === 'ucl' || S.euroComp === 'uel');
+    const qualTier = S.div === 5 ? (wonUclOrUel ? 'ucl' : euroTierFor(pos)) : null;
     // ----- trofei + prestigio -----
     const trophies = [];
     if (title) { trophies.push(d.name + ' - Titolo'); S.trophies.titles[S.div]++; S.trophies.total++; S.prestige += TROPHY_WORTH[S.div]; }
