@@ -407,7 +407,7 @@
         <div class="ow-fin-row total ${broke ? 'bad' : ''}"><span>Costo d'avvio</span><b>${fmtMoney(bill)}</b></div>
         <div class="ow-fin-row"><span>Ricavi di stagione (stima)</span><b>${fmtMoney(estRevenue)}</b></div>
         ${broke ? '<div class="ow-warn">⚠️ Ti mancano <b>' + fmtMoney(bill - S.budget) + '</b> per coprire il costo d\'avvio. Ricorda: gli spin spendono cassa anche se rifiuti il giocatore. Vendi giocatori (💷), prendi il bonus investitore o assumi un allenatore più economico prima dell\'inizio.</div>' : ''}
-        ${!S.investorUsed ? `<button class="dyn-btn ow-investor" id="investorBtn">💼 Bonus investitore · +${fmtMoney(d.investor)}</button>` : ''}
+        ${!S.investorUsed ? `<button class="dyn-btn ow-investor" id="investorBtn">💼 Bonus investitore · +${fmtMoney(Math.round(d.investor * diffOf().sponsorMult / 1e4) * 1e4)}</button>` : ''}
       </div>
       ${S.offers && S.offers.length ? `
       <div class="ow-sec">
@@ -605,8 +605,9 @@
     if (fa) fa.addEventListener('click', pickFreeAgentRole);
     const inv = $('investorBtn');
     if (inv) inv.addEventListener('click', () => {
-      S.investorUsed = true; S.budget += divOf().investor;
-      toast('Un investitore stacca un assegno: +' + fmtMoney(divOf().investor)); renderBoard(); saveGame();
+      const amount = Math.round(divOf().investor * diffOf().sponsorMult / 1e4) * 1e4;
+      S.investorUsed = true; S.budget += amount;
+      toast('Un investitore stacca un assegno: +' + fmtMoney(amount)); renderBoard(); saveGame();
     });
     const scoutUpg = $('scoutUpgBtn');
     if (scoutUpg) scoutUpg.addEventListener('click', () => {

@@ -797,10 +797,26 @@
   // (infortuni/squalifiche più o meno frequenti, partite più o meno imprevedibili) e gli
   // stipendi richiesti dai giocatori. "Medio" è il bilanciamento di base del gioco.
   const DIFFICULTIES = [
-    { key: 'facile', label: 'Facile', blurb: 'Più margine economico, avversari più abbordabili, meno imprevisti.', budgetMult: 1.35, teamEffDelta: 4, injuryMult: 0.7, varianceMult: 0.85, wageMult: 0.92 },
-    { key: 'medio', label: 'Medio', blurb: 'Il bilanciamento classico del gioco, senza sconti né penalità.', budgetMult: 1.0, teamEffDelta: 0, injuryMult: 1.0, varianceMult: 1.0, wageMult: 1.0 },
-    { key: 'difficile', label: 'Difficile', blurb: 'Budget più risicato, avversari più ostici, qualche imprevisto di troppo.', budgetMult: 0.75, teamEffDelta: -4, injuryMult: 1.35, varianceMult: 1.2, wageMult: 1.12 },
-    { key: 'estremo', label: 'Estremo', blurb: 'Si parte con pochissimo, ogni partita è in salita e gli imprevisti sono la norma.', budgetMult: 0.55, teamEffDelta: -8, injuryMult: 1.7, varianceMult: 1.4, wageMult: 1.25 },
+    {
+      key: 'facile', label: 'Facile', blurb: 'Più margine economico, avversari più abbordabili, meno imprevisti.',
+      budgetMult: 1.35, teamEffDelta: 4, injuryMult: 0.7, varianceMult: 0.85, wageMult: 0.92,
+      scoutCostMult: 0.85, sponsorMult: 1.15, mgrCostMult: 0.9, prospectMult: 1.2, promoStreakMalusMult: 0.6,
+    },
+    {
+      key: 'medio', label: 'Medio', blurb: 'Il bilanciamento classico del gioco, senza sconti né penalità.',
+      budgetMult: 1.0, teamEffDelta: 0, injuryMult: 1.0, varianceMult: 1.0, wageMult: 1.0,
+      scoutCostMult: 1.0, sponsorMult: 1.0, mgrCostMult: 1.0, prospectMult: 1.0, promoStreakMalusMult: 1.0,
+    },
+    {
+      key: 'difficile', label: 'Difficile', blurb: 'Budget più risicato, avversari più ostici, qualche imprevisto di troppo.',
+      budgetMult: 0.75, teamEffDelta: -4, injuryMult: 1.35, varianceMult: 1.2, wageMult: 1.12,
+      scoutCostMult: 1.2, sponsorMult: 0.88, mgrCostMult: 1.12, prospectMult: 0.85, promoStreakMalusMult: 1.3,
+    },
+    {
+      key: 'estremo', label: 'Estremo', blurb: 'Si parte con pochissimo, ogni partita è in salita e gli imprevisti sono la norma.',
+      budgetMult: 0.55, teamEffDelta: -8, injuryMult: 1.7, varianceMult: 1.4, wageMult: 1.25,
+      scoutCostMult: 1.45, sponsorMult: 0.75, mgrCostMult: 1.3, prospectMult: 0.65, promoStreakMalusMult: 1.7,
+    },
   ];
 
   /* ---------------- avvio + acquisizione ---------------- */

@@ -567,7 +567,7 @@
 
   const scoutTier = () => SCOUT_TIERS[S.scoutLevel || 0];
 
-  const scoutUpgradeCost = (lvl) => Math.round(divOf().spin * [0, 2.0, 4.2, 8.0][lvl] / 1000) * 1000;
+  const scoutUpgradeCost = (lvl) => Math.round(divOf().spin * [0, 2.0, 4.2, 8.0][lvl] * diffOf().scoutCostMult / 1000) * 1000;
 
   // Un prospetto giovane (16-19 anni) gratuito, generato al più una volta a stagione se il
   // dado lo concede: non entra subito in squadra, va ingaggiato dal presidente come uno
@@ -575,7 +575,7 @@
   function maybeScoutProspect() {
     if (!S.scoutLevel || S.scoutProspectSeason === S.season) return;
     S.scoutProspectSeason = S.season;
-    if (Math.random() < scoutTier().prospectChance) {
+    if (Math.random() < scoutTier().prospectChance * diffOf().prospectMult) {
       const d = divOf(), nat = pickNationality(S.div);
       const ovr = clamp(gaussInt(d.avg - 2, 5), 40, 92);
       S.scoutProspect = { n: genName(nat), nat, ovr, age: 16 + rnd(5), wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 };
@@ -784,7 +784,7 @@
   // rovinosamente costoso.
   function spinCostNow(premium) {
     const base = premium ? divOf().premium : divOf().spin;
-    const w = base * Math.pow(1.3, S.spinsBought || 0);
+    const w = base * Math.pow(1.3, S.spinsBought || 0) * diffOf().scoutCostMult;
     if (w >= 1e6) return Math.round(w / 1e5) * 1e5;
     if (w >= 1e5) return Math.round(w / 5e3) * 5e3;
     return Math.round(w / 1e3) * 1e3;
@@ -795,7 +795,7 @@
 
   const freeToSpend = () => S.budget - kickoffBill();
 
-  const mgrSalaryFor = (rating) => Math.round(40e3 * Math.pow(1.14, rating - 50) / 1e3) * 1e3;
+  const mgrSalaryFor = (rating) => Math.round(40e3 * Math.pow(1.14, rating - 50) * diffOf().mgrCostMult / 1e3) * 1e3;
 
   // Un candidato su circa 4 è un allenatore vero, se ce n'è uno con un rating abbastanza
   // vicino a quello richiesto (altrimenti si genera normalmente): non sostituiscono i
@@ -814,7 +814,7 @@
 
   function sponsorOffers() {
     const d = divOf();
-    const base = (d.prize * 0.3 + capOf() * 9) * 1.2;   // +20% su tutti gli accordi sponsor
+    const base = (d.prize * 0.3 + capOf() * 9) * 1.2 * diffOf().sponsorMult;   // +20% su tutti gli accordi sponsor, poi scalato per difficoltà
     const mk = (tag, mult, yrs, sent) => ({ name: pick(SPONSOR_BRANDS[tag]), tag, perYear: Math.round(base * mult * (0.85 + Math.random() * 0.3) / 1e4) * 1e4, years: yrs, left: yrs, sent });
     // Sempre QUATTRO offerte, con un peso economico più alto di prima: più scelta e
     // più soldi in ballo. Dalla Serie B in su un mega-sponsor globale sostituisce lo
@@ -836,7 +836,7 @@
   // Chi viene promosso rincatenando una seconda promozione di fila (rosa e organizzazione
   // ancora tarate sulla categoria precedente) fatica un filo in più ad ambientarsi rispetto
   // a chi ha avuto una stagione intera per consolidarsi: un piccolo malus, non un muro.
-  const promoStreakMalus = () => (S.promoStreak > 0 ? 2.2 : 0);
+  const promoStreakMalus = () => (S.promoStreak > 0 ? 2.2 * diffOf().promoStreakMalusMult : 0);
 
   const teamEff = () => squadStr() + mgrBonus() + (S.form || 0) - promoStreakMalus() + diffOf().teamEffDelta;
 
