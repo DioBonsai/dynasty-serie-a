@@ -77,6 +77,7 @@
 
   // Categoria di partenza scelta in fase di creazione (indice in DIVS, 0=Eccellenza).
   let startDiv = 0;
+  let startDifficulty = 'medio';
 
   // Stato dello stemma in fase di creazione del club (prima che esista S).
   let crestShape = CREST_DEFAULT.shape, crestColors = randCrestColors();
@@ -95,6 +96,18 @@
       startDiv = +el.dataset.startdiv;
       grid.querySelectorAll('.ow-div-pick').forEach((x) => x.classList.toggle('on', +x.dataset.startdiv === startDiv));
       takeovers = genTakeovers(startDiv); selTakeover = -1; renderTakeovers();
+    }));
+  }
+
+  function renderDiffPicker() {
+    const grid = $('diffPicker'); if (!grid) return;
+    grid.innerHTML = DIFFICULTIES.map((d) => `
+      <button type="button" class="ow-diff-pick ${startDifficulty === d.key ? 'on' : ''}" data-diff="${d.key}">
+        <b>${d.label}</b><small>${d.blurb}</small>
+      </button>`).join('');
+    grid.querySelectorAll('.ow-diff-pick').forEach((el) => el.addEventListener('click', () => {
+      startDifficulty = el.dataset.diff;
+      grid.querySelectorAll('.ow-diff-pick').forEach((x) => x.classList.toggle('on', x.dataset.diff === startDifficulty));
     }));
   }
 
@@ -123,6 +136,7 @@
 
   function boot() {
     renderDivPicker();
+    renderDiffPicker();
     takeovers = genTakeovers(startDiv); renderTakeovers();
     if (!$('owClubName').value) $('owClubName').value = pick(POOLS[startDiv]).n;   // suggerimento a caso, modificabile
     updateCrestPreview();
@@ -135,7 +149,7 @@
     $('owRerollBtn').addEventListener('click', () => { takeovers = genTakeovers(startDiv); selTakeover = -1; renderTakeovers(); toast('Nuove condizioni di partenza sul tavolo.'); });
     $('owStartBtn').addEventListener('click', () => {
       if (selTakeover < 0) { toast('Scegli prima una situazione di partenza.'); return; }
-      const go = () => startDynasty(($('owName').value || '').trim() || 'Il Presidente', takeovers[selTakeover], ($('owClubName').value || '').trim(), startDiv);
+      const go = () => startDynasty(($('owName').value || '').trim() || 'Il Presidente', takeovers[selTakeover], ($('owClubName').value || '').trim(), startDiv, startDifficulty);
       if (!hasSave()) { go(); return; }
       overlay(`
         <h2>Iniziare una nuova carriera?</h2>

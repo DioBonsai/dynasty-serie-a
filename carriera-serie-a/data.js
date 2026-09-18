@@ -27,12 +27,12 @@
   // vera Serie B), ultime 3 giù. Serie A: ultime 3 giù. Promozione: come Eccellenza,
   // prime 2 dirette + playoff, nessuna retrocessione modellata sotto di lei.
   const DIVS = [
-    { name: 'Promozione', teams: 24, avg: 43, demand: 2200, ticket: 9, prize: 0.06e6, perPlace: 3e3, promoted: 2, playoff: 4, releg: 0, promoBonus: 0.3e6, titleBonus: 0.12e6, spin: 40e3, premium: 120e3, cupBase: 18e3, admin: 60e3, mgrBase: 46, investor: 150e3 },
-    { name: 'Eccellenza', teams: 24, avg: 50, demand: 4200, ticket: 14, prize: 0.15e6, perPlace: 6e3, promoted: 2, playoff: 4, releg: 3, promoBonus: 0.6e6, titleBonus: 0.25e6, spin: 75e3, premium: 225e3, cupBase: 35e3, admin: 120e3, mgrBase: 52, investor: 300e3 },
-    { name: 'Serie D', teams: 24, avg: 57, demand: 7500, ticket: 17, prize: 1.0e6, perPlace: 15e3, promoted: 3, playoff: 4, releg: 2, promoBonus: 1.2e6, titleBonus: 0.5e6, spin: 200e3, premium: 600e3, cupBase: 70e3, admin: 250e3, mgrBase: 58, investor: 600e3 },
-    { name: 'Serie C', teams: 24, avg: 63, demand: 13000, ticket: 21, prize: 1.6e6, perPlace: 25e3, promoted: 2, playoff: 4, releg: 4, promoBonus: 3e6, titleBonus: 1e6, spin: 500e3, premium: 2.5e6, cupBase: 140e3, admin: 450e3, mgrBase: 63, investor: 1.2e6 },
-    { name: 'Serie B', teams: 24, avg: 69, demand: 24000, ticket: 28, prize: 9e6, perPlace: 120e3, promoted: 2, playoff: 6, releg: 3, promoBonus: 130e6, titleBonus: 3e6, spin: 1.5e6, premium: 8e6, cupBase: 500e3, admin: 1.5e6, mgrBase: 69, investor: 5e6 },
-    { name: 'Serie A', teams: 20, avg: 79, demand: 52000, ticket: 42, prize: 105e6, perPlace: 3.1e6, promoted: 0, playoff: 0, releg: 3, euroSpots: 4, uelPos: 5, confPos: 6, promoBonus: 0, titleBonus: 30e6, spin: 6e6, premium: 30e6, cupBase: 2e6, admin: 6e6, mgrBase: 76, investor: 15e6 },
+    { name: 'Promozione', teams: 24, avg: 46, demand: 2200, ticket: 9, prize: 0.06e6, perPlace: 3e3, promoted: 2, playoff: 4, releg: 0, promoBonus: 0.3e6, titleBonus: 0.12e6, spin: 40e3, premium: 120e3, cupBase: 18e3, admin: 60e3, mgrBase: 46, investor: 150e3 },
+    { name: 'Eccellenza', teams: 24, avg: 53, demand: 4200, ticket: 14, prize: 0.15e6, perPlace: 6e3, promoted: 2, playoff: 4, releg: 3, promoBonus: 0.6e6, titleBonus: 0.25e6, spin: 75e3, premium: 225e3, cupBase: 35e3, admin: 120e3, mgrBase: 52, investor: 300e3 },
+    { name: 'Serie D', teams: 24, avg: 60, demand: 7500, ticket: 17, prize: 1.0e6, perPlace: 15e3, promoted: 3, playoff: 4, releg: 2, promoBonus: 1.2e6, titleBonus: 0.5e6, spin: 200e3, premium: 600e3, cupBase: 70e3, admin: 250e3, mgrBase: 58, investor: 600e3 },
+    { name: 'Serie C', teams: 24, avg: 66, demand: 13000, ticket: 21, prize: 1.6e6, perPlace: 25e3, promoted: 2, playoff: 4, releg: 4, promoBonus: 3e6, titleBonus: 1e6, spin: 500e3, premium: 2.5e6, cupBase: 140e3, admin: 450e3, mgrBase: 63, investor: 1.2e6 },
+    { name: 'Serie B', teams: 24, avg: 72, demand: 24000, ticket: 28, prize: 9e6, perPlace: 120e3, promoted: 2, playoff: 6, releg: 3, promoBonus: 130e6, titleBonus: 3e6, spin: 1.5e6, premium: 8e6, cupBase: 500e3, admin: 1.5e6, mgrBase: 69, investor: 5e6 },
+    { name: 'Serie A', teams: 20, avg: 81, demand: 52000, ticket: 42, prize: 105e6, perPlace: 3.1e6, promoted: 0, playoff: 0, releg: 3, euroSpots: 4, uelPos: 5, confPos: 6, promoBonus: 0, titleBonus: 30e6, spin: 6e6, premium: 30e6, cupBase: 2e6, admin: 6e6, mgrBase: 76, investor: 15e6 },
   ];
 
   const WORTH_BASE = [1.5e6, 4e6, 10e6, 25e6, 90e6, 450e6];
@@ -791,6 +791,18 @@
 
   const MIN_SQUAD = 16;
 
+  // Difficoltà scelta all'avvio della carriera (vedi startDynasty in sim.js): ogni voce
+  // ritocca budget di partenza, forza effettiva percepita in campo (teamEffDelta, positivo
+  // aiuta noi/penalizza gli avversari, negativo il contrario), quanto pesano gli imprevisti
+  // (infortuni/squalifiche più o meno frequenti, partite più o meno imprevedibili) e gli
+  // stipendi richiesti dai giocatori. "Medio" è il bilanciamento di base del gioco.
+  const DIFFICULTIES = [
+    { key: 'facile', label: 'Facile', blurb: 'Più margine economico, avversari più abbordabili, meno imprevisti.', budgetMult: 1.35, teamEffDelta: 4, injuryMult: 0.7, varianceMult: 0.85, wageMult: 0.92 },
+    { key: 'medio', label: 'Medio', blurb: 'Il bilanciamento classico del gioco, senza sconti né penalità.', budgetMult: 1.0, teamEffDelta: 0, injuryMult: 1.0, varianceMult: 1.0, wageMult: 1.0 },
+    { key: 'difficile', label: 'Difficile', blurb: 'Budget più risicato, avversari più ostici, qualche imprevisto di troppo.', budgetMult: 0.75, teamEffDelta: -4, injuryMult: 1.35, varianceMult: 1.2, wageMult: 1.12 },
+    { key: 'estremo', label: 'Estremo', blurb: 'Si parte con pochissimo, ogni partita è in salita e gli imprevisti sono la norma.', budgetMult: 0.55, teamEffDelta: -8, injuryMult: 1.7, varianceMult: 1.4, wageMult: 1.25 },
+  ];
+
   /* ---------------- avvio + acquisizione ---------------- */
   // Non si sceglie più un club con un nome già dato: si sceglie una SITUAZIONE di
   // partenza (che tipo di presidenza sarà). Il nome del club lo decide chi gioca, nel
@@ -802,7 +814,7 @@
   // un'altra storia, non lo stesso testo pensato per l'Eccellenza.
   const SITUATIONS = [
     {
-      key: 'gigante', strRange: [46, 54], budgetRange: [1.6e6, 2.3e6], stadiumTier: 1, stadiumChance: 0.7, fanbaseRange: [1.15, 1.35],
+      key: 'gigante', strRange: [46, 54], budgetRange: [1.1e6, 1.6e6], stadiumTier: 1, stadiumChance: 0.7, fanbaseRange: [1.15, 1.35],
       variants: {
         low: { title: 'Gigante in declino', blurb: 'Una piazza che sogna ancora la Serie A: tanta tifoseria, casse quasi vuote.' },
         mid: { title: 'Nobile decaduta', blurb: 'Una big retrocessa che non si è ancora ripresa: tanta tifoseria, conti in affanno.' },
@@ -810,7 +822,7 @@
       },
     },
     {
-      key: 'piccola', strRange: [42, 50], budgetRange: [2.8e6, 3.9e6], stadiumTier: 0, stadiumChance: 0, fanbaseRange: [0.85, 1.0],
+      key: 'piccola', strRange: [42, 50], budgetRange: [2.0e6, 2.8e6], stadiumTier: 0, stadiumChance: 0, fanbaseRange: [0.85, 1.0],
       variants: {
         low: { title: 'Piccola realtà solida', blurb: 'Pochi tifosi ma conti sempre in ordine: un progetto costruito con pazienza.' },
         mid: { title: 'Matricola tranquilla', blurb: 'Pochi clamori ma bilanci sani: una salvezza onesta come obiettivo minimo.' },
@@ -818,7 +830,7 @@
       },
     },
     {
-      key: 'matricola', strRange: [44, 52], budgetRange: [3.5e6, 4.6e6], stadiumTier: 0, stadiumChance: 0.2, fanbaseRange: [0.9, 1.05],
+      key: 'matricola', strRange: [44, 52], budgetRange: [2.5e6, 3.3e6], stadiumTier: 0, stadiumChance: 0.2, fanbaseRange: [0.9, 1.05],
       variants: {
         low: { title: 'Matricola ambiziosa', blurb: 'Presidente facoltoso, fame di categoria superiore: il budget più alto sul tavolo.' },
         mid: { title: 'Progetto ambizioso', blurb: 'Un fondo con soldi veri punta dritto alla Serie A: il budget più alto sul tavolo.' },
@@ -826,7 +838,7 @@
       },
     },
     {
-      key: 'provincia', strRange: [43, 51], budgetRange: [2.2e6, 2.9e6], stadiumTier: 0, stadiumChance: 0, fanbaseRange: [0.95, 1.1],
+      key: 'provincia', strRange: [43, 51], budgetRange: [1.6e6, 2.1e6], stadiumTier: 0, stadiumChance: 0, fanbaseRange: [0.95, 1.1],
       variants: {
         low: { title: 'Club di provincia stabile', blurb: 'Nessun lusso, ma né debiti né sorprese: si parte alla pari con tutti.' },
         mid: { title: 'Onesta realtà di categoria', blurb: 'Nessun lusso, ma né debiti né sorprese: una stagione tranquilla è già un successo.' },

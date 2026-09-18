@@ -664,6 +664,18 @@ body{
 .ow-div-pick:hover{ border-color:var(--dyn); }
 .ow-div-pick.on{ border-color:var(--dyn); background:rgba(201,144,47,.16); color:var(--txt); }
 
+/* ---------- scelta della difficoltà ---------- */
+.ow-diff-picker{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:0 0 12px; }
+@media(max-width:460px){ .ow-diff-picker{ grid-template-columns:1fr; } }
+.ow-diff-pick{
+  appearance:none; text-align:left; background:var(--panel2); border:1.5px solid var(--line); border-radius:12px;
+  padding:10px 13px; cursor:pointer; transition:border-color .12s ease, background .12s ease, transform .1s ease;
+}
+.ow-diff-pick:hover{ border-color:var(--dyn); transform:translateY(-1px); }
+.ow-diff-pick > b{ display:block; font-family:var(--serif); font-size:14.5px; font-weight:700; color:var(--txt); margin-bottom:2px; }
+.ow-diff-pick > small{ display:block; font-size:10.5px; font-weight:600; color:var(--muted); line-height:1.35; }
+.ow-diff-pick.on{ border-color:var(--dyn); background:rgba(201,144,47,.14); box-shadow:0 0 0 1px var(--dyn) inset; }
+
 /* ---------- scelta del modulo (anteprima formazione) ---------- */
 .ow-formation-picker{ display:flex; flex-wrap:wrap; gap:6px; margin:0 0 10px; }
 .ow-formation-pick{

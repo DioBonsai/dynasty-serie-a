@@ -216,12 +216,13 @@
     S.squad.forEach((p) => {
       if (!(lineup.starters.has(p.pid) || lineup.subs.has(p.pid))) return;
       if (p.outWeeks > 0 || p.suspMatches > 0) return;
-      const injChance = p.age >= 32 ? 0.03 : p.age >= 28 ? 0.02 : 0.013;
+      const injMult = diffOf().injuryMult;
+      const injChance = (p.age >= 32 ? 0.03 : p.age >= 28 ? 0.02 : 0.013) * injMult;
       if (Math.random() < injChance) {
         const weeks = 2 + rnd(4);
         p.outWeeks = weeks;
         events.push({ n: p.n, nat: p.nat, kind: 'inj', weeks });
-      } else if (lineup.starters.has(p.pid) && Math.random() < 0.018) {
+      } else if (lineup.starters.has(p.pid) && Math.random() < 0.018 * injMult) {
         p.suspMatches = 1;
         events.push({ n: p.n, nat: p.nat, kind: 'susp' });
       }
@@ -542,6 +543,8 @@
 
   const divOf = () => DIVS[S.div];
 
+  const diffOf = (key) => DIFFICULTIES.find((x) => x.key === (key || (S && S.difficulty))) || DIFFICULTIES[1];
+
   const gp = () => (divOf().teams - 1) * 2;
 
   const capOf = () => STADIUM[S.stadiumTier].cap;
@@ -558,12 +561,13 @@
   const wageFor = (ovr) => {
     let w = 540 * Math.pow(1.135, ovr - 45) * (0.88 + Math.random() * 0.28);
     if (S && S.div === 5) w *= 0.82;
+    if (S) w *= diffOf().wageMult;
     return roundWage(w);
   };
 
   const scoutTier = () => SCOUT_TIERS[S.scoutLevel || 0];
 
-  const scoutUpgradeCost = (lvl) => Math.round(divOf().spin * [0, 1.3, 2.8, 5.5][lvl] / 1000) * 1000;
+  const scoutUpgradeCost = (lvl) => Math.round(divOf().spin * [0, 2.0, 4.2, 8.0][lvl] / 1000) * 1000;
 
   // Un prospetto giovane (16-19 anni) gratuito, generato al più una volta a stagione se il
   // dado lo concede: non entra subito in squadra, va ingaggiato dal presidente come uno
@@ -834,7 +838,7 @@
   // a chi ha avuto una stagione intera per consolidarsi: un piccolo malus, non un muro.
   const promoStreakMalus = () => (S.promoStreak > 0 ? 2.2 : 0);
 
-  const teamEff = () => squadStr() + mgrBonus() + (S.form || 0) - promoStreakMalus();
+  const teamEff = () => squadStr() + mgrBonus() + (S.form || 0) - promoStreakMalus() + diffOf().teamEffDelta;
 
   function expectedPos() {
     const mine = squadStr() + mgrBonus();
@@ -893,15 +897,17 @@
     });
   }
 
-  function startDynasty(owner, t, customClub, div) {
+  function startDynasty(owner, t, customClub, div, difficulty) {
     div = div || 0;
     clearSave();
+    const diffKey = DIFFICULTIES.some((x) => x.key === difficulty) ? difficulty : 'medio';
     const squad = [];
     const dAvg = DIVS[div].avg;
     for (let i = 0; i < 16; i++) { const ovr = clamp(gaussInt(t.str - 1, 3.5), dAvg - 9, dAvg + 9); const nat = pickNationality(div); squad.push({ n: genName(nat), nat, ovr, age: genAge(23, 4.5, 17, 34), wage: wageFor(ovr), yrs: 1 + rnd(3), pos: randPos(squad), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 }); }
     S = {
       owner, club: (customClub || '').slice(0, 24) || pick(POOLS[div]).n, div: div, season: 1,
-      budget: Math.round(t.budget), fanbase: Math.round(t.fanbase * 100) / 100,
+      difficulty: diffKey,
+      budget: Math.round(t.budget * diffOf(diffKey).budgetMult), fanbase: Math.round(t.fanbase * 100) / 100,
       stadiumTier: t.stadiumTier, stadiumSpent: 0.6e6 + (t.stadiumTier ? STADIUM[1].cost : 0), ticket: 1,
       squad, manager: (function () { const r = clamp(DIVS[div].mgrBase - 2 + rnd(8), 45, 92); const nat = pickNationality(div); return { n: genName(nat), rating: r, salary: mgrSalaryFor(r), nat }; })(),
       sponsor: null, sent: 55, ownerRating: 62, prestige: 0, debtSeasons: 0,
@@ -975,7 +981,10 @@
     if (!S.seasonActive || S.played >= gp()) return;
     const fx = S.fixtures[S.played], opp = S.opps[fx.opp];
     const d = teamEff() - opp.s + (fx.home ? 2.4 : -1.1);
-    const gf = poisson(clamp(1.32 + d * 0.045, 0.15, 4.4)), ga = poisson(clamp(1.32 - d * 0.045, 0.15, 4.4));
+    // Più alta è la varianza di difficoltà, meno pesa il gap di forza reale sul risultato:
+    // partite più imprevedibili, upset più frequenti anche quando si è nettamente più forti.
+    const coeff = 0.045 / diffOf().varianceMult;
+    const gf = poisson(clamp(1.32 + d * coeff, 0.15, 4.4)), ga = poisson(clamp(1.32 - d * coeff, 0.15, 4.4));
     S.played++; S.gf += gf; S.ga += ga;
     const res = gf > ga ? 'W' : gf < ga ? 'L' : 'D';
     S.pts += res === 'W' ? 3 : res === 'D' ? 1 : 0;
