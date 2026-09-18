@@ -796,29 +796,26 @@
   // aiuta noi/penalizza gli avversari, negativo il contrario), quanto pesano gli imprevisti
   // (infortuni/squalifiche più o meno frequenti, partite più o meno imprevedibili) e gli
   // stipendi richiesti dai giocatori. "Medio" è il bilanciamento di base del gioco.
-  // Ogni livello ha preso il posto di quello sopra (Facile ora è il vecchio Medio, Medio il
-  // vecchio Difficile, Difficile il vecchio Estremo) ed Estremo è stato spinto oltre: il
-  // gioco risultava troppo abbordabile su ogni livello.
   const DIFFICULTIES = [
     {
-      key: 'facile', label: 'Facile', blurb: 'Il bilanciamento classico del gioco, senza sconti né penalità.',
+      key: 'facile', label: 'Facile', blurb: 'Più margine economico, avversari più abbordabili, meno imprevisti.',
+      budgetMult: 1.35, teamEffDelta: 4, injuryMult: 0.7, varianceMult: 0.85, wageMult: 0.92,
+      scoutCostMult: 0.85, sponsorMult: 1.15, mgrCostMult: 0.9, prospectMult: 1.2, promoStreakMalusMult: 0.6,
+    },
+    {
+      key: 'medio', label: 'Medio', blurb: 'Il bilanciamento classico del gioco, senza sconti né penalità.',
       budgetMult: 1.0, teamEffDelta: 0, injuryMult: 1.0, varianceMult: 1.0, wageMult: 1.0,
       scoutCostMult: 1.0, sponsorMult: 1.0, mgrCostMult: 1.0, prospectMult: 1.0, promoStreakMalusMult: 1.0,
     },
     {
-      key: 'medio', label: 'Medio', blurb: 'Budget più risicato, avversari più ostici, qualche imprevisto di troppo.',
+      key: 'difficile', label: 'Difficile', blurb: 'Budget più risicato, avversari più ostici, qualche imprevisto di troppo.',
       budgetMult: 0.75, teamEffDelta: -4, injuryMult: 1.35, varianceMult: 1.2, wageMult: 1.12,
       scoutCostMult: 1.2, sponsorMult: 0.88, mgrCostMult: 1.12, prospectMult: 0.85, promoStreakMalusMult: 1.3,
     },
     {
-      key: 'difficile', label: 'Difficile', blurb: 'Si parte con pochissimo, ogni partita è in salita e gli imprevisti sono la norma.',
+      key: 'estremo', label: 'Estremo', blurb: 'Si parte con pochissimo, ogni partita è in salita e gli imprevisti sono la norma.',
       budgetMult: 0.55, teamEffDelta: -8, injuryMult: 1.7, varianceMult: 1.4, wageMult: 1.25,
       scoutCostMult: 1.45, sponsorMult: 0.75, mgrCostMult: 1.3, prospectMult: 0.65, promoStreakMalusMult: 1.7,
-    },
-    {
-      key: 'estremo', label: 'Estremo', blurb: 'Quasi nessun margine economico, avversari nettamente superiori, imprevisti a ogni angolo: una sfida per pochi.',
-      budgetMult: 0.38, teamEffDelta: -12, injuryMult: 2.1, varianceMult: 1.65, wageMult: 1.4,
-      scoutCostMult: 1.75, sponsorMult: 0.6, mgrCostMult: 1.5, prospectMult: 0.48, promoStreakMalusMult: 2.2,
     },
   ];
 
