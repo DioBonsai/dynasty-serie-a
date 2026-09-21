@@ -682,11 +682,11 @@
     if (premium) {
       ovr = gaussInt(d.avg + 10 + scout.bonus, clamp(3.0 + scout.varDelta, 1.6, 3.0));
       if (Math.random() < 0.12 + scout.gem) ovr += 4 + rnd(4);   // lo scout scopre un gioiello
-      ovr = clamp(ovr, band.lo, 99);
+      ovr = clamp(ovr, band.lo, Math.min(d.avg + 30, 99));   // tetto massimo di categoria per il lusso
     } else {
       ovr = gaussInt(d.avg + 1 + scout.bonus, clamp(3.3 + scout.varDelta, 1.8, 3.3));
       if (Math.random() < scout.gem) ovr += 4 + rnd(4);
-      ovr = clamp(ovr, band.lo, band.hi + 7);
+      ovr = clamp(ovr, band.lo, Math.min(d.avg + 18, band.hi + 7));   // tetto massimo di categoria per il base
     }
     const age = premium && Math.random() < 0.35 ? 16 + rnd(6) : genAge(24, 5, 17, 36);
     const nat = pickNationality(S.div);
@@ -956,8 +956,11 @@
     // (fino quasi al doppio della sua resa attesa) o vive un'annata opaca (anche la metà).
     S.squad.forEach((p) => { p.seasonGoals = 0; p.seasonAssists = 0; p.seasonCleanSheets = 0; p.seasonApps = 0; p.formSeason = clamp(1 + gaussInt(0, 28) / 100, 0.45, 1.9); p.outWeeks = 0; p.suspMatches = 0; });
     S.cupMoney = 0; S.euroMoney = S.euro ? EURO_COMPS[S.euroComp].entry : 0;   // montepremi di partecipazione alla coppa europea
-    S.opps = rivals().map((o) => ({ name: o.n, s: o.s, pts: seasonPtsFor(o.s), gf: 0, ga: 0 }));
-    S.opps.forEach((o) => { o.gf = Math.round(gp() * (o.s - (divOf().avg - 12)) / 22); o.ga = Math.round(gp() * ((divOf().avg + 10) - o.s) / 22); });
+    // Forma stagionale di ogni rivale: la forza di base (o.s) resta quella "storica" del club,
+    // ma ogni stagione la sua resa reale oscilla (annata di grazia o annata storta), così la
+    // classifica non è sempre la stessa e anche club normalmente più deboli possono vincere.
+    S.opps = rivals().map((o) => { const effS = clamp(o.s + gaussInt(0, 8), 30, 99); return { name: o.n, s: o.s, effS, pts: seasonPtsFor(effS), gf: 0, ga: 0 }; });
+    S.opps.forEach((o) => { o.gf = Math.round(gp() * (o.effS - (divOf().avg - 12)) / 22); o.ga = Math.round(gp() * ((divOf().avg + 10) - o.effS) / 22); });
     const fx = [];
     S.opps.forEach((o, i) => { fx.push({ opp: i, home: true }); fx.push({ opp: i, home: false }); });
     shuffle(fx); S.fixtures = fx.map((f, i) => ({ ...f, mw: i + 1 }));
@@ -980,7 +983,7 @@
   function simMatch() {
     if (!S.seasonActive || S.played >= gp()) return;
     const fx = S.fixtures[S.played], opp = S.opps[fx.opp];
-    const d = teamEff() - opp.s + (fx.home ? 2.4 : -1.1);
+    const d = teamEff() - opp.effS + (fx.home ? 2.4 : -1.1);
     // Più alta è la varianza di difficoltà, meno pesa il gap di forza reale sul risultato:
     // partite più imprevedibili, upset più frequenti anche quando si è nettamente più forti.
     const coeff = 0.045 / diffOf().varianceMult;
@@ -1175,7 +1178,7 @@
     let playoff = null;
     if (!auto && d.playoff > 0 && pos > d.promoted && pos <= d.promoted + d.playoff) {
       const lo = d.promoted + 1, hi = d.promoted + d.playoff;
-      const strAt = (position) => { const row = S.table[position - 1]; const o = S.opps.find((x) => x.name === row.name); return o ? o.s : d.avg; };
+      const strAt = (position) => { const row = S.table[position - 1]; const o = S.opps.find((x) => x.name === row.name); return o ? o.effS : d.avg; };
       const nameAt = (position) => S.table[position - 1].name;
       const hypoWinner = (a, b) => (Math.random() < (1 / (1 + Math.exp(-(strAt(a) - strAt(b)) / 5))) ? a : b);
       const rounds = [];
