@@ -35,6 +35,20 @@
     { name: 'Serie A', teams: 20, avg: 81, demand: 52000, ticket: 42, prize: 105e6, perPlace: 3.1e6, promoted: 0, playoff: 0, releg: 3, euroSpots: 4, uelPos: 5, confPos: 6, promoBonus: 0, titleBonus: 30e6, spin: 6e6, premium: 30e6, cupBase: 2e6, admin: 6e6, mgrBase: 76, investor: 15e6 },
   ];
 
+  // Tetto massimo di overall raggiungibile con uno spin, per categoria: vale ALLO STESSO
+  // MODO sia per i giocatori generati sia per quelli veri pescati dalle rose reali (vedi
+  // spinPlayer in sim.js) — prima i giocatori veri erano di fatto limitati più in basso
+  // (dalla fascia usata per cercarli) rispetto al tetto "ufficiale" applicato solo ai
+  // generati, un'incoerenza. Stesso ordine di DIVS: Promozione…Serie A.
+  const SPIN_CAPS = [
+    { base: 64, premium: 76 },
+    { base: 71, premium: 80 },
+    { base: 78, premium: 85 },
+    { base: 84, premium: 90 },
+    { base: 90, premium: 95 },
+    { base: 95, premium: 99 },
+  ];
+
   // Il modulo scelto ora pesa davvero sulla partita (prima era solo l'anteprima grafica):
   // atk/def sono un piccolo delta aggiunto/sottratto al numero atteso di gol fatti/subiti.
   // Un modulo più offensivo (3-4-3) segna un po' di più ma incassa un po' di più; uno più

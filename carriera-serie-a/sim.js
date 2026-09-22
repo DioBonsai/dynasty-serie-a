@@ -671,7 +671,12 @@
 
   function spinPlayer(premium, role) {
     const d = divOf(), scout = scoutTier();
-    const band = premium ? { lo: d.avg + 3, hi: d.avg + 22 } : { lo: d.avg - 9, hi: d.avg + 11 };
+    // Il tetto (SPIN_CAPS) è lo stesso, sia che lo spin peschi un giocatore generato sia
+    // che peschi uno vero: usarlo come hi della fascia di ricerca (invece di un hi più
+    // basso derivato da d.avg) fa sì che un giocatore reale non sia più limitato più in
+    // basso di uno generato allo stesso livello.
+    const cap = SPIN_CAPS[S.div] || SPIN_CAPS[SPIN_CAPS.length - 1];
+    const band = premium ? { lo: d.avg + 3, hi: cap.premium } : { lo: d.avg - 9, hi: cap.base };
     if (S.div === 5 && Math.random() < 1 / 12) {
       const icon = iconPlayer(role);
       if (icon) return icon;
@@ -688,11 +693,11 @@
     if (premium) {
       ovr = gaussInt(d.avg + 10 + scout.bonus, clamp(3.0 + scout.varDelta, 1.6, 3.0));
       if (Math.random() < 0.12 + scout.gem) ovr += 4 + rnd(4);   // lo scout scopre un gioiello
-      ovr = clamp(ovr, band.lo, Math.min(d.avg + 30, 99));   // tetto massimo di categoria per il lusso
+      ovr = clamp(ovr, band.lo, cap.premium);   // tetto massimo di categoria per il lusso
     } else {
       ovr = gaussInt(d.avg + 1 + scout.bonus, clamp(3.3 + scout.varDelta, 1.8, 3.3));
       if (Math.random() < scout.gem) ovr += 4 + rnd(4);
-      ovr = clamp(ovr, band.lo, Math.min(d.avg + 18, band.hi + 7));   // tetto massimo di categoria per il base
+      ovr = clamp(ovr, band.lo, cap.base);   // tetto massimo di categoria per il base
     }
     const age = premium && Math.random() < 0.35 ? 16 + rnd(6) : genAge(24, 5, 17, 36);
     const nat = pickNationality(S.div);
