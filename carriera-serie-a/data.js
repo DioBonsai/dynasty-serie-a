@@ -118,6 +118,86 @@
         { label: 'Ignora le voci', sent: -3 },
       ],
     },
+    {
+      icon: '🎓', title: 'Talento del vivaio in pressing',
+      text: 'Un prodotto del settore giovanile chiede al mister maggiore spazio in prima squadra.',
+      choices: [
+        { label: 'Promettigli spazio nelle prossime partite', sent: 3 },
+        { label: 'Chiedigli ancora un po\' di pazienza', sent: -2 },
+      ],
+    },
+    {
+      icon: '🎟️', title: 'Polemica sui prezzi dei biglietti',
+      text: 'I tifosi protestano per il prezzo dei biglietti dell\'ultima trasferta.',
+      choices: [
+        { label: 'Scusati e promuovi un tetto ai prezzi', sent: 4, budgetPct: -0.005 },
+        { label: 'Difendi la scelta commerciale', sent: -3, budgetPct: 0.004 },
+      ],
+    },
+    {
+      icon: '⚔️', title: 'Vigilia di derby',
+      text: 'Il derby cittadino è alle porte e la tensione in città sale di ora in ora.',
+      choices: [
+        { label: 'Lancia un appello alla sportività', sent: 2, ownerRating: 1 },
+        { label: 'Carica l\'ambiente con dichiarazioni piccanti', sent: 5, ownerRating: -2 },
+      ],
+    },
+    {
+      icon: '📸', title: 'Video virale imbarazzante',
+      text: 'Un video di allenamento finito online mette in imbarazzo lo spogliatoio.',
+      choices: [
+        { label: 'Minimizza con ironia sui social', sent: 2 },
+        { label: 'Convoca una riunione interna severa', sent: -2, ownerRating: 2 },
+      ],
+    },
+    {
+      icon: '🌧️', title: 'Il campo è da rifare',
+      text: 'Il terreno di gioco è in condizioni pessime e i giocatori si lamentano apertamente.',
+      choices: [
+        { label: 'Investi subito in manutenzione', sent: 3, budgetPct: -0.01 },
+        { label: 'Rimanda l\'intervento a fine stagione', sent: -3 },
+      ],
+    },
+    {
+      icon: '🎗️', title: 'Invito di beneficenza',
+      text: 'Una onlus locale invita la squadra a disputare una partita di beneficenza.',
+      choices: [
+        { label: 'Accetta con entusiasmo', sent: 5, budgetPct: -0.002 },
+        { label: 'Declina per il fitto calendario', sent: -1 },
+      ],
+    },
+    {
+      icon: '🕵️', title: 'Scout avversario in tribuna',
+      text: 'Uno scout di un club rivale è stato avvistato allo stadio durante l\'ultimo allenamento.',
+      choices: [
+        { label: 'Blinda gli allenamenti agli estranei', ownerRating: 1 },
+        { label: 'Non dare peso alla cosa', sent: -1 },
+      ],
+    },
+    {
+      icon: '🎂', title: 'Anniversario del club',
+      text: 'Ricorre un anniversario storico della fondazione del club.',
+      choices: [
+        { label: 'Organizza una grande festa per i tifosi', sent: 6, budgetPct: -0.006 },
+        { label: 'Una cerimonia sobria, senza spese', sent: 2 },
+      ],
+    },
+    {
+      icon: '🗯️', title: 'Giocatore nel mirino dei social',
+      text: 'Un big della rosa è bersaglio di critiche pesanti sui social dopo l\'ultima uscita.',
+      choices: [
+        { label: 'Difendilo pubblicamente', sent: 2, ownerRating: 1 },
+        { label: 'Lascia correre senza commenti', sent: -2 },
+      ],
+    },
+    {
+      icon: '🏅', title: 'Premio alla carriera per il presidente',
+      text: 'Un\'associazione imprenditoriale locale vuole conferirti un riconoscimento alla carriera.',
+      choices: [
+        { label: 'Accetta e usa il palco per parlare del club', sent: 3, ownerRating: 2 },
+        { label: 'Rifiuta con umiltà, il merito è di tutti', ownerRating: 1 },
+      ],
+    },
   ];
 
   // Ogni allenatore (generato o candidato) ha una specializzazione, oltre al rating: un
