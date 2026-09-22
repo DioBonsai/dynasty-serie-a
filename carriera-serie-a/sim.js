@@ -342,12 +342,13 @@
     return -2.6 - (age - 32) * 0.5;
   }
 
-  // Oltre i 90 di overall la crescita rallenta (arrivare a 99 deve restare eccezionale, non
-  // la norma per chiunque abbia una buona stagione): frena solo la CRESCITA, non i cali, e
-  // si fa via via più ripida avvicinandosi al tetto, soprattutto fra 93 e 99.
+  // Oltre i 95 di overall la crescita rallenta (arrivare al vero tetto di 110 — più alto di
+  // quello di qualunque spin, fermo a 99 — deve restare eccezionale, un traguardo che si
+  // costruisce stagione dopo stagione, non la norma per chiunque abbia una buona annata):
+  // frena solo la CRESCITA, non i cali, e si fa via via più ripida avvicinandosi al tetto.
   function growthDamp(ovr) {
-    if (ovr < 90) return 1;
-    const t = clamp((ovr - 90) / 9, 0, 1);
+    if (ovr < 95) return 1;
+    const t = clamp((ovr - 95) / 15, 0, 1);
     return clamp(1 - t * t * 0.9, 0.12, 1);
   }
   function seasonOvrDelta(p) {
@@ -1668,7 +1669,10 @@
     S.squad.forEach((p) => {
       p.age++;
       const before = p.ovr;
-      p.ovr = clamp(p.ovr + seasonOvrDelta(p), 40, 99);
+      // Il tetto di crescita in carriera (110) è più alto di quello di qualunque spin (99):
+      // uno spin non regala mai un fuoriclasse assoluto, ma un giocatore che tieni e fai
+      // crescere stagione dopo stagione sì, con il tempo.
+      p.ovr = clamp(p.ovr + seasonOvrDelta(p), 40, 110);
       p._ovrDelta = p.ovr - before;
       p._retiring = p.age >= 36;
     });
