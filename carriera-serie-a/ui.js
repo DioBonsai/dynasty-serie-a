@@ -1035,14 +1035,19 @@
   // scorciatoia per saltarle: la scelta stessa è il "premi un bottone per continuare").
   function openNarrativeEventOverlay(ev) {
     const hasChoices = Array.isArray(ev.choices) && ev.choices.length > 0;
-    if (!hasChoices) applyNarrativeEffect(ev);   // un solo esito: si applica subito, il popup lo racconta
+    // `build` fissa UNA volta sola (all'apertura) i dettagli concreti dell'evento — es. quale
+    // giocatore è coinvolto — così il testo mostrato e l'effetto della scelta parlano dello
+    // stesso identico giocatore, invece di ripescarne uno a caso in due momenti diversi.
+    const ctx = typeof ev.build === 'function' ? ev.build(S) : null;
+    const text = typeof ev.text === 'function' ? ev.text(S, ctx) : ev.text;
+    if (!hasChoices) applyNarrativeEffect(ev, ctx);   // un solo esito: si applica subito, il popup lo racconta
     const finish = () => { closeOverlay(); S._pause = false; checkSeasonMilestones(); };
     overlay(`
       <div class="ow-event-modal">
         ${!hasChoices ? '<button type="button" class="ow-modal-x" id="ovEventX" aria-label="Chiudi">✕</button>' : ''}
         <div class="ow-event-icon">${ev.icon || '📰'}</div>
         <h2>${ev.title || 'Imprevisto'}</h2>
-        <p>${ev.text}</p>
+        <p>${text}</p>
         <div class="dyn-modal-actions">
           ${hasChoices
             ? ev.choices.map((c, i) => `<button type="button" class="dyn-btn ${i === 0 ? 'dyn-btn-primary' : ''}" data-choice="${i}">${c.label}</button>`).join('')
@@ -1051,7 +1056,7 @@
       </div>`);
     if (hasChoices) {
       $('owOverlayModal').querySelectorAll('[data-choice]').forEach((btn) => btn.addEventListener('click', () => {
-        applyNarrativeEffect(ev.choices[+btn.dataset.choice]);
+        applyNarrativeEffect(ev.choices[+btn.dataset.choice], ctx);
         finish();
       }));
     } else {

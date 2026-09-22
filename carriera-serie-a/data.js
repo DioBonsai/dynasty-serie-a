@@ -198,6 +198,58 @@
         { label: 'Rifiuta con umiltà, il merito è di tutti', ownerRating: 1 },
       ],
     },
+    // ---- eventi che toccano leve diverse dal solo umore: tifoseria, prestigio, lo sponsor
+    // in carica, o direttamente un giocatore preciso della rosa (con un vero rischio) ----
+    { icon: '📱', title: 'Il club diventa virale', text: 'Un contenuto social del club fa il giro del web e porta nuovi tifosi.', fanbaseDelta: 0.02, sent: 3 },
+    { icon: '🙊', title: 'Gaffe sui social ufficiali', text: 'Un post infelice dai canali ufficiali allontana alcuni simpatizzanti.', fanbaseDelta: -0.02, sent: -3 },
+    { icon: '🎖️', title: 'Premio al settore giovanile', text: 'Il vivaio del club riceve un riconoscimento da un ente calcistico regionale.', prestige: 1e6, sent: 2 },
+    {
+      icon: '🌍', title: 'Riflettori internazionali',
+      text: 'Una rivista sportiva internazionale vuole raccontare la storia del club.',
+      choices: [
+        { label: 'Concedi l\'intervista in esclusiva', prestige: 2e6, sent: 3 },
+        { label: 'Declina, meglio la riservatezza', ownerRating: 1 },
+      ],
+    },
+    {
+      icon: '🤝', title: 'Lo sponsor chiede un incontro',
+      requires: (S) => !!S.sponsor,
+      text: (S) => S.sponsor.name + ' propone un rinnovo anticipato dell\'accordo attuale, a condizioni migliori per entrambi.',
+      choices: [
+        {
+          label: 'Accetta il rinnovo anticipato',
+          apply: (S) => {
+            if (!S.sponsor) return;
+            S.sponsor.perYear = Math.round(S.sponsor.perYear * 1.1 / 1e4) * 1e4;
+            S.sponsor.left = S.sponsor.years;
+            S.sent = clamp(S.sent + 2, 0, 100);
+          },
+        },
+        { label: 'Aspetta la scadenza naturale', sent: 1 },
+      ],
+    },
+    {
+      icon: '🩹', title: 'Titolare acciaccato, vuole giocare',
+      requires: (S) => S.squad && S.squad.some((p) => !p.loan),
+      build: (S) => ({ player: S.squad.filter((p) => !p.loan).sort((a, b) => b.ovr - a.ovr)[0] }),
+      text: (S, ctx) => (ctx && ctx.player ? ctx.player.n : 'Il tuo giocatore migliore') + ' è acciaccato ma vuole esserci nella prossima partita, nonostante il rischio.',
+      choices: [
+        {
+          label: 'Fallo giocare titolare',
+          apply: (S, ctx) => {
+            const p = ctx && ctx.player; if (!p) return;
+            if (Math.random() < 0.3) {
+              p.outWeeks = Math.max(p.outWeeks || 0, 1 + rnd(3));
+              S.sent = clamp(S.sent - 4, 0, 100);
+              toast(p.n + ' si infortuna e salterà le prossime partite.');
+            } else {
+              S.sent = clamp(S.sent + 3, 0, 100);
+            }
+          },
+        },
+        { label: 'Tienilo precauzionalmente a riposo', sent: -1 },
+      ],
+    },
   ];
 
   // Ogni allenatore (generato o candidato) ha una specializzazione, oltre al rating: un

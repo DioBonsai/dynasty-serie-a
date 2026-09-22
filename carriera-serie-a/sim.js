@@ -1192,18 +1192,28 @@
   function maybeNarrativeEvent() {
     const chance = 0.05 * (diffOf().eventMult || 1);
     if (Math.random() >= chance) return false;
-    const ev = pick(NARRATIVE_EVENTS);
+    // Alcuni eventi hanno senso solo con certe condizioni (es. serve uno sponsor attivo, o
+    // almeno un giocatore in rosa): `requires` li esclude dal pool finché non sono eleggibili.
+    const eligible = NARRATIVE_EVENTS.filter((e) => !e.requires || e.requires(S));
+    if (!eligible.length) return false;
+    const ev = pick(eligible);
     S._pause = true;
     openNarrativeEventOverlay(ev);
     return true;
   }
 
-  // Applica l'effetto di un evento senza scelte, o della scelta presa per uno che ne ha.
-  function applyNarrativeEffect(eff) {
+  // Applica l'effetto di un evento senza scelte, o della scelta presa per uno che ne ha. La
+  // maggior parte degli eventi usa numeri semplici (sent/budgetPct/...), ma alcuni hanno
+  // bisogno di logica su misura (rinnovare lo sponsor, rischiare l'infortunio di un
+  // giocatore preciso): per quelli basta passare `apply(S)` invece dei campi numerici.
+  function applyNarrativeEffect(eff, ctx) {
     if (!eff) return;
+    if (typeof eff.apply === 'function') { eff.apply(S, ctx); return; }
     if (eff.sent) S.sent = clamp(S.sent + eff.sent, 0, 100);
     if (eff.budgetPct) S.budget += Math.round(S.budget * eff.budgetPct);
     if (eff.ownerRating) S.ownerRating = clamp(S.ownerRating + eff.ownerRating, 0, 100);
+    if (eff.fanbaseDelta) S.fanbase = Math.round(clamp(S.fanbase + eff.fanbaseDelta, 0.7, 3.0) * 100) / 100;
+    if (eff.prestige) S.prestige += eff.prestige;
   }
 
   /* ---------------- coppe (checkpoint scalati sulla lunghezza di stagione) ---------------- */
