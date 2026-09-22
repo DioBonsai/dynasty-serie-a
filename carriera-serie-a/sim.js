@@ -216,7 +216,10 @@
     S.squad.forEach((p) => {
       if (!(lineup.starters.has(p.pid) || lineup.subs.has(p.pid))) return;
       if (p.outWeeks > 0 || p.suspMatches > 0) return;
-      const injMult = diffOf().injuryMult;
+      // Allenatore "preparatore di ferro": uno staff medico-atletico migliore tiene la rosa
+      // più sana, sia sul fronte infortuni sia su quello cartellini.
+      const mgrMedic = S.manager && S.manager.spec === 'medic' ? 0.7 : 1;
+      const injMult = diffOf().injuryMult * mgrMedic;
       const injChance = (p.age >= 32 ? 0.03 : p.age >= 28 ? 0.02 : 0.013) * injMult;
       if (Math.random() < injChance) {
         const weeks = 2 + rnd(4);
@@ -748,7 +751,9 @@
     const d = divOf();
     const star = p.ovr >= d.avg + 6 ? 0.16 : p.ovr >= d.avg + 2 ? 0.08 : 0;
     const youth = p.age <= 22 ? 0.14 : p.age <= 26 ? 0.05 : p.age >= 32 ? -0.02 : 0;
-    return roundWage(Math.max(p.wage, wageFor(p.ovr)) * (1.08 + star + youth));
+    // Allenatore "negoziatore": sa trattare, i rinnovi chiedono un po' meno.
+    const mgrNegotiator = S.manager && S.manager.spec === 'negotiator' ? 0.95 : 1;
+    return roundWage(Math.max(p.wage, wageFor(p.ovr)) * (1.08 + star + youth) * mgrNegotiator);
   }
 
   const renewYears = (p) => (p.age >= 31 ? 1 + rnd(2) : 3 + rnd(2));

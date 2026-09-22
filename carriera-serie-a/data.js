@@ -259,6 +259,8 @@
     { key: 'builder', label: 'Costruttore di giovani', icon: '🌱', desc: 'I suoi under 23 crescono un filo più in fretta a fine stagione.' },
     { key: 'motivator', label: 'Motivatore', icon: '🔥', desc: 'Dimezza il contraccolpo da doppia promozione consecutiva e tiene la squadra sul pezzo quando l\'umore è a terra.' },
     { key: 'tactician', label: 'Tattico', icon: '📋', desc: 'Un piccolo bonus di rendimento in campo, sempre.' },
+    { key: 'medic', label: 'Preparatore di ferro', icon: '🩺', desc: 'Uno staff medico-atletico di alto livello: la rosa si infortuna e si squalifica un po\' meno spesso.' },
+    { key: 'negotiator', label: 'Negoziatore', icon: '💬', desc: 'Sa trattare bene con i giocatori: i rinnovi di contratto costano un po\' meno.' },
   ];
 
   // Derby/rivalità storiche: coppie di nomi già presenti nei POOLS di qualche categoria
