@@ -537,7 +537,7 @@
         ${p.outWeeks > 0 ? `<span class="stat-tag inj" title="Infortunato">🚑 ${p.outWeeks}</span>` : p.suspMatches > 0 ? '<span class="stat-tag susp" title="Squalificato">🟥</span>' : ''}
         ${p.loan ? '<span class="yy loan" title="Torna al suo club se non riscattato">prestito</span>' : `<span class="yy${fy ? ' fy' : ''}" title="Anni di contratto rimasti">${p.yrs}a</span>`}
         <span class="wg">${fmtYr(p.wage)}</span>
-        ${!p.loan ? `<button class="ow-renew" data-renew="${p.pid}" title="Offri un nuovo contratto, anche se non è in scadenza">Rinnova</button>` : ''}
+        ${fy ? `<button class="ow-renew" data-renew="${p.pid}" title="Offri un nuovo contratto">Rinnova</button>` : ''}
         ${p.loan ? `<button class="ow-renew" data-buyback="${p.pid}" title="Riscatta a titolo definitivo, altrimenti torna al suo club a inizio stagione">💰 Riscatta · ${fmtMoney(loanBuybackFee(p))}</button>` : `<button class="ow-x" data-rel="${p.pid}" title="Vendi">💷</button>`}</div>`;
     }).join('') : '<div class="ow-sub" style="margin:10px 0">Nessun giocatore in questo ruolo.</div>';
     const estRevenue = estSeasonRevenue();
@@ -708,27 +708,14 @@
       };
       $('ovCancelRel').onclick = closeOverlay;
     }));
-    // Rinnova un contratto: disponibile in ogni momento, non solo in scadenza (utile per
-    // blindare un talento prima che altri club si facciano avanti). Sempre un aumento, più
-    // ripido per i giovani talenti; se non rinnovi in tempo lo perdi a parametro zero.
+    // Rinnova un contratto: nella lista rosa il bottone compare solo per chi è in scadenza
+    // (finalYear); per tutti gli altri il rinnovo resta possibile ma solo aprendo la scheda
+    // del giocatore (tocca la riga), per non affollare la lista di bottoni "Rinnova" inutili
+    // su una rosa intera. Sempre un aumento, più ripido per i giovani talenti; se non
+    // rinnovi in tempo lo perdi a parametro zero.
     body.querySelectorAll('.ow-renew').forEach((el) => el.addEventListener('click', () => {
       const p = S.squad.find((x) => x.pid === +el.dataset.renew); if (!p) return;
-      const nw = renewWage(p), ny = renewYears(p);
-      overlay(`
-        <h2>📝 Nuovo contratto</h2>
-        <div class="ow-spin-card">
-          <div class="big" style="color:${ovrTier(p.ovr).c}">${p.ovr}</div>
-          <div class="nm">${flagOf(p)}${p.n}</div>
-          <div class="meta">età ${p.age} · guadagna <b>${fmtYr(p.wage)}</b>, ${p.yrs} ann${p.yrs === 1 ? 'o' : 'i'} rimasti</div>
-          <div class="meta">Chiede <b>${fmtYr(nw)}</b> per <b>${ny} anni</b></div>
-          <div class="meta">Hai <b>${fmtMoney(freeToSpend())}</b> liberi dopo gli stipendi</div>
-        </div>
-        <div class="dyn-modal-actions">
-          <button class="dyn-btn dyn-btn-primary" id="ovRenew">Accetta l'accordo</button>
-          <button class="dyn-btn" id="ovNoRenew">Non ora</button>
-        </div>`);
-      $('ovRenew').onclick = () => { p.wage = nw; p.yrs = ny; closeOverlay(); toast(p.n + ' firma un nuovo contratto di ' + ny + ' anni.'); renderBoard(); saveGame(); };
-      $('ovNoRenew').onclick = closeOverlay;
+      openRenewOverlay(p);
     }));
     // Riscatta un giocatore in prestito a titolo definitivo: se non lo fai entro l'inizio
     // della stagione, torna al suo club (vedi startSeason).
@@ -960,6 +947,27 @@
     };
   }
 
+  // L'overlay di rinnovo vero e proprio: richiamato sia dal bottone "Rinnova" in lista (solo
+  // per chi è in scadenza) sia dalla scheda giocatore (per chiunque, in ogni momento).
+  function openRenewOverlay(p) {
+    const nw = renewWage(p), ny = renewYears(p);
+    overlay(`
+      <h2>📝 Nuovo contratto</h2>
+      <div class="ow-spin-card">
+        <div class="big" style="color:${ovrTier(p.ovr).c}">${p.ovr}</div>
+        <div class="nm">${flagOf(p)}${p.n}</div>
+        <div class="meta">età ${p.age} · guadagna <b>${fmtYr(p.wage)}</b>, ${p.yrs} ann${p.yrs === 1 ? 'o' : 'i'} rimasti</div>
+        <div class="meta">Chiede <b>${fmtYr(nw)}</b> per <b>${ny} anni</b></div>
+        <div class="meta">Hai <b>${fmtMoney(freeToSpend())}</b> liberi dopo gli stipendi</div>
+      </div>
+      <div class="dyn-modal-actions">
+        <button class="dyn-btn dyn-btn-primary" id="ovRenew">Accetta l'accordo</button>
+        <button class="dyn-btn" id="ovNoRenew">Non ora</button>
+      </div>`);
+    $('ovRenew').onclick = () => { p.wage = nw; p.yrs = ny; closeOverlay(); toast(p.n + ' firma un nuovo contratto di ' + ny + ' anni.'); renderBoard(); saveGame(); };
+    $('ovNoRenew').onclick = closeOverlay;
+  }
+
   // Scheda dettagliata di un calciatore in rosa: anagrafica, contratto e statistiche della
   // stagione in corso, richiamabile toccando la sua riga nell'elenco Rosa.
   function openPlayerDetail(pid) {
@@ -987,8 +995,13 @@
         ${p.outWeeks > 0 ? `<div class="ow-fin-row bad"><span>Infortunato</span><b>🚑 fuori ${p.outWeeks} partit${p.outWeeks === 1 ? 'a' : 'e'}</b></div>` : ''}
         ${p.suspMatches > 0 ? `<div class="ow-fin-row bad"><span>Squalificato</span><b>🟥 salta la prossima</b></div>` : ''}
       </div>
-      <div class="dyn-modal-actions"><button class="dyn-btn" id="ovDetailClose">Chiudi</button></div>`);
+      <div class="dyn-modal-actions">
+        ${!p.loan ? `<button class="dyn-btn dyn-btn-primary" id="ovDetailRenew">📝 Rinnova</button>` : ''}
+        <button class="dyn-btn" id="ovDetailClose">Chiudi</button>
+      </div>`);
     $('ovDetailClose').onclick = closeOverlay;
+    const renewBtn = $('ovDetailRenew');
+    if (renewBtn) renewBtn.onclick = () => openRenewOverlay(p);
   }
 
   function confirmSell() {
