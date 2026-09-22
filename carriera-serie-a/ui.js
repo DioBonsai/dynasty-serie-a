@@ -182,6 +182,81 @@
     } catch (e2) { finish(); }
   }
 
+  // Card riassuntiva dell'INTERA carriera (non la singola stagione), disegnata allo stesso
+  // modo di exportSeasonCard: richiamabile solo a fine dinastia (venduto/pensione/dimesso/
+  // cacciato/amministrazione controllata), quando la storia è ormai chiusa e S.history
+  // contiene tutte le stagioni giocate.
+  function exportCareerCard() {
+    const how = S._how;
+    const worth = computeWorth();
+    const honours = [];
+    S.trophies.titles.forEach((n, i) => { if (n) honours.push(n + 'x Titolo ' + (DIVS[i] ? DIVS[i].name : '')); });
+    if (S.trophies.nat) honours.push(S.trophies.nat + 'x Coppa Italia');
+    ['ucl', 'uel', 'conf'].forEach((k) => { if (S.trophies[k]) honours.push(S.trophies[k] + 'x ' + EURO_COMPS[k].name); });
+    const topDiv = S.history.reduce((a, hh) => Math.max(a, DIVS.findIndex((x) => x.name === hh.div)), S.div);
+    const heads = {
+      sold: 'CLUB VENDUTO', retired: 'FINE CARRIERA', resigned: 'DIMISSIONI', forced: 'CACCIATO DAI TIFOSI', admin: 'AMMINISTRAZIONE CONTROLLATA',
+    };
+    const headline = heads[how] || 'FINE CARRIERA';
+
+    const W = 1080, H = 1350;
+    const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#1c1610'); grad.addColorStop(1, '#0b0906');
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = 'rgba(201,144,47,.55)'; ctx.lineWidth = 6; ctx.strokeRect(18, 18, W - 36, H - 36);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#c9902f'; ctx.font = '700 28px Inter, Arial, sans-serif'; ctx.fillText('PRESIDENTE · SERIE A', W / 2, 108);
+    ctx.fillStyle = '#ffd24a'; ctx.font = '900 58px Georgia, serif'; ctx.fillText(S.club, W / 2, 186);
+    ctx.fillStyle = '#a89680'; ctx.font = '600 26px Inter, Arial, sans-serif'; ctx.fillText(S.owner + ' · ' + S.history.length + ' stagion' + (S.history.length === 1 ? 'e' : 'i'), W / 2, 226);
+    ctx.fillStyle = '#ffffff'; ctx.font = '900 66px Georgia, serif'; ctx.fillText(headline, W / 2, 320);
+    ctx.fillStyle = '#e8ddcf'; ctx.font = '700 30px Inter, Arial, sans-serif';
+    ctx.fillText(how === 'sold' ? 'Venduto per ' + fmtMoney(S._sale) : 'Valore finale ' + fmtMoney(worth), W / 2, 372);
+
+    let y = 440;
+    ctx.fillStyle = '#6fb3ff'; ctx.font = '700 28px Inter, Arial, sans-serif';
+    ctx.fillText('Livello massimo: ' + DIVS[Math.max(0, topDiv)].name, W / 2, y); y += 44;
+    ctx.fillText('Valore massimo: ' + fmtMoney(S.peakWorth), W / 2, y); y += 60;
+
+    if (honours.length) {
+      ctx.fillStyle = '#ffd24a'; ctx.font = '800 30px Inter, Arial, sans-serif';
+      honours.forEach((t) => { ctx.fillText('🏆 ' + t, W / 2, y); y += 46; });
+    } else {
+      ctx.fillStyle = '#a89680'; ctx.font = '600 26px Inter, Arial, sans-serif';
+      ctx.fillText('Nessun trofeo in bacheca', W / 2, y); y += 46;
+    }
+    y += 20;
+    ctx.fillStyle = '#28d9a0'; ctx.font = '800 30px Inter, Arial, sans-serif';
+    ctx.fillText(S.history.filter((hh) => hh.promoted).length + ' promozioni conquistate', W / 2, y);
+
+    const finish = () => {
+      ctx.fillStyle = '#6b5a44'; ctx.font = '600 20px Inter, Arial, sans-serif';
+      ctx.fillText('presidente-serie-a', W / 2, H - 40);
+      canvas.toBlob((blob) => {
+        if (!blob) { toast('Impossibile generare l\'immagine.'); return; }
+        const file = new File([blob], 'presidente-' + S.club.replace(/[^a-z0-9]+/gi, '_') + '-carriera.png', { type: 'image/png' });
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+          navigator.share({ files: [file], title: 'Presidente · Serie A', text: headline + ' — ' + S.club }).catch(() => {});
+          return;
+        }
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = file.name;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      }, 'image/png');
+    };
+    try {
+      const svgBlob = new Blob([crestMarkup(S.crestShape, S.crestColors, '')], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(svgBlob);
+      const img = new Image();
+      img.onload = () => { const cw = 150, ch = 172; ctx.drawImage(img, W / 2 - cw / 2, H - ch - 94, cw, ch); URL.revokeObjectURL(url); finish(); };
+      img.onerror = finish;
+      img.src = url;
+    } catch (e2) { finish(); }
+  }
+
   // Backup di uno slot: un unico file .json con salvataggio + piramide, scaricabile e
   // ri-importabile (anche su un altro dispositivo/browser).
   function exportSaveSlot(id) {
@@ -1335,11 +1410,13 @@
           <tbody>${S.history.map((hh) => `<tr><td>${hh.season}${hh.promoted ? ' ⬆️' : hh.relegated ? ' ⬇️' : ''}</td><td>${hh.div}</td><td class="num">${hh.pos}</td><td class="num">${hh.net < 0 ? '-' : ''}${fmtMoney(Math.abs(hh.net))}</td><td class="num">${fmtMoney(hh.worth)}</td><td style="font-size:11px">${hh.trophies.length ? hh.trophies.join(', ') : '-'}</td></tr>`).join('')}</tbody></table>
         </div>
       </div>
+      <button class="dyn-btn" id="owShareCareerBtn">📤 Condividi la carriera</button>
       <button class="dyn-btn" id="owShareLbBtn">🌍 Invia alla classifica globale</button>
       <button class="dyn-btn" id="owAgainBtn">Nuova carriera</button>
       <a class="dyn-back" href="index.html">Torna alla Dynasty</a>`;
     if (S.trophies.total > 0 || how === 'retired') celebrate(body.querySelector('.dyn-panel'));
     $('owAgainBtn').onclick = () => location.reload();
+    $('owShareCareerBtn').onclick = exportCareerCard;
     $('owShareLbBtn').onclick = submitToLeaderboard;
     show('owEndScreen');
   }
