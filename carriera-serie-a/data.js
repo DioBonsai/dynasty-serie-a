@@ -65,21 +65,59 @@
 
   // Eventi narrativi casuali: pura ambientazione fra una partita e l'altra (non toccano
   // rosa/infortuni/squalifiche, quelli restano gestiti dal motore partite), un piccolo
-  // bump di umore (a volte anche economico) per dare al gioco qualche "storia" oltre ai
-  // numeri di bilancio.
+  // bump di umore/gradimento/budget per dare al gioco qualche "storia" oltre ai numeri di
+  // bilancio. Un evento SENZA `choices` applica il suo effetto e si limita a un bottone
+  // "Continua"; uno CON `choices` lascia scegliere fra 2 opzioni con esiti diversi, ed è
+  // l'effetto della scelta (non un default) a essere applicato.
   const NARRATIVE_EVENTS = [
-    { text: 'Un vecchio striscione della curva torna a sventolare prima della sfida più sentita: la squadra sente il calore del pubblico.', sent: 4 },
-    { text: 'Un piccolo caso spogliatoio tiene banco per qualche giorno prima di rientrare.', sent: -4 },
-    { text: 'Un club più ricco fa la corte a uno dei tuoi giovani migliori: per ora resta, ma se ne parla in giro.', sent: -2 },
-    { text: 'I tifosi organizzano una marcia di sostegno alla squadra alla vigilia di una partita delicata.', sent: 5 },
-    { text: 'La stampa locale elogia la gestione economica del club.', sent: 2, budgetPct: 0.004 },
-    { text: 'Un titolare si ferma precauzionalmente alla vigilia per un fastidio muscolare: lo staff medico preferisce non rischiare.', sent: -3 },
-    { text: 'Il settore giovanile viene lodato in un articolo sulla stampa sportiva.', sent: 3 },
-    { text: 'Le voci su un possibile cambio di proprietà agitano l\'ambiente per qualche giorno.', sent: -3 },
-    { text: 'Un ex giocatore del club torna in visita agli allenamenti: entusiasmo alle stelle nello spogliatoio.', sent: 3 },
-    { text: 'Polemiche arbitrali dopo l\'ultima uscita infiammano il dibattito in città.', sent: -2 },
-    { text: 'Un servizio TV racconta la crescita del club: la piazza si sente vista.', sent: 3 },
-    { text: 'Ritardi nei lavori allo stadio fanno discutere i tifosi abbonati.', sent: -2 },
+    { icon: '🔥', title: 'Striscione in curva', text: 'Un vecchio striscione della curva torna a sventolare prima della sfida più sentita: la squadra sente il calore del pubblico.', sent: 4 },
+    { icon: '😠', title: 'Caso spogliatoio', text: 'Un piccolo caso spogliatoio tiene banco per qualche giorno prima di rientrare.', sent: -4 },
+    { icon: '📣', title: 'Marcia dei tifosi', text: 'I tifosi organizzano una marcia di sostegno alla squadra alla vigilia di una partita delicata.', sent: 5 },
+    { icon: '📰', title: 'Elogio della stampa', text: 'La stampa locale elogia la gestione economica del club.', sent: 2, budgetPct: 0.004 },
+    { icon: '🚑', title: 'Allarme alla vigilia', text: 'Un titolare si ferma precauzionalmente alla vigilia per un fastidio muscolare: lo staff medico preferisce non rischiare.', sent: -3 },
+    { icon: '🌱', title: 'Il vivaio fa notizia', text: 'Il settore giovanile viene lodato in un articolo sulla stampa sportiva.', sent: 3 },
+    { icon: '📺', title: 'Servizio TV', text: 'Un servizio TV racconta la crescita del club: la piazza si sente vista.', sent: 3 },
+    { icon: '🏗️', title: 'Ritardi allo stadio', text: 'Ritardi nei lavori allo stadio fanno discutere i tifosi abbonati.', sent: -2 },
+    {
+      icon: '💰', title: 'Sirene di mercato',
+      text: 'Un club più ricco fa la corte a uno dei tuoi giovani migliori: la piazza aspetta una tua parola.',
+      choices: [
+        { label: 'Rassicura pubblicamente i tifosi', sent: 4 },
+        { label: 'Lascia correre le voci', sent: -3 },
+      ],
+    },
+    {
+      icon: '🤝', title: 'Offerta sponsor lampo',
+      text: 'Uno sponsor locale offre un contributo una tantum per un\'iniziativa benefica legata al club.',
+      choices: [
+        { label: 'Accetta, i tifosi apprezzeranno', sent: 5, budgetPct: 0.008 },
+        { label: 'Rifiuta, meglio restare indipendenti', sent: -1 },
+      ],
+    },
+    {
+      icon: '🟨', title: 'Polemica arbitrale',
+      text: 'Le polemiche sull\'ultima direzione di gara infiammano il dibattito in città: la stampa aspetta una reazione del presidente.',
+      choices: [
+        { label: 'Attacca pubblicamente l\'arbitro', sent: 3, ownerRating: -2 },
+        { label: 'Minimizza, testa bassa', sent: -1, ownerRating: 1 },
+      ],
+    },
+    {
+      icon: '🎽', title: 'Visita a sorpresa',
+      text: 'Un ex giocatore del club, ora ritirato, si presenta a sorpresa agli allenamenti.',
+      choices: [
+        { label: 'Organizza un evento con i tifosi', sent: 5, budgetPct: -0.003 },
+        { label: 'Una visita informale, niente di più', sent: 1 },
+      ],
+    },
+    {
+      icon: '🗞️', title: 'Cambio di proprietà nell\'aria',
+      text: 'Le voci su un possibile cambio di proprietà agitano l\'ambiente per qualche giorno.',
+      choices: [
+        { label: 'Smentisci con una conferenza stampa', sent: 2, ownerRating: 2 },
+        { label: 'Ignora le voci', sent: -3 },
+      ],
+    },
   ];
 
   // Ogni allenatore (generato o candidato) ha una specializzazione, oltre al rating: un

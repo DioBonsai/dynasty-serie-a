@@ -229,6 +229,22 @@ body{
 .dyn-modal .dyn-btn{ margin-top:6px; }
 .dyn-modal-actions{ display:flex; flex-direction:column; gap:9px; }
 
+/* ---------- popup evento narrativo: più "pesante" del modale standard ---------- */
+.ow-event-modal{ position:relative; padding-top:6px; animation:eventPop .32s cubic-bezier(.2,1.4,.4,1); }
+.ow-event-icon{ font-size:52px; line-height:1; margin-bottom:6px; filter:drop-shadow(0 6px 14px rgba(0,0,0,.4)); animation:eventIconIn .4s ease-out; }
+.ow-event-modal h2{ font-size:24px; }
+.ow-event-modal p{ font-size:15px; color:var(--txt); }
+.ow-modal-x{
+  position:absolute; top:-10px; right:-6px; width:34px; height:34px; border-radius:999px;
+  appearance:none; border:1px solid var(--line); background:var(--panel2); color:var(--muted);
+  font-size:16px; font-weight:800; cursor:pointer; display:flex; align-items:center; justify-content:center;
+  transition:border-color .15s ease, color .15s ease, transform .05s ease;
+}
+.ow-modal-x:hover{ border-color:var(--bad); color:var(--bad); }
+.ow-modal-x:active{ transform:translateY(1px); }
+@keyframes eventPop{ 0%{ opacity:0; transform:scale(.9) translateY(-8px); } 100%{ opacity:1; transform:none; } }
+@keyframes eventIconIn{ 0%{ transform:scale(.4) rotate(-8deg); opacity:0; } 60%{ transform:scale(1.15) rotate(3deg); opacity:1; } 100%{ transform:scale(1) rotate(0); } }
+
 /* ---------- toast ---------- */
 .dyn-toast{
   position:fixed; left:50%; bottom:30px; transform:translateX(-50%); background:var(--dyn-ink); color:var(--txt);

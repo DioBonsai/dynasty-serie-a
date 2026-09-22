@@ -1029,6 +1029,37 @@
     $('ovNo').onclick = closeOverlay;
   }
 
+  // Popup di un evento narrativo: un modale più "pesante" del solito (icona grande, bordo
+  // colorato, animazione d'ingresso), che richiede un click esplicito per proseguire — una X
+  // in alto a destra per i semplici avvisi, oppure le scelte stesse quando ce ne sono (niente
+  // scorciatoia per saltarle: la scelta stessa è il "premi un bottone per continuare").
+  function openNarrativeEventOverlay(ev) {
+    const hasChoices = Array.isArray(ev.choices) && ev.choices.length > 0;
+    if (!hasChoices) applyNarrativeEffect(ev);   // un solo esito: si applica subito, il popup lo racconta
+    const finish = () => { closeOverlay(); S._pause = false; checkSeasonMilestones(); };
+    overlay(`
+      <div class="ow-event-modal">
+        ${!hasChoices ? '<button type="button" class="ow-modal-x" id="ovEventX" aria-label="Chiudi">✕</button>' : ''}
+        <div class="ow-event-icon">${ev.icon || '📰'}</div>
+        <h2>${ev.title || 'Imprevisto'}</h2>
+        <p>${ev.text}</p>
+        <div class="dyn-modal-actions">
+          ${hasChoices
+            ? ev.choices.map((c, i) => `<button type="button" class="dyn-btn ${i === 0 ? 'dyn-btn-primary' : ''}" data-choice="${i}">${c.label}</button>`).join('')
+            : '<button type="button" class="dyn-btn dyn-btn-primary" id="ovEventClose">Continua</button>'}
+        </div>
+      </div>`);
+    if (hasChoices) {
+      $('owOverlayModal').querySelectorAll('[data-choice]').forEach((btn) => btn.addEventListener('click', () => {
+        applyNarrativeEffect(ev.choices[+btn.dataset.choice]);
+        finish();
+      }));
+    } else {
+      $('ovEventClose').onclick = finish;
+      $('ovEventX').onclick = finish;
+    }
+  }
+
   function openWinter() {
     S._pause = true;
     if (!S._janCands) S._janCands = [spinPlayer(false), spinPlayer(false), spinPlayer(false)];

@@ -1156,9 +1156,21 @@
     if (!BULK_SIM) { logMatch(row); if (gf > 0 && DynSound) DynSound.goal(); }
     maybeCupRound();
     computeTable();
-    if (!BULK_SIM) { renderHud(); saveGame(); maybeNarrativeEvent(); }
+    if (!BULK_SIM) { renderHud(); saveGame(); }
+    // Un evento narrativo, quando scatta, apre un popup che il giocatore deve chiudere
+    // esplicitamente (X o un bottone/una scelta): mette in pausa la stagione esattamente
+    // come il mercato di gennaio, il resto (mercato invernale/fine stagione) riprende solo
+    // alla chiusura del popup, in checkSeasonMilestones().
+    if (!BULK_SIM && maybeNarrativeEvent()) return;
+    checkSeasonMilestones();
+  }
+
+  // Cosa succede subito dopo una partita, una volta che non c'è più nessun popup ad
+  // attendere una risposta: apertura del mercato di gennaio a metà stagione, o fine
+  // stagione. Richiamata sia in coda a simMatch sia dalla chiusura di un evento narrativo.
+  function checkSeasonMilestones() {
     if (S.played === (gp() >> 1) && !S.winterDone) { openWinter(); return; }
-    if (S.played >= gp()) { if (!BULK_SIM && DynSound) DynSound.whistle(); endSeason(); }
+    if (S.played >= gp()) { if (DynSound) DynSound.whistle(); endSeason(); }
   }
 
   function simToEnd() {
@@ -1174,14 +1186,24 @@
 
   // Un evento narrativo casuale ogni tanto fra una partita e l'altra (mai durante la
   // simulazione rapida: lì il giocatore non lo vedrebbe comunque). Più probabile a
-  // difficoltà più alte, dove "gli imprevisti sono la norma".
+  // difficoltà più alte, dove "gli imprevisti sono la norma". Se scatta, apre un popup
+  // (openNarrativeEventOverlay, in ui.js) e mette in pausa la stagione finché non viene
+  // chiuso: ritorna true in quel caso, così simMatch sa di doversi fermare lì.
   function maybeNarrativeEvent() {
     const chance = 0.05 * (diffOf().eventMult || 1);
-    if (Math.random() >= chance) return;
+    if (Math.random() >= chance) return false;
     const ev = pick(NARRATIVE_EVENTS);
-    if (ev.sent) S.sent = clamp(S.sent + ev.sent, 0, 100);
-    if (ev.budgetPct) S.budget += Math.round(S.budget * ev.budgetPct);
-    toast('📰 ' + ev.text);
+    S._pause = true;
+    openNarrativeEventOverlay(ev);
+    return true;
+  }
+
+  // Applica l'effetto di un evento senza scelte, o della scelta presa per uno che ne ha.
+  function applyNarrativeEffect(eff) {
+    if (!eff) return;
+    if (eff.sent) S.sent = clamp(S.sent + eff.sent, 0, 100);
+    if (eff.budgetPct) S.budget += Math.round(S.budget * eff.budgetPct);
+    if (eff.ownerRating) S.ownerRating = clamp(S.ownerRating + eff.ownerRating, 0, 100);
   }
 
   /* ---------------- coppe (checkpoint scalati sulla lunghezza di stagione) ---------------- */
