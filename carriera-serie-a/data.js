@@ -1154,6 +1154,27 @@
     { n: 'Igor Tudor', rating: 74, nat: 'CRO', spec: 'tactician' },
     { n: 'Zlatko Dalic', rating: 72, nat: 'CRO', spec: 'motivator' },
     { n: 'Marco Rossi', rating: 70, nat: 'ITA', spec: 'motivator' },
+    // ---- altri 20 (almeno 10 italiani: leggende + nuova generazione di tecnici) ----
+    { n: 'Marcello Lippi', rating: 88, nat: 'ITA', spec: 'motivator' },
+    { n: 'Giovanni Trapattoni', rating: 85, nat: 'ITA', spec: 'tactician' },
+    { n: 'Fabio Capello', rating: 86, nat: 'ITA', spec: 'medic' },
+    { n: 'Arrigo Sacchi', rating: 87, nat: 'ITA', spec: 'tactician' },
+    { n: 'Daniele De Rossi', rating: 62, nat: 'ITA', spec: 'motivator' },
+    { n: 'Paolo Vanoli', rating: 68, nat: 'ITA', spec: 'tactician' },
+    { n: 'Fabio Grosso', rating: 60, nat: 'ITA', spec: 'builder' },
+    { n: 'Alessio Dionisi', rating: 61, nat: 'ITA', spec: 'tactician' },
+    { n: 'Roberto D\'Aversa', rating: 64, nat: 'ITA', spec: 'negotiator' },
+    { n: 'Eugenio Corini', rating: 62, nat: 'ITA', spec: 'motivator' },
+    { n: 'Leonardo Semplici', rating: 58, nat: 'ITA', spec: 'builder' },
+    { n: 'Michele Mignani', rating: 59, nat: 'ITA', spec: 'tactician' },
+    { n: 'Luis Enrique', rating: 85, nat: 'ESP', spec: 'tactician' },
+    { n: 'Rafael Benitez', rating: 78, nat: 'ESP', spec: 'tactician' },
+    { n: 'Marcelo Bielsa', rating: 84, nat: 'ARG', spec: 'tactician' },
+    { n: 'Jorge Sampaoli', rating: 76, nat: 'ARG', spec: 'motivator' },
+    { n: 'Patrick Vieira', rating: 68, nat: 'FRA', spec: 'builder' },
+    { n: 'Frank Lampard', rating: 66, nat: 'ENG', spec: 'motivator' },
+    { n: 'Steven Gerrard', rating: 65, nat: 'ENG', spec: 'motivator' },
+    { n: 'Michael Carrick', rating: 63, nat: 'ENG', spec: 'tactician' },
   ];
 
   /* ---------------- stato ---------------- */
