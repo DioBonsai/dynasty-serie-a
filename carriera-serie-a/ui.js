@@ -384,7 +384,7 @@
         ${p.outWeeks > 0 ? `<span class="stat-tag inj" title="Infortunato">🚑 ${p.outWeeks}</span>` : p.suspMatches > 0 ? '<span class="stat-tag susp" title="Squalificato">🟥</span>' : ''}
         ${p.loan ? '<span class="yy loan" title="Torna al suo club se non riscattato">prestito</span>' : `<span class="yy${fy ? ' fy' : ''}" title="Anni di contratto rimasti">${p.yrs}a</span>`}
         <span class="wg">${fmtYr(p.wage)}</span>
-        ${fy ? `<button class="ow-renew" data-renew="${p.pid}" title="Offri un nuovo contratto">Rinnova</button>` : ''}
+        ${!p.loan ? `<button class="ow-renew" data-renew="${p.pid}" title="Offri un nuovo contratto, anche se non è in scadenza">Rinnova</button>` : ''}
         ${p.loan ? `<button class="ow-renew" data-buyback="${p.pid}" title="Riscatta a titolo definitivo, altrimenti torna al suo club a inizio stagione">💰 Riscatta · ${fmtMoney(loanBuybackFee(p))}</button>` : `<button class="ow-x" data-rel="${p.pid}" title="Vendi">💷</button>`}</div>`;
     }).join('') : '<div class="ow-sub" style="margin:10px 0">Nessun giocatore in questo ruolo.</div>';
     const estRevenue = estSeasonRevenue();
@@ -533,8 +533,9 @@
       S.squad.splice(i, 1); S.offers = (S.offers || []).filter((o) => o.pid !== p.pid); S.budget += fee;
       toast('Ceduto ' + p.n + ' per ' + fmtMoney(fee) + '.'); renderBoard(); saveGame();
     }));
-    // Rinnova un contratto in scadenza: nuovi accordi (un aumento, più ripido per i giovani
-    // talenti) oppure lo perdi a parametro zero.
+    // Rinnova un contratto: disponibile in ogni momento, non solo in scadenza (utile per
+    // blindare un talento prima che altri club si facciano avanti). Sempre un aumento, più
+    // ripido per i giovani talenti; se non rinnovi in tempo lo perdi a parametro zero.
     body.querySelectorAll('.ow-renew').forEach((el) => el.addEventListener('click', () => {
       const p = S.squad.find((x) => x.pid === +el.dataset.renew); if (!p) return;
       const nw = renewWage(p), ny = renewYears(p);
@@ -915,20 +916,45 @@
     const banner = e.fate === 'forced' ? ['😡 I tifosi hanno parlato', 'Gradimento troppo basso. Sei costretto a dimetterti.']
       : e.fate === 'admin' ? ['🏦 Amministrazione controllata', 'Due stagioni in rosso. La banca chiede i conti.']
       : e.promoted ? ['🎉 PROMOZIONE', e.playoff && e.playoff.won ? 'Su tramite i playoff dopo un ' + ord(e.pos) + ' posto!' : e.title ? 'Campioni di ' + d.name + '!' : 'Promossi al ' + ord(e.pos) + ' posto!']
-      : e.playoff && !e.playoff.won ? ['💔 Delusione playoff', 'Eliminati ' + (e.playoff.rounds[e.playoff.rounds.length - 1].stage === 'Finale' ? 'in finale' : e.playoff.rounds[e.playoff.rounds.length - 1].stage === 'Semifinale' ? 'in semifinale' : 'ai quarti') + ' playoff dopo un ' + ord(e.pos) + ' posto.']
+      : e.playoff && !e.playoff.won ? ['💔 Delusione playoff', 'Eliminati ' + (() => { const st = e.playoff.rounds[e.playoff.rounds.length - 1].stage.replace(' (aggregato)', ''); return st === 'Finale' ? 'in finale' : st === 'Semifinale' ? 'in semifinale' : 'ai quarti'; })() + ' playoff dopo un ' + ord(e.pos) + ' posto.']
       : e.relegated ? ['📉 Retrocessione', 'Giù al ' + ord(e.pos) + ' posto. I tifosi soffrono.']
       : e.title ? ['🏆 CAMPIONI', 'Vincitori di ' + d.name + '!']
       : ['Stagione ' + S.season + ' completata', ord(e.pos) + ' in ' + d.name + ' (i tifosi si aspettavano il ' + ord(e.exp) + ')'];
     const trophyChips = e.trophies.length ? e.trophies.map((t) => `<span class="trophy">🏆 ${t}</span>`).join('') : '<span class="trophy none">Nessun trofeo</span>';
+    // Righe del playoff: una gamba (andata/ritorno) mostra solo il punteggio, il verdetto
+    // arriva con la riga "(aggregato)" subito dopo con la ragione (differenza reti, miglior
+    // piazzato, supplementari/rigori); il turno preliminare e il vecchio tabellone da 4
+    // restano gara secca con l'eventuale nota su chi passa a parità.
     const playoffHTML = e.playoff ? `
         <div class="ow-sec-title" style="margin-top:12px">🏟️ I playoff</div>
         ${e.playoff.rounds.map((r) => {
           const usSc = fmtScorers(r.goalsFor), themSc = fmtScorers(r.goalsAgainst);
+          if (r.leg) {
+            return `<div class="ow-fin-row" style="flex-direction:column;align-items:stretch;gap:3px">
+              <div style="display:flex;justify-content:space-between"><span>${r.stage} · ${r.leg} vs ${r.opp}</span><b>${r.gf}-${r.ga}</b></div>
+              ${(usSc || themSc) ? `<div class="mrow-scorers">${usSc ? '<div class="sc us">⚽ ' + usSc + '</div>' : ''}${themSc ? '<div class="sc them">🥅 ' + themSc + '</div>' : ''}</div>` : ''}
+            </div>`;
+          }
+          const note = r.aggregate ? (' (aggregato' + (r.tiebreak === 'pens' ? ', supplementari/rigori' : r.tiebreak === 'seed' ? ', meglio piazzato in classifica' : r.tiebreak === 'dr' ? ', differenza reti' : '') + ')')
+            : r.seedWin ? (r.extra ? ' (supplementari, meglio piazzato)' : ' (meglio piazzato)')
+            : r.pens ? ' (rigori)' : '';
           return `<div class="ow-fin-row" style="flex-direction:column;align-items:stretch;gap:3px">
-            <div style="display:flex;justify-content:space-between"><span>${r.stage} vs ${r.opp}</span><b class="${r.won ? 'good' : 'bad'}">${r.won ? 'V' : 'P'} ${r.gf}-${r.ga}${r.pens ? ' (rigori)' : ''}</b></div>
+            <div style="display:flex;justify-content:space-between"><span>${r.stage} vs ${r.opp}</span><b class="${r.won ? 'good' : 'bad'}">${r.won ? 'V' : 'P'} ${r.gf}-${r.ga}${note}</b></div>
             ${(usSc || themSc) ? `<div class="mrow-scorers">${usSc ? '<div class="sc us">⚽ ' + usSc + '</div>' : ''}${themSc ? '<div class="sc them">🥅 ' + themSc + '</div>' : ''}</div>` : ''}
           </div>`;
         }).join('')}` : '';
+    // Classifica finale del campionato appena chiuso: a colpo d'occhio, senza dover
+    // riaprire il tabellone dalla sala del consiglio.
+    const tableRecapHTML = `
+        <div class="ow-sec-title" style="margin-top:12px">📋 Classifica finale · ${d.name}</div>
+        <div style="max-height:44vh;overflow:auto;margin:0 -6px">${tableHTML()}</div>`;
+    // Percorso in coppa, turno per turno: solo se ci sono stati turni da mostrare (niente
+    // se il presidente non è nemmeno iscritto a una coppa europea quest'anno).
+    const cupPathRow = (r) => `<div class="ow-fin-row"><span>${r.round}${r.opp ? ' vs ' + r.opp : ''}</span><b class="${r.won ? 'good' : 'bad'}">${r.gf}-${r.ga}${r.note ? ' · ' + r.note : ''}</b></div>`;
+    const natPath = (e.cupPaths && e.cupPaths.nat) || [];
+    const euroPath = (e.cupPaths && e.cupPaths.euro) || [];
+    const cupPathHTML = (natPath.length ? `<div class="ow-sec-title" style="margin-top:12px">🇮🇹 Percorso in Coppa Italia</div>${natPath.map(cupPathRow).join('')}` : '')
+      + (euroPath.length ? `<div class="ow-sec-title" style="margin-top:12px">${EURO_COMPS[e.euroCompWon].flag} Percorso in ${EURO_COMPS[e.euroCompWon].name}</div>${euroPath.map(cupPathRow).join('')}` : '');
     // Giocatori di movimento: marcatori, assistman e chiunque abbia comunque messo
     // piede in campo (anche solo da subentrato), non solo chi ha segnato o assistito. I
     // portieri hanno una statistica loro: i clean sheet, molto più significativi di un
@@ -972,11 +998,40 @@
           )).join('')}
           </div>` : ''}
       </div>`;
+    // Un'animazione speciale per OGNI coppa/titolo vinto in questa stagione, non solo per i
+    // 4 grandi momenti: scudetto (di qualunque categoria, non solo Serie A), Coppa Italia,
+    // e ciascuna delle tre coppe europee ha il suo banner dedicato. Il Tripletе le sostituisce
+    // tutte con un unico banner riassuntivo (altrimenti sarebbe la stessa notizia 3 volte).
+    const bigMoments = [];
+    if (e.treble) {
+      bigMoments.push({ cls: 'treble', icon: '👑', title: 'TRIPLETE!', sub: d.name + ' + Coppa Italia + Champions League nella stessa stagione.' });
+    } else {
+      if (e.title) bigMoments.push({ cls: 'scudetto', icon: S.div === 5 ? '🏆' : '🥇', title: S.div === 5 ? 'SCUDETTO!' : 'CAMPIONI DI ' + d.name.toUpperCase() + '!', sub: 'Vincitori di ' + d.name + '.' });
+      if (e.natWon) bigMoments.push({ cls: 'nat', icon: '🇮🇹', title: 'COPPA ITALIA', sub: 'Trofeo in bacheca, e qualificazione europea in tasca.' });
+      if (e.euroWon) {
+        const ec = EURO_COMPS[e.euroCompWon];
+        const info = {
+          ucl: { cls: 'ucl', title: 'CAMPIONI D\'EUROPA', sub: ec.name + ' alzata al cielo.' },
+          uel: { cls: 'uel', title: 'EUROPA LEAGUE!', sub: ec.name + ' alzata al cielo.' },
+          conf: { cls: 'conf', title: 'CONFERENCE LEAGUE!', sub: ec.name + ' alzata al cielo — e un posto in Europa League l\'anno prossimo.' },
+        }[e.euroCompWon];
+        if (info) bigMoments.push({ cls: info.cls, icon: ec.flag, title: info.title, sub: info.sub });
+      }
+    }
+    const bigMomentHTML = bigMoments.map((m) => `
+      <div class="ow-trophy-moment ${m.cls}">
+        <div class="ow-trophy-icon">${m.icon}</div>
+        <div class="ow-trophy-title">${m.title}</div>
+        <div class="ow-trophy-sub">${m.sub}</div>
+      </div>`).join('');
     body.innerHTML = `
       <div class="dyn-top"><div class="dyn-top-title">${banner[0]}</div><div class="dyn-top-sub">${banner[1]}</div></div>
+      ${bigMomentHTML}
       <div class="dyn-panel">
         <div class="dyn-trophies">${trophyChips}</div>
         ${playoffHTML}
+        ${cupPathHTML}
+        ${tableRecapHTML}
         <div class="ow-sec-title" style="margin-top:12px">📋 Bilancio economico</div>
         ${e.statement.map((r) => r[1] === 0 && r[0].indexOf('avvio') > 0 ? `<div class="ow-fin-row memo"><span>${r[0]}</span><b>già pagati</b></div>` : `<div class="ow-fin-row"><span>${r[0]}</span><b class="${r[1] < 0 ? 'bad' : ''}">${r[1] < 0 ? '-' : '+'}${fmtMoney(Math.abs(r[1]))}</b></div>`).join('')}
         <div class="ow-fin-row total"><span>Saldo di stagione</span><b class="${e.net < 0 ? 'bad' : ''}">${e.net < 0 ? '-' : '+'}${fmtMoney(Math.abs(e.net))}</b></div>
@@ -992,6 +1047,7 @@
       ${statsHTML}
       <button class="dyn-btn dyn-btn-primary" id="owEndBtn">${e.fate ? 'Affronta le conseguenze' : S.season >= MAX_SEASONS ? 'Concludi la tua carriera' : 'Torna in sala del consiglio'}</button>`;
     if (e.promoted || e.title || e.trophies.length) celebrate(body.querySelector('.dyn-panel'));
+    body.querySelectorAll('.ow-trophy-moment').forEach((bm) => { fireConfetti(bm); setTimeout(() => fireConfetti(bm), 550); });
     $('owEndBtn').onclick = () => {
       if (e.fate === 'forced') { endDynasty('forced', 0); return; }
       if (e.fate === 'admin') { endDynasty('admin', 0); return; }
@@ -1090,8 +1146,29 @@
       else if (c.phase === 'league') label = 'Fase campionato: ' + (c.leaguePts || 0) + 'pt (' + c.leagueAt + '/' + c.legLen + ')';
       else if (c.phase === 'playoff') label = 'Spareggio ottavi';
       else label = c.at ? c.rounds[c.at - 1] : 'Iscritti';
-      return `<span class="cup-pill ${st}">${c.name}: <b>${label}</b></span>`;
+      const clickable = key === 'euro' && (c.leaguePath && c.leaguePath.length);
+      return `<span class="cup-pill ${st}${clickable ? ' clickable' : ''}" ${clickable ? 'data-euro-league="1"' : ''}>${c.name}: <b>${label}</b></span>`;
     }).join('');
+    if (wrap.querySelector('[data-euro-league]')) wrap.querySelector('[data-euro-league]').onclick = showEuroLeagueTable;
+  }
+
+  // "Classifica" della fase a girone unico europea: non è un vero girone da 4 squadre con
+  // avversari fissi (nel formato UEFA reale ogni squadra pesca avversari diversi), quindi
+  // non esiste una tabella multi-club onesta da mostrare — si mostra invece il percorso
+  // partita per partita del presidente, con la sua evoluzione punti e le soglie di
+  // qualificazione (ottavi diretti / spareggio / eliminazione), utile quanto una classifica.
+  function showEuroLeagueTable() {
+    const cup = S.cups.euro; if (!cup) return;
+    const ec = EURO_COMPS[S.euroComp];
+    const top8 = cup.legLen === 6 ? 12 : 15, playoffLine = cup.legLen === 6 ? 6 : 9;
+    const rows = (cup.leaguePath || []).map((r) => `<tr class="${r.res === 'W' ? 'me' : ''}"><td>G${r.mw} vs ${r.opp}</td><td class="num">${r.gf}-${r.ga}</td><td class="num">${r.ptsSoFar}</td></tr>`).join('');
+    overlay(`<h2>${ec.flag} ${ec.name}</h2>
+      <div class="ow-sub" style="text-align:center">Fase campionato: <b>${cup.leaguePts}pt</b> su ${cup.legLen} partite · ${top8}+pt ottavi diretti, ${playoffLine}+pt spareggio</div>
+      <div style="max-height:52vh;overflow:auto;margin:8px -6px 14px">
+        <table class="dyn-table"><thead><tr><th>Partita</th><th class="num">Risultato</th><th class="num">Pt</th></tr></thead><tbody>${rows}</tbody></table>
+      </div>
+      <div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovClose">Chiudi</button></div>`);
+    $('ovClose').onclick = closeOverlay;
   }
 
   function logMatch(m) {

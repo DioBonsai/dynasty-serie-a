@@ -673,7 +673,10 @@
       const icon = iconPlayer(role);
       if (icon) return icon;
     }
-    const realChance = S.div === 5 ? 0.68 : S.div === 4 ? 0.55 : 0;
+    // In Serie B lo spin di lusso pesca quasi sempre un giocatore vero (rose di Serie A/B/
+    // Europa): è il senso stesso di pagare per il lusso a quel livello. Lo spin normale
+    // resta più incerto.
+    const realChance = S.div === 5 ? (premium ? 0.8 : 0.68) : S.div === 4 ? (premium ? 0.97 : 0.55) : 0;
     if (realChance && Math.random() < realChance) {
       const real = realLeaguePlayer(band.lo, band.hi, role);
       if (real) return real;
@@ -852,7 +855,7 @@
     const mine = S.played > 0
       ? S.pts / S.played * G
       : (squadStr() + mgrBonus() - (d.avg - 21)) * 2.6 * G / 38;
-    return 1 + S.opps.filter((o) => o.pts > mine).length;
+    return 1 + S.opps.filter((o) => (o.rrPts + o.vsPts) > mine).length;
   }
 
   /* ---------------- valore del club ---------------- */
@@ -934,9 +937,39 @@
   /* ---------------- stagione ---------------- */
   function rivals() { return POOLS[S.div].filter((c) => c.n !== S.club).slice(0, divOf().teams - 1); }
 
-  function seasonPtsFor(str) {
-    const G = gp(), d = divOf();
-    return clamp(Math.round(((str - (d.avg - 21)) * 2.6 + (Math.random() * 12 - 6)) * G / 38), 8, Math.round(G * 2.6));
+  // Una partita fra due rivali (mai il presidente): stesso motore a gol delle sue partite
+  // (poisson sulla differenza di forza), poi 3/1/0 SOLO in base al risultato reale — mai una
+  // cifra assegnata da una formula. È quello che tiene le classifiche vicine a una vera
+  // Serie A (un campione sugli 85-95pt, un'ultima sui 20-30, non tutti fra 55 e 70).
+  function simRivalMatch(strHome, strAway) {
+    const d = (strHome + 2.2) - strAway;
+    const coeff = 0.045;
+    const gf = poisson(clamp(1.32 + d * coeff, 0.15, 4.4));
+    const ga = poisson(clamp(1.32 - d * coeff, 0.15, 4.4));
+    return { gf, ga };
+  }
+
+  // Girone di andata/ritorno fra tutti i rivali fra loro (le loro partite contro il
+  // presidente sono già simulate a parte via simMatch, vedi creditRivalResult): a fine
+  // stagione ogni rivale ha giocato le stesse partite di chiunque altro, punti reali.
+  function simRivalRoundRobin(opps) {
+    for (let i = 0; i < opps.length; i++) {
+      for (let j = i + 1; j < opps.length; j++) {
+        const m1 = simRivalMatch(opps[i].effS, opps[j].effS);
+        opps[i].rrPts += m1.gf > m1.ga ? 3 : m1.gf === m1.ga ? 1 : 0; opps[i].rrGF += m1.gf; opps[i].rrGA += m1.ga;
+        opps[j].rrPts += m1.ga > m1.gf ? 3 : m1.ga === m1.gf ? 1 : 0; opps[j].rrGF += m1.ga; opps[j].rrGA += m1.gf;
+        const m2 = simRivalMatch(opps[j].effS, opps[i].effS);
+        opps[j].rrPts += m2.gf > m2.ga ? 3 : m2.gf === m2.ga ? 1 : 0; opps[j].rrGF += m2.gf; opps[j].rrGA += m2.ga;
+        opps[i].rrPts += m2.ga > m2.gf ? 3 : m2.ga === m2.gf ? 1 : 0; opps[i].rrGF += m2.ga; opps[i].rrGA += m2.gf;
+      }
+    }
+  }
+
+  // Il risultato di una partita del presidente contro un rivale conta anche per il rivale
+  // (se lo batti, lui prende 0 punti da quella gara, non un totale scollegato dal campo).
+  function creditRivalResult(opp, myGf, myGa) {
+    opp.vsPts += myGa > myGf ? 3 : myGa === myGf ? 1 : 0;
+    opp.vsGF += myGa; opp.vsGA += myGf;
   }
 
   function startSeason() {
@@ -959,12 +992,14 @@
     // Forma stagionale di ogni rivale: la forza di base (o.s) resta quella "storica" del club,
     // ma ogni stagione la sua resa reale oscilla (annata di grazia o annata storta), così la
     // classifica non è sempre la stessa e anche club normalmente più deboli possono vincere.
-    S.opps = rivals().map((o) => { const effS = clamp(o.s + gaussInt(0, 8), 30, 99); return { name: o.n, s: o.s, effS, pts: seasonPtsFor(effS), gf: 0, ga: 0 }; });
-    S.opps.forEach((o) => { o.gf = Math.round(gp() * (o.effS - (divOf().avg - 12)) / 22); o.ga = Math.round(gp() * ((divOf().avg + 10) - o.effS) / 22); });
+    // I punti (rrPts/rrGF/rrGA) vengono da un vero girone di andata/ritorno fra i rivali,
+    // gara per gara, 3/1/0 come nel calcio reale — non da una formula unica per tutti.
+    S.opps = rivals().map((o) => ({ name: o.n, s: o.s, effS: clamp(o.s + gaussInt(0, 8), 30, 99), rrPts: 0, rrGF: 0, rrGA: 0, vsPts: 0, vsGF: 0, vsGA: 0 }));
+    simRivalRoundRobin(S.opps);
     const fx = [];
     S.opps.forEach((o, i) => { fx.push({ opp: i, home: true }); fx.push({ opp: i, home: false }); });
     shuffle(fx); S.fixtures = fx.map((f, i) => ({ ...f, mw: i + 1 }));
-    S.cups = { nat: { name: 'Coppa Italia', rounds: ['Turno 2', 'Turno 3', 'Turno 4', 'Quarti', 'Semifinale', 'Finale'], at: 0, out: false, won: false } };
+    S.cups = { nat: { name: 'Coppa Italia', rounds: ['Turno 2', 'Turno 3', 'Turno 4', 'Quarti', 'Semifinale', 'Finale'], at: 0, legAt: 0, legIndex: 0, out: false, won: false } };
     // Formato UEFA reale dal 2024/25: fase campionato a classifica unica (8 partite in
     // Champions/Europa League, 6 in Conference League), poi 1°-8° diretti agli ottavi,
     // 9°-24° giocano uno spareggio andata/ritorno per l'ultimo posto, 25°+ eliminati. Da
@@ -991,6 +1026,7 @@
     S.played++; S.gf += gf; S.ga += ga;
     const res = gf > ga ? 'W' : gf < ga ? 'L' : 'D';
     S.pts += res === 'W' ? 3 : res === 'D' ? 1 : 0;
+    creditRivalResult(opp, gf, ga);
     if (res === 'W') S.wins++;
     S.last5.push(res === 'W' ? 1 : res === 'L' ? -1 : 0); if (S.last5.length > 5) S.last5.shift();
     S.form = clamp(S.last5.reduce((a, b) => a + b, 0) * 0.5, -2.5, 2.5);
@@ -1015,13 +1051,14 @@
   }
 
   /* ---------------- coppe (checkpoint scalati sulla lunghezza di stagione) ---------------- */
-  // La Coppa Italia resta a eliminazione diretta pura, gara secca. La coppa europea segue
-  // invece il formato UEFA reale in vigore dal 2024/25: una fase campionato a classifica
-  // unica (8 partite in Champions/Europa League, 6 in Conference League — checkpoint
-  // euroLeague), poi 1°-8° virtuali vanno dritti agli ottavi, 9°-24° giocano uno spareggio
-  // andata/ritorno (checkpoint euroPlayoff), 25°+ sono eliminati (niente più "discesa"
-  // automatica verso la coppa inferiore, il vecchio formato a gironi l'aveva ma è stato
-  // abolito). Da qui in poi ottavi/quarti/semifinale sono andata/ritorno (checkpoint
+  // La Coppa Italia è a eliminazione diretta, ma dai trentaduesimi alla semifinale ogni
+  // turno è andata/ritorno come nel vero tabellone: le due gare di un turno cadono in due
+  // giornate diverse (due checkpoint distinti), non nello stesso istante. Solo la finale
+  // resta gara secca. La coppa europea segue il formato UEFA reale in vigore dal 2024/25:
+  // una fase campionato a classifica unica (8 partite in Champions/Europa League, 6 in
+  // Conference League — checkpoint euroLeague), poi 1°-8° virtuali vanno dritti agli
+  // ottavi, 9°-24° giocano uno spareggio andata/ritorno (checkpoint euroPlayoff), 25°+
+  // sono eliminati. Da qui in poi ottavi/quarti/semifinale sono andata/ritorno (checkpoint
   // euroKO), la finale è una gara secca in sede neutra.
   function maybeCupRound() {
     const G = gp();
@@ -1029,19 +1066,70 @@
     const euro = S.cups.euro;
     const legLen = euro ? euro.legLen : 8;
     const leagueFracs = Array.from({ length: legLen }, (_, idx) => 0.10 + idx * (0.44 / Math.max(1, legLen - 1)));
+    // Un checkpoint per GAMBA, non per turno: 5 turni a due gambe + la finale secca = 11.
+    const natFracs = [0.08, 0.14, 0.20, 0.26, 0.34, 0.40, 0.48, 0.54, 0.62, 0.68, 0.90];
     const checkpoints = {
-      nat: [f(0.10), f(0.24), f(0.40), f(0.57), f(0.74), f(0.92)],
+      nat: natFracs.map(f),
       euroLeague: leagueFracs.map(f),
       euroPlayoff: f(0.60),
       euroKO: [f(0.68), f(0.78), f(0.88), f(0.96)],
     };
     const nat = S.cups.nat;
-    if (nat && !nat.out && !nat.won && nat.at < nat.rounds.length && S.played >= checkpoints.nat[nat.at]) resolveCupRound('nat');
+    if (nat && !nat.out && !nat.won && (nat.legIndex || 0) < checkpoints.nat.length && S.played >= checkpoints.nat[nat.legIndex || 0]) resolveNatRound();
     if (euro && !euro.out && !euro.won) {
       if (euro.phase === 'league') { if (euro.leagueAt < euro.legLen && S.played >= checkpoints.euroLeague[euro.leagueAt]) resolveEuroLeagueMatch(); }
       else if (euro.phase === 'playoff') { if (!euro.playoffDone && S.played >= checkpoints.euroPlayoff) resolveEuroPlayoff(); }
       else if (euro.at < euro.rounds.length && S.played >= checkpoints.euroKO[euro.at]) resolveCupRound('euro');
     }
+  }
+
+  // Un turno di Coppa Italia: una chiamata risolve UNA gamba (andata o ritorno, per i primi
+  // 5 turni), la chiamata successiva — a un checkpoint diverso, quindi partite diverse —
+  // risolve l'altra e decide il passaggio del turno sull'aggregato. La finale (ultimo
+  // turno) resta una gara secca risolta in un'unica chiamata, come prima.
+  function resolveNatRound() {
+    const cup = S.cups.nat, d = divOf(), i = cup.at;
+    const isFinal = i === cup.rounds.length - 1;
+    const legs = isFinal ? 1 : 2;
+    if (!cup.legAt) cup.legAt = 0;
+    if (cup.legAt === 0) {
+      cup.roundOppStr = Math.min(90, d.avg + 2 + i * 4 + rnd(6));
+      const faced = cup.faced || (cup.faced = []);
+      cup.roundOppName = cupOpponentName('nat', cup.roundOppStr, faced);
+      faced.push(cup.roundOppName);
+      cup.aggGF = 0; cup.aggGA = 0;
+    }
+    const oppStr = cup.roundOppStr, oppName = cup.roundOppName;
+    const diff = teamEff() - oppStr;
+    const winP = 1 / (1 + Math.exp(-diff / 6.5));
+    const wonLeg = Math.random() < winP;
+    let gf = poisson(clamp(1.3 + diff * 0.05, 0.2, 4)), ga = poisson(clamp(1.3 - diff * 0.05, 0.2, 4));
+    if (legs === 1) {
+      // gara secca: manteniamo il risultato coerente con l'esito (parità = rigori)
+      if (wonLeg && gf < ga) { const t = gf; gf = ga; ga = t; }
+      else if (!wonLeg && gf > ga) { const t = gf; gf = ga; ga = t; }
+    }
+    cup.aggGF += gf; cup.aggGA += ga;
+    const cupLineup = pickMatchLineup(S.squad);
+    registerAppearances(cupLineup);
+    const golsF = genGoals(gf, true, null, cupLineup), golsA = genGoals(ga, false, oppName);
+    registerCleanSheet(ga, cupLineup);
+    if (legs > 1) logCupLeg(cup.name, cup.rounds[i], cup.legAt === 0 ? 'Andata' : 'Ritorno', gf, ga, golsF, golsA, oppName, 'nat');
+    else logCup(cup.name, cup.rounds[i], gf >= ga, gf, ga, golsF, golsA, oppName, 'nat');
+    cup.legAt++;
+    cup.legIndex = (cup.legIndex || 0) + 1;
+    if (cup.legAt < legs) { renderCups(); return; }   // manca ancora il ritorno, alla prossima giornata
+    const won = legs > 1 ? (cup.aggGF > cup.aggGA || (cup.aggGF === cup.aggGA && Math.random() < 0.5)) : cup.aggGF >= cup.aggGA;
+    if (legs > 1) logCup(cup.name, cup.rounds[i] + ' (aggregato)', won, cup.aggGF, cup.aggGA, [], [], oppName, 'nat');
+    (cup.path || (cup.path = [])).push({ round: cup.rounds[i], opp: oppName, gf: cup.aggGF, ga: cup.aggGA, won });
+    cup.at++; cup.legAt = 0;
+    if (won) {
+      S.cupMoney += d.cupBase * (i + 1);
+      // Vincere la Coppa Italia paga tanto: un bonus una tantum in più della semplice
+      // somma dei turni superati, oltre alla qualificazione europea gestita in endSeason.
+      if (cup.at >= cup.rounds.length) { cup.won = true; S.cupMoney += d.cupBase * 15; }
+    } else cup.out = true;
+    renderCups();
   }
 
   // Una partita della fase campionato: punti pieni (3/1/0) su una classifica unica, non un
@@ -1067,6 +1155,7 @@
     cup.leagueAt++;
     cup.leaguePts += won ? 3 : draw ? 1 : 0;
     cup.leagueGF += gf; cup.leagueGA += ga;
+    (cup.leaguePath || (cup.leaguePath = [])).push({ mw: cup.leagueAt, opp: oppName, gf, ga, res: won ? 'W' : draw ? 'D' : 'L', ptsSoFar: cup.leaguePts });
     if (won) S.euroMoney += ec.roundWin * 0.3; else if (draw) S.euroMoney += ec.roundWin * 0.12;
     const lineup = pickMatchLineup(S.squad);
     registerAppearances(lineup);
@@ -1077,6 +1166,7 @@
       if (cup.leaguePts >= top8) cup.phase = 'knockout';
       else if (cup.leaguePts >= playoffLine) cup.phase = 'playoff';
       else cup.out = true;
+      (cup.path || (cup.path = [])).push({ round: 'Fase campionato', opp: null, gf: cup.leagueGF, ga: cup.leagueGA, note: cup.leaguePts + ' pt su ' + cup.legLen, won: !cup.out });
     }
     renderCups();
   }
@@ -1103,6 +1193,7 @@
     cup.playoffDone = true;
     if (advanced) { S.euroMoney += EURO_COMPS[S.euroComp].roundWin * 0.6; cup.phase = 'knockout'; } else cup.out = true;
     logCup(cup.name, 'Spareggio (aggregato)', advanced, aggGF, aggGA, [], [], oppName, S.euroComp);
+    (cup.path || (cup.path = [])).push({ round: 'Spareggio', opp: oppName, gf: aggGF, ga: aggGA, won: advanced });
     renderCups();
   }
 
@@ -1141,6 +1232,7 @@
       if (key === 'nat') S.cupMoney += d.cupBase * (i + 1);
       else S.euroMoney += EURO_COMPS[S.euroComp].roundWin;
     }
+    (cup.path || (cup.path = [])).push({ round: cup.rounds[i], opp: oppName, gf: aggGF, ga: aggGA, won });
     if (!won) cup.out = true; else if (cup.at >= cup.rounds.length) cup.won = true;
     renderCups();
   }
@@ -1166,12 +1258,19 @@
     const d = divOf(), G = gp();
     const pos = currentPos();
     const exp = expectedPos();
-    const auto = d.promoted > 0 && pos <= d.promoted;
+    // La vera Serie B promuove la 3ª classificata SENZA playoff se ha almeno 15 punti di
+    // vantaggio sulla 4ª: un distacco enorme che rende inutile lo spareggio.
+    const gap3v4 = (d.playoff >= 6 && pos === 3) ? (S.table[2].pts - S.table[3].pts) : 0;
+    const auto = (d.promoted > 0 && pos <= d.promoted) || (d.playoff >= 6 && pos === 3 && gap3v4 >= 15);
     // ---- playoff promozione (regole reali della piramide): finisci nei posti playoff e
     // giochi per UN posto extra di promozione a fine stagione. Tabellone da 4 (Eccellenza
     // esclusa, non ha playoff): semifinale + finale, teste di serie a specchio (3° vs 6°).
-    // Tabellone da 6 (Serie B, come nella vera Lega): i due semi più bassi si affrontano
-    // ai quarti, i vincitori raggiungono le teste di serie 3°/4° in semifinale, poi finale.
+    // Tabellone da 6 (Serie B, come nella vera Lega, regolamento 2025/26): turno preliminare
+    // (5°-8°, 6°-7°) gara secca con supplementari se pareggio — mai rigori, a parità passa
+    // il meglio piazzato — poi semifinali e finale ANDATA/RITORNO, dove il turno lo decidono
+    // i punti totali (3/1/0 a gara) sulle due gambe, poi la differenza reti, poi il
+    // piazzamento in classifica; solo in finale, se le due finaliste hanno chiuso il
+    // campionato a pari punti, decidono supplementari e rigori nel ritorno.
     // Le partite che non coinvolgono il nostro club (l'altra metà del tabellone) non vengono
     // simulate per esteso: si risolvono con un confronto di forza, come già per la finale
     // nel tabellone da 4. ----
@@ -1182,12 +1281,18 @@
       const nameAt = (position) => S.table[position - 1].name;
       const hypoWinner = (a, b) => (Math.random() < (1 / (1 + Math.exp(-(strAt(a) - strAt(b)) / 5))) ? a : b);
       const rounds = [];
+      // Simula una gamba (usata sia dal tabellone a 4, gara secca, sia dalle gambe del
+      // tabellone Serie B).
+      const legSim = (oppStr) => {
+        const diff = teamEff() - oppStr;
+        return { gf: poisson(clamp(1.25 + diff * 0.05, 0.2, 4)), ga: poisson(clamp(1.25 - diff * 0.05, 0.2, 4)) };
+      };
       const playPO = (oppPos, stage) => {
         const oppName = nameAt(oppPos), oppStr = strAt(oppPos);
+        let { gf, ga } = legSim(oppStr);
         const diff = teamEff() - oppStr;
         const winP = 1 / (1 + Math.exp(-diff / 6.0));
         const won = Math.random() < winP;
-        let gf = poisson(clamp(1.25 + diff * 0.05, 0.2, 4)), ga = poisson(clamp(1.25 - diff * 0.05, 0.2, 4));
         // manteniamo il risultato coerente con l'esito (parità significa rigori)
         if (won && gf < ga) { const t = gf; gf = ga; ga = t; }
         else if (!won && gf > ga) { const t = gf; gf = ga; ga = t; }
@@ -1195,6 +1300,47 @@
         registerAppearances(poLineup);
         rounds.push({ stage, opp: oppName, gf, ga, won, pens: gf === ga, goalsFor: genGoals(gf, true, null, poLineup), goalsAgainst: genGoals(ga, false, oppName) });
         registerCleanSheet(ga, poLineup);
+        return won;
+      };
+      // Turno preliminare Serie B (5°-8°, 6°-7°): gara secca, supplementari se pareggio, e a
+      // parità anche dopo i supplementari passa la squadra meglio piazzata — mai rigori qui.
+      const playPOPrelim = (oppPos, stage) => {
+        const oppName = nameAt(oppPos), oppStr = strAt(oppPos);
+        let { gf, ga } = legSim(oppStr);
+        let extra = false;
+        if (gf === ga) { extra = true; const et = legSim(oppStr); gf += et.gf; ga += et.ga; }
+        const won = gf !== ga ? gf > ga : pos < oppPos;
+        const poLineup = pickMatchLineup(S.squad);
+        registerAppearances(poLineup);
+        rounds.push({ stage, opp: oppName, gf, ga, won, extra, seedWin: gf === ga, goalsFor: genGoals(gf, true, null, poLineup), goalsAgainst: genGoals(ga, false, oppName) });
+        registerCleanSheet(ga, poLineup);
+        return won;
+      };
+      // Semifinale/finale Serie B: andata e ritorno, punti di gara (3/1/0) sulle due gambe a
+      // decidere il turno, poi differenza reti, poi il piazzamento in classifica — tranne la
+      // finale fra due squadre a pari punti in classifica, dove decidono supplementari/rigori.
+      const playPOTwoLegs = (oppPos, stage, isFinal) => {
+        const oppName = nameAt(oppPos), oppStr = strAt(oppPos);
+        let aggGF = 0, aggGA = 0, myPts = 0, oppPts = 0;
+        for (let leg = 0; leg < 2; leg++) {
+          const { gf, ga } = legSim(oppStr);
+          aggGF += gf; aggGA += ga;
+          myPts += gf > ga ? 3 : gf === ga ? 1 : 0;
+          oppPts += ga > gf ? 3 : ga === gf ? 1 : 0;
+          const poLineup = pickMatchLineup(S.squad);
+          registerAppearances(poLineup);
+          registerCleanSheet(ga, poLineup);
+          rounds.push({ stage, leg: leg === 0 ? 'Andata' : 'Ritorno', opp: oppName, gf, ga, goalsFor: genGoals(gf, true, null, poLineup), goalsAgainst: genGoals(ga, false, oppName) });
+        }
+        let won, tiebreak = null;
+        if (myPts !== oppPts) won = myPts > oppPts;
+        else if (aggGF !== aggGA) { won = aggGF > aggGA; tiebreak = 'dr'; }
+        else if (isFinal && S.table[pos - 1].pts === S.table[oppPos - 1].pts) {
+          const diff = teamEff() - oppStr;
+          won = Math.random() < 1 / (1 + Math.exp(-diff / 4));
+          tiebreak = 'pens';
+        } else { won = pos < oppPos; tiebreak = 'seed'; }
+        rounds.push({ stage: stage + ' (aggregato)', opp: oppName, gf: aggGF, ga: aggGA, won, tiebreak, aggregate: true });
         return won;
       };
       let won = false;
@@ -1210,14 +1356,14 @@
         };
         if (pos === byeA || pos === byeB) {
           const [a, b] = qfPairOf(pos);
-          won = playPO(hypoWinner(a, b), 'Semifinale');
-          if (won) won = playPO(finalOpponent(pos), 'Finale');
+          won = playPOTwoLegs(hypoWinner(a, b), 'Semifinale', false);
+          if (won) won = playPOTwoLegs(finalOpponent(pos), 'Finale', true);
         } else {
-          won = playPO(partnerOf[pos], 'Quarti');
+          won = playPOPrelim(partnerOf[pos], 'Quarti');
           if (won) {
             const myBye = byeOf[pos];
-            won = playPO(myBye, 'Semifinale');
-            if (won) won = playPO(finalOpponent(myBye), 'Finale');
+            won = playPOTwoLegs(myBye, 'Semifinale', false);
+            if (won) won = playPOTwoLegs(finalOpponent(myBye), 'Finale', true);
           }
         }
       } else {
@@ -1257,9 +1403,24 @@
     // ----- qualificazione europea di quest'anno (determina la coppa della prossima stagione) -----
     // Vincere la Champions o l'Europa League garantisce un posto in Champions l'anno dopo
     // anche senza chiudere fra le prime 4 in campionato (come nel calcio vero, la coppa
-    // vinta vale come pass diretto). La Conference League non dà questo bonus.
+    // vinta vale come pass diretto). Vincere la Conference League vale un posto in Europa
+    // League l'anno dopo (un gradino sopra, non un altro giro di Conference). E come da
+    // regola UEFA reale, il 5° posto E il vincitore di Coppa Italia vanno entrambi in
+    // Europa League: se il vincitore di Coppa è già qualificato meglio per conto suo
+    // (Champions/Europa via classifica, o ha vinto lui stesso una coppa europea), il suo
+    // posto va comunque assegnato — qui semplificato assegnandolo a chi lo guadagna sul
+    // campo (6° posto, che nella piramide reale è il posto Conference).
     const wonUclOrUel = euroWon && (S.euroComp === 'ucl' || S.euroComp === 'uel');
-    const qualTier = S.div === 5 ? (wonUclOrUel ? 'ucl' : euroTierFor(pos)) : null;
+    const wonConf = euroWon && S.euroComp === 'conf';
+    let qualTier = null;
+    if (S.div === 5) {
+      if (wonUclOrUel) qualTier = 'ucl';
+      else if (pos <= 4) qualTier = 'ucl';
+      else if (pos === 5) qualTier = 'uel';
+      else if (wonConf) qualTier = 'uel';
+      else if (natWon) qualTier = 'uel';
+      else if (pos === 6) qualTier = 'conf';
+    }
     // ----- trofei + prestigio -----
     const trophies = [];
     if (title) { trophies.push(d.name + ' - Titolo'); S.trophies.titles[S.div]++; S.trophies.total++; S.prestige += TROPHY_WORTH[S.div]; }
@@ -1333,16 +1494,50 @@
     ];
     if (S.euroMoney + euroTitleBonus > 0) statement.push([EURO_COMPS[S.euroComp].name + ' ' + EURO_COMPS[S.euroComp].flag, S.euroMoney + euroTitleBonus]);
     statement.push(['Costi di gestione', -upkeep], ['Stipendi + allenatore (pagati all\'avvio)', 0]);
+    const treble = title && natWon && euroWon && S.euroComp === 'ucl';
     S._end = {
-      pos, exp, promoted, relegated, title, natWon, euroWon, euroCompWon: S.euroComp, trophies, fate, playoff, fbDelta, euroQual: qualTier,
+      pos, exp, promoted, relegated, title, natWon, euroWon, euroCompWon: S.euroComp, trophies, fate, playoff, fbDelta, euroQual: qualTier, treble,
       att, statement,
       net, sentItems, ratingDelta, worth,
+      cupPaths: { nat: (S.cups.nat && S.cups.nat.path) || [], euro: (S.cups.euro && S.cups.euro.path) || [] },
     };
     renderSeasonEnd();
   }
 
+  // Piramide viva: a ogni cambio di stagione, in ogni categoria le ultime `releg` squadre
+  // (i rivali più deboli, mai il club del giocatore) scendono in quella sotto e vengono
+  // rimpiazzate dalle prime della categoria sotto, con la forza (s) riadattata alla nuova
+  // media. Non è un intero campionato extra per le altre 5 categorie della piramide (troppo
+  // pesante da calcolare/mantenere) ma un turnover leggero: negli anni le rose di ogni
+  // categoria cambiano davvero, non restano fisse per tutta la carriera.
+  function simulatePyramidMovement() {
+    for (let div = 1; div < DIVS.length; div++) {
+      const upper = POOLS[div], lower = POOLS[div - 1];
+      const releg = DIVS[div].releg || 0;
+      const promo = (DIVS[div - 1].promoted || 0) + (DIVS[div - 1].playoff ? 1 : 0);
+      if (!releg || !promo) continue;
+      const upperSorted = upper.filter((c) => !(S.div === div && c.n === S.club)).sort((a, b) => a.s - b.s);
+      const lowerSorted = lower.filter((c) => !(S.div === div - 1 && c.n === S.club)).sort((a, b) => b.s - a.s);
+      const n = Math.min(releg, promo, upperSorted.length, lowerSorted.length);
+      if (!n) continue;
+      upperSorted.slice(0, n).forEach((c) => {
+        const i = upper.indexOf(c); if (i < 0) return;
+        upper.splice(i, 1);
+        c.s = clamp(Math.round(DIVS[div - 1].avg + (c.s - DIVS[div].avg) * 0.5), DIVS[div - 1].avg - 12, DIVS[div - 1].avg + 14);
+        lower.push(c);
+      });
+      lowerSorted.slice(0, n).forEach((c) => {
+        const i = lower.indexOf(c); if (i < 0) return;
+        lower.splice(i, 1);
+        c.s = clamp(Math.round(DIVS[div].avg + (c.s - DIVS[div - 1].avg) * 0.5), DIVS[div].avg - 14, DIVS[div].avg + 10);
+        upper.push(c);
+      });
+    }
+  }
+
   function advance() {
     const e = S._end;
+    simulatePyramidMovement();
     if (e.promoted) S.div = Math.min(DIVS.length - 1, S.div + 1);
     if (e.relegated) S.div = Math.max(0, S.div - 1);
     S.promoStreak = e.promoted ? (S.promoStreak || 0) + 1 : 0;
@@ -1388,8 +1583,12 @@
   }
 
   function computeTable() {
+    // Il girone fra rivali (rrPts/rrGF/rrGA) è deciso per intero all'avvio stagione, quindi
+    // si mostra scalato sulla frazione di campionato giocata (per non far vedere la
+    // classifica finale dal giorno 1); i punti contro il presidente (vsPts/vsGF/vsGA) sono
+    // invece reali e già certi non appena quella partita è stata giocata, niente da scalare.
     const f = clamp(S.played / gp(), 0, 1);
-    const rows = S.opps.map((o) => ({ name: o.name, pts: Math.round(o.pts * f), gd: Math.round((o.gf - o.ga) * f), me: false }));
+    const rows = S.opps.map((o) => ({ name: o.name, pts: Math.round(o.rrPts * f) + o.vsPts, gd: Math.round((o.rrGF - o.rrGA) * f) + (o.vsGF - o.vsGA), me: false }));
     rows.push({ name: S.club, pts: S.pts, gd: S.gf - S.ga, me: true });
     rows.sort((a, b) => b.pts - a.pts || b.gd - a.gd);
     S.table = rows;

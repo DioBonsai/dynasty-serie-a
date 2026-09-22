@@ -112,6 +112,8 @@ body{
 .cup-pill.conf{ border-color:var(--good); color:var(--good); }
 .cup-pill.win{ border-color:var(--gold); color:var(--gold); background:rgba(255,210,74,.08); }
 .cup-pill.out{ opacity:.5; }
+.cup-pill.clickable{ cursor:pointer; }
+.cup-pill.clickable:active{ transform:scale(.97); }
 /* Tinta di sfondo leggera sulle righe di classifica, oltre al bordo colorato: rende le
    fasce (Champions/Europa/Conference/playoff/retrocessione) leggibili a colpo d'occhio. */
 .dyn-table tr.ucl{ background:rgba(201,144,47,.07); }
@@ -592,6 +594,26 @@ body{
 @keyframes confettiFall{ 0%{ transform:translateY(-10px) rotate(0deg); opacity:1; } 100%{ transform:translateY(380px) rotate(560deg); opacity:0; } }
 @keyframes goldPulse{ 0%,100%{ box-shadow:var(--shadow); } 50%{ box-shadow:0 0 0 3px rgba(255,210,74,.4), var(--shadow); } }
 .dyn-panel.celebrate{ animation:goldPulse 1.7s ease-in-out 3; }
+
+/* ---------- grande momento: un banner per OGNI titolo/coppa vinta (scudetto di
+   qualunque categoria, Coppa Italia, Champions/Europa/Conference League, Tripletе) ---------- */
+.ow-trophy-moment{ position:relative; overflow:hidden; text-align:center; margin:12px 0; padding:26px 16px 22px; border-radius:16px; border:1px solid var(--line); background:radial-gradient(120% 140% at 50% 0%, rgba(255,210,74,.18), var(--panel2) 65%); animation:trophyIn .5s cubic-bezier(.2,1.4,.4,1); }
+.ow-trophy-icon{ font-size:52px; line-height:1; animation:trophyBounce 1.4s ease-in-out infinite; filter:drop-shadow(0 6px 14px rgba(0,0,0,.35)); }
+.ow-trophy-title{ margin-top:8px; font-family:var(--serif); font-weight:900; font-size:26px; letter-spacing:.5px; color:var(--gold); text-shadow:0 0 18px rgba(255,210,74,.5); }
+.ow-trophy-sub{ margin-top:4px; font-size:12.5px; font-weight:700; color:var(--muted); }
+.ow-trophy-moment.ucl{ background:radial-gradient(120% 140% at 50% 0%, rgba(120,170,255,.22), var(--panel2) 65%); }
+.ow-trophy-moment.ucl .ow-trophy-title{ color:#9fc4ff; text-shadow:0 0 18px rgba(120,170,255,.5); }
+.ow-trophy-moment.nat{ background:radial-gradient(120% 140% at 50% 0%, rgba(40,217,160,.2), var(--panel2) 65%); }
+.ow-trophy-moment.nat .ow-trophy-title{ color:var(--good); text-shadow:0 0 18px rgba(40,217,160,.45); }
+.ow-trophy-moment.uel{ background:radial-gradient(120% 140% at 50% 0%, rgba(255,150,60,.24), var(--panel2) 65%); }
+.ow-trophy-moment.uel .ow-trophy-title{ color:#ffab5c; text-shadow:0 0 18px rgba(255,150,60,.5); }
+.ow-trophy-moment.conf{ background:radial-gradient(120% 140% at 50% 0%, rgba(90,220,220,.22), var(--panel2) 65%); }
+.ow-trophy-moment.conf .ow-trophy-title{ color:#7fe8e8; text-shadow:0 0 18px rgba(90,220,220,.5); }
+.ow-trophy-moment.treble{ background:radial-gradient(130% 160% at 50% 0%, rgba(255,210,74,.3), rgba(120,170,255,.14) 55%, var(--panel2) 80%); }
+.ow-trophy-moment.treble .ow-trophy-title{ font-size:30px; background:linear-gradient(90deg, var(--gold), #9fc4ff, var(--good), var(--gold)); background-size:300% 100%; -webkit-background-clip:text; background-clip:text; color:transparent; animation:trebleShine 2.4s linear infinite; }
+@keyframes trophyIn{ from{ opacity:0; transform:translateY(-10px) scale(.94); } to{ opacity:1; transform:none; } }
+@keyframes trophyBounce{ 0%,100%{ transform:translateY(0) rotate(-3deg); } 50%{ transform:translateY(-8px) rotate(3deg); } }
+@keyframes trebleShine{ 0%{ background-position:0% 0; } 100%{ background-position:300% 0; } }
 
 /* ---------- sparkline ---------- */
 .ow-spark{ display:block; width:100%; height:auto; }

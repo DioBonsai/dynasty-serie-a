@@ -31,7 +31,7 @@
     { name: 'Eccellenza', teams: 24, avg: 53, demand: 4200, ticket: 14, prize: 0.15e6, perPlace: 6e3, promoted: 2, playoff: 4, releg: 3, promoBonus: 0.6e6, titleBonus: 0.25e6, spin: 75e3, premium: 225e3, cupBase: 35e3, admin: 120e3, mgrBase: 52, investor: 300e3 },
     { name: 'Serie D', teams: 24, avg: 60, demand: 7500, ticket: 17, prize: 1.0e6, perPlace: 15e3, promoted: 3, playoff: 4, releg: 2, promoBonus: 1.2e6, titleBonus: 0.5e6, spin: 200e3, premium: 600e3, cupBase: 70e3, admin: 250e3, mgrBase: 58, investor: 600e3 },
     { name: 'Serie C', teams: 24, avg: 66, demand: 13000, ticket: 21, prize: 1.6e6, perPlace: 25e3, promoted: 2, playoff: 4, releg: 4, promoBonus: 3e6, titleBonus: 1e6, spin: 500e3, premium: 2.5e6, cupBase: 140e3, admin: 450e3, mgrBase: 63, investor: 1.2e6 },
-    { name: 'Serie B', teams: 24, avg: 72, demand: 24000, ticket: 28, prize: 9e6, perPlace: 120e3, promoted: 2, playoff: 6, releg: 3, promoBonus: 130e6, titleBonus: 3e6, spin: 1.5e6, premium: 8e6, cupBase: 500e3, admin: 1.5e6, mgrBase: 69, investor: 5e6 },
+    { name: 'Serie B', teams: 20, avg: 72, demand: 24000, ticket: 28, prize: 9e6, perPlace: 120e3, promoted: 2, playoff: 6, releg: 3, promoBonus: 130e6, titleBonus: 3e6, spin: 1.5e6, premium: 8e6, cupBase: 500e3, admin: 1.5e6, mgrBase: 69, investor: 5e6 },
     { name: 'Serie A', teams: 20, avg: 81, demand: 52000, ticket: 42, prize: 105e6, perPlace: 3.1e6, promoted: 0, playoff: 0, releg: 3, euroSpots: 4, uelPos: 5, confPos: 6, promoBonus: 0, titleBonus: 30e6, spin: 6e6, premium: 30e6, cupBase: 2e6, admin: 6e6, mgrBase: 76, investor: 15e6 },
   ];
 
@@ -85,11 +85,10 @@
       { n: 'Latina', s: 67 }, { n: 'Giugliano', s: 66 }, { n: 'Sorrento', s: 66 }, { n: 'Potenza', s: 65 },
       { n: 'Cerignola', s: 65 }, { n: 'Messina', s: 64 }, { n: 'Trapani', s: 64 }, { n: 'Rimini', s: 63 },
     ],
-    [ // Serie B (20 club reali stagione 2026/27 + 4 di riempimento per arrivare a 24)
+    [ // Serie B (20 club reali stagione 2026/27, come il vero campionato)
       { n: 'Verona', s: 83 }, { n: 'Empoli', s: 82 }, { n: 'Sampdoria', s: 80 }, { n: 'Palermo', s: 79 },
-      { n: 'Bari', s: 79 }, { n: 'Cremonese', s: 78 }, { n: 'Spezia', s: 78 }, { n: 'Catanzaro', s: 77 },
-      { n: 'Modena', s: 77 }, { n: 'Pisa', s: 76 }, { n: 'Cesena', s: 76 }, { n: 'Juve Stabia', s: 75 },
-      { n: 'Sudtirol', s: 75 }, { n: 'Salernitana', s: 74 }, { n: 'Reggiana', s: 74 }, { n: 'Carrarese', s: 73 },
+      { n: 'Cremonese', s: 78 }, { n: 'Catanzaro', s: 77 }, { n: 'Modena', s: 77 }, { n: 'Pisa', s: 76 },
+      { n: 'Cesena', s: 76 }, { n: 'Juve Stabia', s: 75 }, { n: 'Sudtirol', s: 75 }, { n: 'Carrarese', s: 73 },
       { n: 'Mantova', s: 73 }, { n: 'Padova', s: 72 }, { n: 'Ascoli', s: 72 }, { n: 'Avellino', s: 71 },
       { n: 'Benevento', s: 71 }, { n: 'Vicenza', s: 70 }, { n: 'Arezzo', s: 70 }, { n: 'Entella', s: 69 },
     ],
