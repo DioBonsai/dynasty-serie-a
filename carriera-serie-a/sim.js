@@ -739,7 +739,10 @@
     if (!S.formation || !FORMATION_TACTICS[S.formation]) S.formation = '433';
     S.squad.forEach((p) => { if (p.yrs == null) p.yrs = 2 + rnd(2); if (p.pid == null) p.pid = newPid(); if (!p.pos) p.pos = randPos(); if (p.seasonGoals == null) p.seasonGoals = 0; if (p.seasonAssists == null) p.seasonAssists = 0; if (p.seasonCleanSheets == null) p.seasonCleanSheets = 0; if (p.seasonApps == null) p.seasonApps = 0; if (!p.nat) p.nat = pickNationality(S.div); if (p.outWeeks == null) p.outWeeks = 0; if (p.suspMatches == null) p.suspMatches = 0; });
     if (S.manager && !S.manager.nat) S.manager.nat = S.manager.real ? natByCode(REAL_MANAGERS.find((m) => m.n === S.manager.n)?.nat) || pickNationality(S.div) : pickNationality(S.div);
-    if (S.manager && !S.manager.spec) S.manager.spec = pick(MANAGER_SPECS).key;
+    if (S.manager && !S.manager.spec) {
+      const rm = S.manager.real ? REAL_MANAGERS.find((m) => m.n === S.manager.n) : null;
+      S.manager.spec = (rm && rm.spec) || pick(MANAGER_SPECS).key;
+    }
   }
 
   const finalYear = (p) => (p.yrs || 0) <= 1;   // ultimo anno di contratto -> rinnova o lo perdi a zero
@@ -820,13 +823,14 @@
   // generati, si aggiungono come opzione possibile fra i candidati.
   function genManager(bonus) {
     const r = clamp(divOf().mgrBase - 4 + rnd(12) + (bonus || 0), 45, 92);
-    const spec = pick(MANAGER_SPECS).key;
+    // Un allenatore VERO porta la sua specializzazione reale (vedi REAL_MANAGERS in
+    // data.js), non una a caso: coerente con la sua fama, non solo col nome.
     if (Math.random() < 0.22) {
       const near = REAL_MANAGERS.filter((m) => Math.abs(m.rating - r) <= 8);
-      if (near.length) { const m = pick(near); return { n: m.n, rating: m.rating, salary: mgrSalaryFor(m.rating), nat: natByCode(m.nat), real: true, spec }; }
+      if (near.length) { const m = pick(near); return { n: m.n, rating: m.rating, salary: mgrSalaryFor(m.rating), nat: natByCode(m.nat), real: true, spec: m.spec || pick(MANAGER_SPECS).key }; }
     }
     const nat = pickNationality(S.div);
-    return { n: genName(nat), rating: r, salary: mgrSalaryFor(r), nat, spec };
+    return { n: genName(nat), rating: r, salary: mgrSalaryFor(r), nat, spec: pick(MANAGER_SPECS).key };
   }
 
   const mgrBonus = () => clamp((S.manager.rating - divOf().mgrBase) / 3.5, -3, 4)
