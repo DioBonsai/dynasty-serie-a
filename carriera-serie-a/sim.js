@@ -679,7 +679,7 @@
     // basso derivato da d.avg) fa sì che un giocatore reale non sia più limitato più in
     // basso di uno generato allo stesso livello.
     const cap = SPIN_CAPS[S.div] || SPIN_CAPS[SPIN_CAPS.length - 1];
-    const band = premium ? { lo: d.avg, hi: cap.premium } : { lo: d.avg, hi: cap.base };
+    const band = premium ? { lo: d.avg + 5, hi: cap.premium } : { lo: d.avg, hi: cap.base };
     if (S.div === 5 && Math.random() < 1 / 12) {
       const icon = iconPlayer(role);
       if (icon) return icon;
