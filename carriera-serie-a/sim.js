@@ -1067,6 +1067,11 @@
   }
 
   function startSeason() {
+    // Se si arriva a inizio stagione già in rosso (budget negativo, prima ancora di pagare
+    // stipendi/allenatore), la banca/gli investitori del club coprono il 40% del debito: una
+    // boccata d'ossigeno automatica ogni stagione, che non elimina il debito ma lo erode nel
+    // tempo, invece di lasciare la spirale del rosso intatta finché non vendi qualcuno a mano.
+    if (S.budget < 0) { S.budget = Math.round(S.budget * 0.6); toast('Il debito di inizio stagione si riduce del 40%: ora sei a ' + fmtMoney(S.budget) + '.'); }
     // Ultima chiamata per riscattare i prestiti dell'estate scorsa (bottone 💰 Riscatta
     // nella rosa, in sala del consiglio): chi non è stato riscattato torna al suo club ora.
     const loanedBack = S.squad.filter((p) => p.loan).map((p) => p.n);
