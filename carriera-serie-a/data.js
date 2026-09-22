@@ -35,6 +35,26 @@
     { name: 'Serie A', teams: 20, avg: 81, demand: 52000, ticket: 42, prize: 105e6, perPlace: 3.1e6, promoted: 0, playoff: 0, releg: 3, euroSpots: 4, uelPos: 5, confPos: 6, promoBonus: 0, titleBonus: 30e6, spin: 6e6, premium: 30e6, cupBase: 2e6, admin: 6e6, mgrBase: 76, investor: 15e6 },
   ];
 
+  // La Coppa Italia è UNA sola coppa, non sei tornei separati: nella realtà il tabellone
+  // dei "grandi" (44 squadre fra Serie A/B/C) è preceduto da un intero percorso di turni
+  // per chi parte dai dilettanti — chi è più in basso nella piramide deve semplicemente
+  // superare più turni per arrivare alla stessa identica finale, esattamente come le
+  // teste di serie di Serie A (le prime 8 dell'anno prima) entrano direttamente agli
+  // ottavi mentre gli altri club entrano nei turni precedenti. Stesso trofeo in fondo al
+  // percorso per tutti, solo il numero di ostacoli prima cambia con la categoria. Regola
+  // reale 2024/25: gara secca fino agli ottavi, quarti e semifinale andata/ritorno,
+  // finale gara secca in sede neutra (Stadio Olimpico) — qui replicata su MISURA per
+  // ciascuna categoria (gli ultimi due turni prima della finale sono sempre quelli a
+  // doppio confronto, quali che siano nel tabellone di quella categoria).
+  const CUP_ROUNDS_BY_DIV = [
+    ['Turno preliminare', 'Primo turno', 'Secondo turno', 'Trentaduesimi', 'Sedicesimi', 'Ottavi', 'Quarti', 'Semifinale', 'Finale'],
+    ['Primo turno', 'Secondo turno', 'Trentaduesimi', 'Sedicesimi', 'Ottavi', 'Quarti', 'Semifinale', 'Finale'],
+    ['Secondo turno', 'Trentaduesimi', 'Sedicesimi', 'Ottavi', 'Quarti', 'Semifinale', 'Finale'],
+    ['Trentaduesimi', 'Sedicesimi', 'Ottavi', 'Quarti', 'Semifinale', 'Finale'],
+    ['Sedicesimi', 'Ottavi', 'Quarti', 'Semifinale', 'Finale'],
+    ['Ottavi', 'Quarti', 'Semifinale', 'Finale'],
+  ];
+
   // Tetto massimo di overall raggiungibile con uno spin, per categoria: vale ALLO STESSO
   // MODO sia per i giocatori generati sia per quelli veri pescati dalle rose reali (vedi
   // spinPlayer in sim.js) — prima i giocatori veri erano di fatto limitati più in basso

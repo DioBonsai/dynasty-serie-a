@@ -1098,7 +1098,9 @@
     const fx = [];
     S.opps.forEach((o, i) => { fx.push({ opp: i, home: true }); fx.push({ opp: i, home: false }); });
     shuffle(fx); S.fixtures = fx.map((f, i) => ({ ...f, mw: i + 1 }));
-    S.cups = { nat: { name: 'Coppa Italia', rounds: ['Turno 2', 'Turno 3', 'Turno 4', 'Quarti', 'Semifinale', 'Finale'], at: 0, legAt: 0, legIndex: 0, out: false, won: false } };
+    // La Coppa Italia è unica dalla Promozione alla Serie A: i turni cambiano numero con la
+    // categoria (vedi CUP_ROUNDS_BY_DIV), non il trofeo in palio, sempre lo stesso.
+    S.cups = { nat: { name: 'Coppa Italia', rounds: (CUP_ROUNDS_BY_DIV[S.div] || CUP_ROUNDS_BY_DIV[CUP_ROUNDS_BY_DIV.length - 1]).slice(), at: 0, legAt: 0, legIndex: 0, out: false, won: false } };
     // Formato UEFA reale dal 2024/25: fase campionato a classifica unica (8 partite in
     // Champions/Europa League, 6 in Conference League), poi 1°-8° diretti agli ottavi,
     // 9°-24° giocano uno spareggio andata/ritorno per l'ultimo posto, 25°+ eliminati. Da
@@ -1231,23 +1233,27 @@
   }
 
   /* ---------------- coppe (checkpoint scalati sulla lunghezza di stagione) ---------------- */
-  // La Coppa Italia è a eliminazione diretta, ma dai trentaduesimi alla semifinale ogni
-  // turno è andata/ritorno come nel vero tabellone: le due gare di un turno cadono in due
-  // giornate diverse (due checkpoint distinti), non nello stesso istante. Solo la finale
-  // resta gara secca. La coppa europea segue il formato UEFA reale in vigore dal 2024/25:
-  // una fase campionato a classifica unica (8 partite in Champions/Europa League, 6 in
-  // Conference League — checkpoint euroLeague), poi 1°-8° virtuali vanno dritti agli
-  // ottavi, 9°-24° giocano uno spareggio andata/ritorno (checkpoint euroPlayoff), 25°+
-  // sono eliminati. Da qui in poi ottavi/quarti/semifinale sono andata/ritorno (checkpoint
-  // euroKO), la finale è una gara secca in sede neutra.
+  // La Coppa Italia è a eliminazione diretta gara secca, TRANNE quarti e semifinale
+  // (sempre i due turni prima della finale, quali che siano nel tabellone di quella
+  // categoria — vedi CUP_ROUNDS_BY_DIV) che sono andata/ritorno: le due gare di quei turni
+  // cadono in due giornate diverse (due checkpoint distinti), non nello stesso istante.
+  // La finale resta sempre gara secca in sede neutra. La coppa europea segue il formato
+  // UEFA reale in vigore dal 2024/25: una fase campionato a classifica unica (8 partite in
+  // Champions/Europa League, 6 in Conference League — checkpoint euroLeague), poi 1°-8°
+  // virtuali vanno dritti agli ottavi, 9°-24° giocano uno spareggio andata/ritorno
+  // (checkpoint euroPlayoff), 25°+ sono eliminati. Da qui in poi ottavi/quarti/semifinale
+  // sono andata/ritorno (checkpoint euroKO), la finale è una gara secca in sede neutra.
   function maybeCupRound() {
     const G = gp();
     const f = (fr) => Math.max(1, Math.min(G - 1, Math.round(G * fr)));
     const euro = S.cups.euro;
     const legLen = euro ? euro.legLen : 8;
     const leagueFracs = Array.from({ length: legLen }, (_, idx) => 0.10 + idx * (0.44 / Math.max(1, legLen - 1)));
-    // Un checkpoint per GAMBA, non per turno: 5 turni a due gambe + la finale secca = 11.
-    const natFracs = [0.08, 0.14, 0.20, 0.26, 0.34, 0.40, 0.48, 0.54, 0.62, 0.68, 0.90];
+    // Un checkpoint per GAMBA, non per turno: N turni della categoria, dei quali solo gli
+    // ultimi due prima della finale a doppia gamba => N+2 checkpoint in tutto.
+    const natRoundCount = (S.cups.nat && S.cups.nat.rounds.length) || 6;
+    const natTotal = natRoundCount + 2;
+    const natFracs = Array.from({ length: natTotal }, (_, k) => 0.08 + k * (0.82 / Math.max(1, natTotal - 1)));
     const checkpoints = {
       nat: natFracs.map(f),
       euroLeague: leagueFracs.map(f),
@@ -1263,14 +1269,15 @@
     }
   }
 
-  // Un turno di Coppa Italia: una chiamata risolve UNA gamba (andata o ritorno, per i primi
-  // 5 turni), la chiamata successiva — a un checkpoint diverso, quindi partite diverse —
-  // risolve l'altra e decide il passaggio del turno sull'aggregato. La finale (ultimo
-  // turno) resta una gara secca risolta in un'unica chiamata, come prima.
+  // Un turno di Coppa Italia: per quarti e semifinale (sempre i due turni prima della
+  // finale) una chiamata risolve UNA gamba, la chiamata successiva — a un checkpoint
+  // diverso, quindi partite diverse — risolve l'altra e decide il passaggio del turno
+  // sull'aggregato. Tutti gli altri turni, finale compresa, restano gara secca risolta in
+  // un'unica chiamata, come nel vero tabellone.
   function resolveNatRound() {
     const cup = S.cups.nat, d = divOf(), i = cup.at;
-    const isFinal = i === cup.rounds.length - 1;
-    const legs = isFinal ? 1 : 2;
+    const isTwoLegged = i === cup.rounds.length - 3 || i === cup.rounds.length - 2;
+    const legs = isTwoLegged ? 2 : 1;
     if (!cup.legAt) cup.legAt = 0;
     if (cup.legAt === 0) {
       cup.roundOppStr = Math.min(90, d.avg + 2 + i * 4 + rnd(6));
