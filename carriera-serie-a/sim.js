@@ -819,14 +819,14 @@
 
   const mgrSalaryFor = (rating) => Math.round(40e3 * Math.pow(1.14, rating - 50) * diffOf().mgrCostMult / 1e3) * 1e3;
 
-  // Un candidato su circa 4 è un allenatore vero, se ce n'è uno con un rating abbastanza
+  // Un candidato su circa 2 è un allenatore vero, se ce n'è uno con un rating abbastanza
   // vicino a quello richiesto (altrimenti si genera normalmente): non sostituiscono i
   // generati, si aggiungono come opzione possibile fra i candidati.
   function genManager(bonus) {
     const r = clamp(divOf().mgrBase - 4 + rnd(12) + (bonus || 0), 45, 92);
     // Un allenatore VERO porta la sua specializzazione reale (vedi REAL_MANAGERS in
     // data.js), non una a caso: coerente con la sua fama, non solo col nome.
-    if (Math.random() < 0.22) {
+    if (Math.random() < 0.4) {
       const near = REAL_MANAGERS.filter((m) => Math.abs(m.rating - r) <= 8);
       if (near.length) { const m = pick(near); return { n: m.n, rating: m.rating, salary: mgrSalaryFor(m.rating), nat: natByCode(m.nat), real: true, spec: m.spec || pick(MANAGER_SPECS).key }; }
     }
