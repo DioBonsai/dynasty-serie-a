@@ -12,10 +12,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Presidente · Serie A</title>
 <meta name="description" content="Compra un club di Promozione e costruisci un impero. Ingaggia giocatori con gli spin, gestisci il monte ingaggi, fai crescere lo stadio e scala sei categorie fino alla Serie A." />
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#0b0906" />
+<link rel="icon" href="icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="icon.svg" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,600;0,700;0,900;1,600;1,800&family=Inter:wght@400;500;600;700;800;900&display=swap" />
-<link rel="stylesheet" href="styles.css?v=14" />
+<link rel="stylesheet" href="styles.css?v=15" />
 </head>
 <body class="dyn">
 
@@ -25,6 +31,11 @@
     <span id="owHomeCrestWrap" class="dyn-home-crest"></span>
     <span>Presidente</span>
   </button>
+  <div class="dyn-topbar-right">
+    <button id="owGlobalLeaderboardBtn" class="dyn-icon-btn" type="button" title="Classifica presidenti">🌍</button>
+    <button id="owTrophyCaseBtn" class="dyn-icon-btn" type="button" title="Bacheca trofei">🏆</button>
+    <button id="owSoundBtn" class="dyn-icon-btn" type="button" title="Audio">🔊</button>
+  </div>
 </div>
 
 <!-- ============ SETUP: nome + acquisizione ============ -->
@@ -34,6 +45,7 @@
     <div class="dyn-kicker">Modalità Proprietario</div>
     <h1 class="dyn-h1">Compra il <em>Club</em></h1>
     <p class="dyn-sub">Scegli da che categoria partire e compra un club a tua misura. Ingaggia giocatori con gli spin, gestisci il monte ingaggi, assumi l'allenatore, scegli lo sponsor, fai crescere lo stadio e tieni i tifosi dalla tua parte. Scala la piramide fino alla Serie A, e vendi quando il prezzo è giusto.</p>
+    <div id="saveSlotsWrap"></div>
     <label class="dyn-field">
       <span>Nome proprietario</span>
       <input id="owName" type="text" maxlength="18" placeholder="Il tuo nome" autocomplete="off" />
@@ -62,7 +74,6 @@
     <div class="dyn-aggr-label" style="text-align:center;margin:6px 0 8px">Scegli la tua situazione di partenza</div>
     <div id="takeoverGrid" class="ow-takeovers"></div>
     <button id="owRerollBtn" class="dyn-btn" style="margin-top:2px">🔄 Nuove condizioni di partenza</button>
-    <button id="owContinueBtn" class="dyn-btn dyn-btn-primary hidden">Continua la carriera</button>
     <button id="owStartBtn" class="dyn-btn dyn-btn-primary">Compra il club</button>
   </div>
 </main>
@@ -89,6 +100,7 @@
         <div class="cell" id="owWorthChip"><span>Valore del club</span><b>-</b></div>
       </div>
     </div>
+    <div class="ow-season-target" id="owSeasonTarget"></div>
     <div class="dyn-cups" id="owCups"></div>
     <div class="dyn-manage-row">
       <button id="owTableBtn" class="dyn-mini">📊 Classifica</button>
@@ -119,8 +131,16 @@
 
 <div id="owToast" class="dyn-toast hidden"></div>
 
-<script src="data.js?v=28"></script>
-<script src="sim.js?v=28"></script>
-<script src="ui.js?v=28"></script>
+<script src="sfx.js?v=30"></script>
+<script src="data.js?v=30"></script>
+<script src="sim.js?v=30"></script>
+<script src="ui.js?v=30"></script>
+<script>
+  // Service worker: rende il gioco installabile ("aggiungi a Home") e disponibile offline
+  // dopo la prima visita. Nessun impatto sul deploy: index.html resta sempre network-first.
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+  }
+</script>
 </body>
 </html>

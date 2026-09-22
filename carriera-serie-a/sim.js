@@ -357,6 +357,9 @@
     const noise = (Math.random() - 0.5) * 1.5;
     let delta = ageGrowthBase(p.age) + perf + noise;
     if (delta > 0) delta *= growthDamp(p.ovr);
+    // Allenatore "costruttore di giovani": un filo di crescita in più, ma solo quando
+    // c'è già crescita da spingere (non tampona un calo).
+    if (delta > 0 && p.age <= 23 && S.manager && S.manager.spec === 'builder') delta += 1;
     // Range -5/+7 in una singola stagione: +7 resta possibile solo per un giovane che ha
     // fatto una stagione da incorniciare, un rendimento buono ma non eccezionale (o un
     // giocatore più avanti con l'età) si ferma più in basso, sui +3/+5. Anche i cali sono
@@ -725,8 +728,10 @@
     if (S.marketSeenB == null) S.marketSeenB = S.div >= 4;
     if (S.marketSeenA == null) S.marketSeenA = S.div >= 5;
     if (S.market === undefined) S.market = null;
+    if (!S.formation || !FORMATION_TACTICS[S.formation]) S.formation = '433';
     S.squad.forEach((p) => { if (p.yrs == null) p.yrs = 2 + rnd(2); if (p.pid == null) p.pid = newPid(); if (!p.pos) p.pos = randPos(); if (p.seasonGoals == null) p.seasonGoals = 0; if (p.seasonAssists == null) p.seasonAssists = 0; if (p.seasonCleanSheets == null) p.seasonCleanSheets = 0; if (p.seasonApps == null) p.seasonApps = 0; if (!p.nat) p.nat = pickNationality(S.div); if (p.outWeeks == null) p.outWeeks = 0; if (p.suspMatches == null) p.suspMatches = 0; });
     if (S.manager && !S.manager.nat) S.manager.nat = S.manager.real ? natByCode(REAL_MANAGERS.find((m) => m.n === S.manager.n)?.nat) || pickNationality(S.div) : pickNationality(S.div);
+    if (S.manager && !S.manager.spec) S.manager.spec = pick(MANAGER_SPECS).key;
   }
 
   const finalYear = (p) => (p.yrs || 0) <= 1;   // ultimo anno di contratto -> rinnova o lo perdi a zero
@@ -805,15 +810,18 @@
   // generati, si aggiungono come opzione possibile fra i candidati.
   function genManager(bonus) {
     const r = clamp(divOf().mgrBase - 4 + rnd(12) + (bonus || 0), 45, 92);
+    const spec = pick(MANAGER_SPECS).key;
     if (Math.random() < 0.22) {
       const near = REAL_MANAGERS.filter((m) => Math.abs(m.rating - r) <= 8);
-      if (near.length) { const m = pick(near); return { n: m.n, rating: m.rating, salary: mgrSalaryFor(m.rating), nat: natByCode(m.nat), real: true }; }
+      if (near.length) { const m = pick(near); return { n: m.n, rating: m.rating, salary: mgrSalaryFor(m.rating), nat: natByCode(m.nat), real: true, spec }; }
     }
     const nat = pickNationality(S.div);
-    return { n: genName(nat), rating: r, salary: mgrSalaryFor(r), nat };
+    return { n: genName(nat), rating: r, salary: mgrSalaryFor(r), nat, spec };
   }
 
-  const mgrBonus = () => clamp((S.manager.rating - divOf().mgrBase) / 3.5, -3, 4);
+  const mgrBonus = () => clamp((S.manager.rating - divOf().mgrBase) / 3.5, -3, 4)
+    + (S.manager && S.manager.spec === 'tactician' ? 1.2 : 0)
+    + (S.manager && S.manager.spec === 'motivator' && S.sent < 40 ? 1.5 : 0);
 
   function sponsorOffers() {
     const d = divOf();
@@ -839,7 +847,7 @@
   // Chi viene promosso rincatenando una seconda promozione di fila (rosa e organizzazione
   // ancora tarate sulla categoria precedente) fatica un filo in più ad ambientarsi rispetto
   // a chi ha avuto una stagione intera per consolidarsi: un piccolo malus, non un muro.
-  const promoStreakMalus = () => (S.promoStreak > 0 ? 2.2 * diffOf().promoStreakMalusMult : 0);
+  const promoStreakMalus = () => (S.promoStreak > 0 ? 2.2 * diffOf().promoStreakMalusMult * (S.manager && S.manager.spec === 'motivator' ? 0.5 : 1) : 0);
 
   const teamEff = () => squadStr() + mgrBonus() + (S.form || 0) - promoStreakMalus() + diffOf().teamEffDelta;
 
@@ -865,16 +873,85 @@
     return Math.round(WORTH_BASE[S.div] + squadVal + S.stadiumSpent * 1.25 + S.prestige + brand + Math.max(0, S.budget));
   }
 
-  /* ---------------- salva / riprendi ---------------- */
-  const DKEY = 'dsa_dynasty_owner';
+  /* ---------------- salva / riprendi (multi-slot) ----------------
+     Ogni carriera vive nel proprio slot (`dsa_save_<id>`, con a fianco
+     `dsa_save_<id>_pools` per la piramide viva — vedi simulatePyramidMovement),
+     elencato in un indice leggero (`dsa_saves_index`) così la sala d'attesa può
+     mostrare/riprendere/cancellare più carriere senza che iniziarne una nuova
+     cancelli le altre. `dsa_active_save` ricorda quale slot ha aperto la
+     scheda in questo momento (per saveGame/loadSave "impliciti", legati a S). */
+  const SAVES_INDEX_KEY = 'dsa_saves_index';
+  const ACTIVE_SAVE_KEY = 'dsa_active_save';
+  const saveSlotKey = (id) => 'dsa_save_' + id;
+  const savePoolsKey = (id) => 'dsa_save_' + id + '_pools';
 
-  function saveGame() { try { if (S && !S.over) localStorage.setItem(DKEY, JSON.stringify(S)); } catch (e) {} }
+  function readSavesIndex() { try { return JSON.parse(localStorage.getItem(SAVES_INDEX_KEY)) || []; } catch (e) { return []; } }
+  function writeSavesIndex(list) { try { localStorage.setItem(SAVES_INDEX_KEY, JSON.stringify(list)); } catch (e) {} }
 
-  function loadSave() { try { const raw = localStorage.getItem(DKEY); if (!raw) return null; const s = JSON.parse(raw); return (s && s.squad && !s.over) ? s : null; } catch (e) { return null; } }
+  function saveGame() {
+    try {
+      if (!S || S.over) return;
+      if (!S._saveId) S._saveId = 'sv_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+      localStorage.setItem(saveSlotKey(S._saveId), JSON.stringify(S));
+      localStorage.setItem(savePoolsKey(S._saveId), JSON.stringify(POOLS));
+      const idx = readSavesIndex();
+      const i = idx.findIndex((x) => x.id === S._saveId);
+      const meta = { id: S._saveId, owner: S.owner, club: S.club, div: S.div, season: S.season, updated: Date.now() };
+      if (i >= 0) idx[i] = meta; else idx.push(meta);
+      writeSavesIndex(idx);
+      localStorage.setItem(ACTIVE_SAVE_KEY, S._saveId);
+    } catch (e) {}
+  }
 
-  function clearSave() { try { localStorage.removeItem(DKEY); } catch (e) {} }
+  // Carica uno slot specifico (per id) SENZA attivarlo come corrente — usato dalla
+  // schermata di setup per mostrare l'elenco/riprendere una carriera a scelta.
+  function loadSaveSlot(id) {
+    try { const raw = localStorage.getItem(saveSlotKey(id)); if (!raw) return null; const s = JSON.parse(raw); return (s && s.squad && !s.over) ? s : null; } catch (e) { return null; }
+  }
 
-  const hasSave = () => !!loadSave();
+  // Ripristina anche POOLS (la piramide con le sue promozioni/retrocessioni accumulate)
+  // per lo slot indicato, mutando gli array esistenti in place così ogni riferimento a
+  // POOLS nel resto del codice resta valido.
+  function loadPoolsForSlot(id) {
+    try {
+      const raw = localStorage.getItem(savePoolsKey(id)); if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (!Array.isArray(saved) || saved.length !== POOLS.length) return;
+      POOLS.forEach((arr, i) => { if (Array.isArray(saved[i])) { arr.length = 0; arr.push(...saved[i]); } });
+    } catch (e) {}
+  }
+
+  // "Continua" implicito: l'ultimo slot attivo, comportamento invariato per chi chiamava
+  // loadSave() prima del multi-slot.
+  function loadSave() {
+    const id = localStorage.getItem(ACTIVE_SAVE_KEY);
+    if (!id) return null;
+    return loadSaveSlot(id);
+  }
+
+  // Rimuove SOLO lo slot della carriera corrente (fine dinastia), non le altre carriere salvate.
+  function clearSave() {
+    try {
+      const id = S && S._saveId;
+      if (id) {
+        localStorage.removeItem(saveSlotKey(id));
+        localStorage.removeItem(savePoolsKey(id));
+        writeSavesIndex(readSavesIndex().filter((x) => x.id !== id));
+      }
+      localStorage.removeItem(ACTIVE_SAVE_KEY);
+    } catch (e) {}
+  }
+
+  function deleteSaveSlot(id) {
+    try {
+      localStorage.removeItem(saveSlotKey(id));
+      localStorage.removeItem(savePoolsKey(id));
+      writeSavesIndex(readSavesIndex().filter((x) => x.id !== id));
+      if (localStorage.getItem(ACTIVE_SAVE_KEY) === id) localStorage.removeItem(ACTIVE_SAVE_KEY);
+    } catch (e) {}
+  }
+
+  const hasSave = () => readSavesIndex().length > 0;
 
   // Le SITUATIONS sono tarate sull'Eccellenza: per una categoria diversa si trasla la
   // forza di partenza sulla nuova media (dAvg - eccAvg) e si scala il budget con lo stesso
@@ -902,7 +979,9 @@
 
   function startDynasty(owner, t, customClub, div, difficulty) {
     div = div || 0;
-    clearSave();
+    // Niente clearSave() qui: con gli slot multipli, iniziare una nuova carriera non deve
+    // toccare quella (eventualmente) ancora in memoria — resta al suo posto nell'indice
+    // finché non viene esplicitamente cancellata.
     const diffKey = DIFFICULTIES.some((x) => x.key === difficulty) ? difficulty : 'medio';
     const squad = [];
     const dAvg = DIVS[div].avg;
@@ -912,7 +991,7 @@
       difficulty: diffKey,
       budget: Math.round(t.budget * diffOf(diffKey).budgetMult), fanbase: Math.round(t.fanbase * 100) / 100,
       stadiumTier: t.stadiumTier, stadiumSpent: 0.6e6 + (t.stadiumTier ? STADIUM[1].cost : 0), ticket: 1,
-      squad, manager: (function () { const r = clamp(DIVS[div].mgrBase - 2 + rnd(8), 45, 92); const nat = pickNationality(div); return { n: genName(nat), rating: r, salary: mgrSalaryFor(r), nat }; })(),
+      squad, manager: (function () { const r = clamp(DIVS[div].mgrBase - 2 + rnd(8), 45, 92); const nat = pickNationality(div); return { n: genName(nat), rating: r, salary: mgrSalaryFor(r), nat, spec: pick(MANAGER_SPECS).key }; })(),
       sponsor: null, sent: 55, ownerRating: 62, prestige: 0, debtSeasons: 0,
       euro: false, euroComp: null, form: 0, spinsBought: 0, promoStreak: 0, premiumRoleUsed: false, stdRoleUsed: false,
       trophies: { titles: [0, 0, 0, 0, 0, 0], nat: 0, ucl: 0, uel: 0, conf: 0, total: 0 },
@@ -921,6 +1000,7 @@
       crestShape: crestShape, crestColors: crestColors.slice(),
       scoutLevel: 0, scoutProspect: null, scoutProspectSeason: 0,
       market: null, marketSeenB: div >= 4, marketSeenA: div >= 5,
+      formation: '433',
     };
     normSquad();
     S.peakWorth = computeWorth();
@@ -1012,7 +1092,29 @@
         rounds: ['Ottavi', 'Quarti', 'Semifinale', 'Finale'], at: 0, out: false, won: false,
       };
     }
-    show('owSeasonScreen'); $('owLog').innerHTML = ''; renderHud(); renderCups(); saveGame();
+    // Obiettivo di stagione dichiarato SUBITO (dipende dalla forza della rosa vista ora, non
+    // da com'è andata la stagione): resta fisso finché non ne inizi un'altra, così un buon
+    // mercato estivo che alza le attese non "si ricorda" a fine anno del progetto più
+    // modesto con cui era partito.
+    S.seasonTargetInfo = seasonTarget();
+    show('owSeasonScreen'); $('owLog').innerHTML = ''; renderHud(); renderCups(); renderSeasonTarget(); saveGame();
+    toast('🎯 Obiettivo di stagione: ' + S.seasonTargetInfo.label + '.');
+  }
+
+  // L'obiettivo che la proprietà/i tifosi si aspettano per la stagione appena iniziata,
+  // in base a dove la rosa dovrebbe piazzarsi (expectedPos) e alle regole della categoria.
+  // `cushion` allarga la zona salvezza quanto più la difficoltà è clemente: su Facile un
+  // progetto sulla carta a rischio ha comunque margine per sperare in qualcosa di più, su
+  // Estremo le attese sono più letterali/dure.
+  function seasonTarget() {
+    const d = divOf(), exp = expectedPos();
+    const cushion = { facile: 3, medio: 2, difficile: 1, estremo: 0 }[S.difficulty] != null ? { facile: 3, medio: 2, difficile: 1, estremo: 0 }[S.difficulty] : 2;
+    let key, label;
+    if (d.promoted && exp <= d.promoted) { key = 'vertice'; label = d.playoff ? 'lottare per la vittoria del campionato' : 'vincere il campionato'; }
+    else if (d.playoff && exp <= d.promoted + d.playoff) { key = 'playoff'; label = 'giocarsi la promozione nei playoff'; }
+    else if (d.releg && exp > d.teams - d.releg - cushion) { key = 'salvezza'; label = 'salvarsi, evitando la retrocessione'; }
+    else { key = 'meta'; label = 'un campionato tranquillo, a metà classifica'; }
+    return { key, label, exp };
   }
 
   function simMatch() {
@@ -1022,7 +1124,10 @@
     // Più alta è la varianza di difficoltà, meno pesa il gap di forza reale sul risultato:
     // partite più imprevedibili, upset più frequenti anche quando si è nettamente più forti.
     const coeff = 0.045 / diffOf().varianceMult;
-    const gf = poisson(clamp(1.32 + d * coeff, 0.15, 4.4)), ga = poisson(clamp(1.32 - d * coeff, 0.15, 4.4));
+    // Il modulo scelto in "Probabile formazione" pesa davvero: uno più offensivo segna un
+    // filo di più e incassa un filo di più, uno più difensivo il contrario.
+    const fb = FORMATION_TACTICS[S.formation] || FORMATION_TACTICS['433'];
+    const gf = poisson(clamp(1.32 + fb.atk + d * coeff, 0.15, 4.4)), ga = poisson(clamp(1.32 + fb.def - d * coeff, 0.15, 4.4));
     S.played++; S.gf += gf; S.ga += ga;
     const res = gf > ga ? 'W' : gf < ga ? 'L' : 'D';
     S.pts += res === 'W' ? 3 : res === 'D' ? 1 : 0;
@@ -1034,20 +1139,44 @@
     registerAppearances(lineup);
     const goalsFor = genGoals(gf, true, null, lineup), goalsAgainst = genGoals(ga, false, opp.name);
     registerCleanSheet(ga, lineup);
-    const row = { mw: fx.mw, opp: opp.name, home: fx.home, gf, ga, res, goalsFor, goalsAgainst, events: lineup.events };
-    S.results.push(row); logMatch(row);
+    // Derby/rivalità storica: un filo di umore in più in palio, oltre ai 3 punti.
+    const derby = isDerby(S.club, opp.name);
+    if (derby) { if (res === 'W') S.sent = clamp(S.sent + 3, 0, 100); else if (res === 'L') S.sent = clamp(S.sent - 3, 0, 100); }
+    const row = { mw: fx.mw, opp: opp.name, home: fx.home, gf, ga, res, goalsFor, goalsAgainst, events: lineup.events, derby };
+    S.results.push(row);
+    // Durante "Simula fino a fine stagione" (BULK_SIM) saltiamo la scrittura DOM partita per
+    // partita (fino a 46 volte in un colpo solo): computeTable() aggiorna comunque lo stato
+    // (serve subito dopo per le coppe/il traguardo stagione), il log/HUD si ricostruiscono
+    // in un colpo solo alla fine, in simToEnd().
+    if (!BULK_SIM) { logMatch(row); if (gf > 0 && DynSound) DynSound.goal(); }
     maybeCupRound();
-    computeTable(); renderHud();
-    if (!BULK_SIM) saveGame();
+    computeTable();
+    if (!BULK_SIM) { renderHud(); saveGame(); maybeNarrativeEvent(); }
     if (S.played === (gp() >> 1) && !S.winterDone) { openWinter(); return; }
-    if (S.played >= gp()) endSeason();
+    if (S.played >= gp()) { if (!BULK_SIM && DynSound) DynSound.whistle(); endSeason(); }
   }
 
   function simToEnd() {
     BULK_SIM = true;
     while (S.seasonActive && S.played < gp() && !S._pause) { const b = S.played; simMatch(); if (S._pause) break; if (S.played === b) break; }
     BULK_SIM = false;
+    // Un solo render del log/HUD/coppe alla fine, invece di uno per ciascuna partita appena
+    // simulata: stesso risultato visivo, molto più leggero. Solo se siamo ancora sullo
+    // schermo di stagione (season non ancora terminata: endSeason ha già mostrato altro).
+    if (S.seasonActive) { $('owLog').innerHTML = ''; (S.results || []).forEach(logMatch); renderHud(); renderCups(); }
     saveGame();
+  }
+
+  // Un evento narrativo casuale ogni tanto fra una partita e l'altra (mai durante la
+  // simulazione rapida: lì il giocatore non lo vedrebbe comunque). Più probabile a
+  // difficoltà più alte, dove "gli imprevisti sono la norma".
+  function maybeNarrativeEvent() {
+    const chance = 0.05 * (diffOf().eventMult || 1);
+    if (Math.random() >= chance) return;
+    const ev = pick(NARRATIVE_EVENTS);
+    if (ev.sent) S.sent = clamp(S.sent + ev.sent, 0, 100);
+    if (ev.budgetPct) S.budget += Math.round(S.budget * ev.budgetPct);
+    toast('📰 ' + ev.text);
   }
 
   /* ---------------- coppe (checkpoint scalati sulla lunghezza di stagione) ---------------- */
@@ -1431,6 +1560,15 @@
     const sentItems = [];
     const bump = (label, v) => { if (!v) return; sentItems.push([label, v]); S.sent = clamp(S.sent + v, 0, 100); };
     bump('Risultati vs aspettative', clamp(Math.round((exp - pos) * 0.9), -10, 10));
+    // ----- obiettivo di stagione dichiarato: centrato o mancato, con un peso proporzionale
+    // a quanto la difficoltà scelta rende i tifosi/la proprietà più o meno pazienti -----
+    const target = S.seasonTargetInfo || seasonTarget();
+    const patience = diffOf().patienceMult || 1;
+    const targetMet = target.key === 'vertice' ? title
+      : target.key === 'playoff' ? promoted
+      : target.key === 'salvezza' ? !relegated
+      : pos <= target.exp + 3;
+    bump((targetMet ? 'Obiettivo di stagione centrato: ' : 'Obiettivo di stagione mancato: ') + target.label, Math.round((targetMet ? 6 : -8) * patience));
     if (promoted) bump('PROMOZIONE', 15);
     if (playoff && playoff.won) bump('Dramma playoff', 3);
     if (playoff && !playoff.won) bump('Delusione playoff', -3);
@@ -1535,8 +1673,31 @@
     }
   }
 
+  // I rivali "investono" nel tempo: chi chiude la stagione ai vertici (o vince qualcosa)
+  // guadagna un filo di forza di base per le prossime stagioni, chi retrocede/chiude in
+  // fondo ne perde un po'. Piccoli passi persistenti su POOLS, non un reset annuale: una
+  // provinciale che vince spesso diventa via via una big vera, non solo sulla carta di
+  // quella stagione.
+  function evolveRivalStrengths() {
+    if (!S.table || !S.table.length) return;
+    const d = divOf(), pool = POOLS[S.div];
+    S.table.forEach((row, i) => {
+      if (row.me) return;
+      const club = pool.find((c) => c.n === row.name); if (!club) return;
+      const posN = i + 1;
+      let drift = 0;
+      if (posN === 1) drift = 0.8;
+      else if (posN <= 3) drift = 0.4;
+      else if (d.releg && posN > d.teams - d.releg) drift = -0.7;
+      else if (posN > d.teams * 0.7) drift = -0.2;
+      if (!drift) return;
+      club.s = clamp(Math.round((club.s + drift) * 10) / 10, d.avg - 20, d.avg + 22);
+    });
+  }
+
   function advance() {
     const e = S._end;
+    evolveRivalStrengths();
     simulatePyramidMovement();
     if (e.promoted) S.div = Math.min(DIVS.length - 1, S.div + 1);
     if (e.relegated) S.div = Math.max(0, S.div - 1);

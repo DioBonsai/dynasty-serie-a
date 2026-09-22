@@ -11,6 +11,14 @@
   <FilesMatch "\.(css|js)$">
     Header set Cache-Control "public, max-age=31536000"
   </FilesMatch>
+  <!-- sw.js e manifest.json restano SEMPRE no-cache anche se sono .js/.json: sw.js in
+       particolare deve poter essere ricontrollato dal browser ad ogni deploy (un service
+       worker aggiornato ma servito con cache lunga può restare "vecchio" per un anno),
+       quindi questa regola più specifica deve stare DOPO quella generale su *.js per
+       sovrascriverla (Apache applica l'ultimo <FilesMatch> che corrisponde). -->
+  <FilesMatch "^(sw\.js|manifest\.json)$">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
 </IfModule>
 <IfModule mod_expires.c>
   ExpiresActive On

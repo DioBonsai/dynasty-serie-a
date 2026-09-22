@@ -56,7 +56,7 @@ body{
 .dyn-btn-primary:hover{ border-color:transparent; filter:brightness(1.06); }
 
 /* ---------- stemma + barra home ---------- */
-.dyn-topbar{ max-width:640px; margin:0 auto; padding:14px 16px 0; }
+.dyn-topbar{ max-width:640px; margin:0 auto; padding:14px 16px 0; display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .dyn-home{
   appearance:none; background:var(--panel2); border:1px solid var(--line); color:var(--txt);
   font:800 13px/1 var(--sans); padding:8px 16px 8px 10px; border-radius:999px; cursor:pointer;
@@ -66,10 +66,20 @@ body{
 .dyn-home-crest{ width:20px; height:23px; flex:0 0 auto; }
 .dyn-home:hover{ border-color:var(--dyn); }
 .dyn-home:active{ transform:translateY(1px); }
+.dyn-topbar-right{ display:flex; gap:6px; flex:0 0 auto; }
+.dyn-icon-btn{
+  appearance:none; background:var(--panel2); border:1px solid var(--line); color:var(--txt);
+  width:36px; height:36px; border-radius:999px; cursor:pointer; font-size:16px; line-height:1;
+  display:inline-flex; align-items:center; justify-content:center; transition:border-color .15s ease, transform .05s ease;
+}
+.dyn-icon-btn:hover{ border-color:var(--dyn); }
+.dyn-icon-btn:active{ transform:translateY(1px); }
+.dyn-icon-btn.muted{ opacity:.5; }
 
 /* ---------- setup ---------- */
 .dyn-setup{ text-align:center; padding-top:30px; }
 .setup-crest{ width:76px; height:88px; margin:0 auto 18px; display:block; filter:drop-shadow(0 8px 18px rgba(201,144,47,.25)); }
+.ow-club-crest-preview{ width:64px; height:74px; filter:drop-shadow(0 6px 14px rgba(201,144,47,.22)); }
 .dyn-kicker{ color:var(--dyn); font-weight:800; letter-spacing:.24em; text-transform:uppercase; font-size:11.5px; }
 .dyn-h1{
   font-family:var(--serif); font-style:italic; font-weight:800; font-size:58px; letter-spacing:-.01em;
@@ -101,6 +111,11 @@ body{
 .dyn-hud-cell span{ display:block; font-size:9.5px; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.08em; }
 .dyn-hud-cell b{ font-size:19px; font-weight:900; font-family:var(--serif); }
 .dyn-cups{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+.ow-season-target{ margin-bottom:10px; }
+.ow-target-pill{ display:inline-block; font-size:12px; font-weight:800; padding:6px 12px; border-radius:999px; border:1px solid var(--line); color:var(--muted); background:var(--panel); }
+.ow-target-pill.vertice{ border-color:var(--gold); color:var(--gold); }
+.ow-target-pill.playoff{ border-color:var(--dyn); color:var(--dyn); }
+.ow-target-pill.salvezza{ border-color:var(--bad); color:var(--bad); }
 .cup-pill{ font-size:11px; font-weight:800; padding:6px 11px; border-radius:999px; border:1px solid var(--line); color:var(--muted); background:var(--panel); }
 .cup-pill b{ color:var(--txt); }
 /* Ogni coppa ha il suo colore anche mentre è in corso, non solo a vittoria ottenuta:
@@ -136,6 +151,7 @@ body{
 .mrow-fix{ font-size:13px; font-weight:700; }
 .mrow-fix .ha{ color:var(--muted); font-weight:800; font-size:11px; padding:1px 5px; border-radius:5px; background:rgba(255,255,255,.05); }
 .mrow-fix .ha.home{ color:var(--good); }
+.mrow-derby{ color:var(--bad); font-weight:900; font-size:10.5px; letter-spacing:.03em; }
 .mrow-fix .ha.away{ color:var(--muted); }
 .mrow-you{ font-size:11px; color:var(--muted); margin-top:2px; }
 .mrow-scorers{ display:flex; flex-direction:column; gap:2px; margin-top:4px; }
@@ -226,6 +242,17 @@ body{
 /* ============================================================
    Componenti specifici della Modalità Proprietario
    ============================================================ */
+
+/* ---------- carriere salvate (setup, multi-slot) ---------- */
+.ow-saveslots{ display:flex; flex-direction:column; gap:8px; margin:4px 0 12px; }
+.ow-saveslot{ display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--panel2); border:1px solid var(--line); border-radius:12px; padding:10px 12px; text-align:left; }
+.ow-saveslot .info{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+.ow-saveslot .info b{ font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ow-saveslot .info small{ color:var(--muted); font-weight:700; font-size:11.5px; }
+.ow-saveslot .act{ display:flex; gap:6px; flex:0 0 auto; }
+.ow-saveslot .act .dyn-mini{ padding:8px 10px; font-size:12px; }
+.ow-danger{ color:var(--bad) !important; border-color:rgba(255,77,94,.35) !important; }
+.ow-import-label{ display:block; text-align:center; cursor:pointer; margin:0 0 14px; }
 
 /* ---------- carte di acquisizione (setup) ---------- */
 .ow-takeovers{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:4px 0 12px; }
@@ -466,7 +493,7 @@ body{
 .ow-accept{ background:rgba(40,217,160,.14); border-color:rgba(40,217,160,.5); color:#a6f3dc; }
 .ow-reject{ color:var(--muted); }
 
-.ow-spin-card{ text-align:center; padding:8px 0 2px; }
+.ow-spin-card{ position:relative; overflow:hidden; text-align:center; padding:8px 0 2px; }
 .ow-spin-card .big{ font-family:var(--serif); font-size:58px; font-weight:900; line-height:1; color:var(--gold); }
 .ow-spin-card .nm{ font-size:19px; font-weight:900; margin-top:6px; }
 .ow-spin-card .meta{ font-size:12.5px; font-weight:700; color:var(--muted); margin-top:4px; }

@@ -1,0 +1,15 @@
+{
+  "name": "Presidente · Serie A",
+  "short_name": "Presidente",
+  "description": "Compra un club di Promozione e costruisci un impero: spin, stadio, coppe e la scalata fino alla Serie A.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0b0906",
+  "theme_color": "#0b0906",
+  "lang": "it",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

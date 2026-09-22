@@ -59,18 +59,167 @@
 
   const ovrBadge = (ovr) => { const t = ovrTier(ovr); return `background:${t.bg};color:${t.c}`; };
 
-  function resumeDynasty() {
-    const s = loadSave(); if (!s) return;
+  // Riprende una carriera salvata: per id specifico (scelto dall'elenco carriere) o,
+  // omesso, l'ultimo slot attivo (comportamento storico di "Continua").
+  function resumeDynasty(id) {
+    const s = id ? loadSaveSlot(id) : loadSave();
+    if (!s) return;
     S = s;
+    if (id) localStorage.setItem('dsa_active_save', id);
+    loadPoolsForSlot(S._saveId || id);
     normSquad();
     const sc = S._screen || 'owBoardScreen';
     if (sc === 'owSeasonEndScreen' && S._end) { renderSeasonEnd(); }
     else if (sc === 'owSeasonScreen' && S.seasonActive) {
       show('owSeasonScreen'); $('owLog').innerHTML = '';
-      (S.results || []).forEach(logMatch); renderHud(); renderCups();
+      (S.results || []).forEach(logMatch); renderHud(); renderCups(); renderSeasonTarget();
       if (S.played === (gp() >> 1) && !S.winterDone) openWinter();
     }
     else { renderBoard(); }
+  }
+
+  // Elenco "Le tue carriere" nella schermata di setup: una card per slot salvato, con
+  // ripresa/esportazione/eliminazione — sostituisce il vecchio, unico bottone "Continua"
+  // che con un solo slot cancellava le altre carriere iniziandone una nuova.
+  function renderSaveSlots() {
+    const wrap = $('saveSlotsWrap'); if (!wrap) return;
+    const idx = readSavesIndex().slice().sort((a, b) => b.updated - a.updated);
+    wrap.innerHTML = !idx.length ? '' : `
+      <div class="dyn-aggr-label" style="text-align:center;margin:6px 0 8px">Le tue carriere</div>
+      <div class="ow-saveslots">
+        ${idx.map((m) => `
+          <div class="ow-saveslot">
+            <div class="info">
+              <b>${m.club || 'Club'}</b>
+              <small>${(DIVS[m.div] || {}).name || ''} · Stagione ${m.season || 1}${m.owner ? ' · ' + m.owner : ''}</small>
+            </div>
+            <div class="act">
+              <button type="button" class="dyn-mini" data-resume="${m.id}">▶️ Continua</button>
+              <button type="button" class="dyn-mini" data-exportslot="${m.id}" title="Scarica un file di backup">⬇️</button>
+              <button type="button" class="dyn-mini ow-danger" data-delslot="${m.id}" title="Elimina questa carriera">🗑️</button>
+            </div>
+          </div>`).join('')}
+      </div>
+      <label class="dyn-mini ow-import-label">⬆️ Importa carriera da file<input type="file" id="importSaveInput" accept="application/json" hidden /></label>`;
+    wrap.querySelectorAll('[data-resume]').forEach((el) => el.addEventListener('click', () => resumeDynasty(el.dataset.resume)));
+    wrap.querySelectorAll('[data-exportslot]').forEach((el) => el.addEventListener('click', () => exportSaveSlot(el.dataset.exportslot)));
+    wrap.querySelectorAll('[data-delslot]').forEach((el) => el.addEventListener('click', () => {
+      const id = el.dataset.delslot;
+      overlay(`<h2>Eliminare questa carriera?</h2><p>Non si può annullare — valuta di esportarla prima.</p>
+        <div class="dyn-modal-actions">
+          <button class="dyn-btn dyn-btn-primary" id="ovConfirmDelSlot">Sì, elimina</button>
+          <button class="dyn-btn" id="ovCancelDelSlot">Annulla</button>
+        </div>`);
+      $('ovConfirmDelSlot').onclick = () => { deleteSaveSlot(id); closeOverlay(); renderSaveSlots(); };
+      $('ovCancelDelSlot').onclick = closeOverlay;
+    }));
+    const imp = $('importSaveInput');
+    if (imp) imp.addEventListener('change', handleImportSaveFile);
+  }
+
+  // Card riassuntiva della stagione appena chiusa, disegnata su un canvas e scaricata come
+  // PNG: niente libreria esterna (jsPDF/html2canvas), solo Canvas 2D nativo — pensata per
+  // essere condivisa fuori dal gioco (storia social, chat), non solo per uso interno.
+  function exportSeasonCard() {
+    const e = S._end, d = divOf();
+    const W = 1080, H = 1350;
+    const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#1c1610'); grad.addColorStop(1, '#0b0906');
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = 'rgba(201,144,47,.55)'; ctx.lineWidth = 6; ctx.strokeRect(18, 18, W - 36, H - 36);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#c9902f'; ctx.font = '700 28px Inter, Arial, sans-serif'; ctx.fillText('PRESIDENTE · SERIE A', W / 2, 108);
+    ctx.fillStyle = '#ffd24a'; ctx.font = '900 60px Georgia, serif'; ctx.fillText(S.club, W / 2, 186);
+    ctx.fillStyle = '#a89680'; ctx.font = '600 26px Inter, Arial, sans-serif'; ctx.fillText('Stagione ' + S.season + ' · ' + d.name, W / 2, 226);
+    const headline = e.treble ? 'TRIPLETE!' : e.title ? (S.div === 5 ? 'SCUDETTO!' : ('CAMPIONI DI ' + d.name.toUpperCase()) + '!') : e.promoted ? 'PROMOZIONE!' : e.relegated ? 'RETROCESSIONE' : (ord(e.pos) + ' POSTO');
+    ctx.fillStyle = '#ffffff'; ctx.font = '900 78px Georgia, serif'; ctx.fillText(headline, W / 2, 336);
+    ctx.fillStyle = '#e8ddcf'; ctx.font = '700 32px Inter, Arial, sans-serif'; ctx.fillText(ord(e.pos) + ' posto · ' + S.pts + ' punti', W / 2, 400);
+    let y = 470;
+    if (e.trophies.length) {
+      ctx.fillStyle = '#ffd24a'; ctx.font = '800 30px Inter, Arial, sans-serif';
+      e.trophies.forEach((t) => { ctx.fillText('🏆 ' + t, W / 2, y); y += 46; });
+    } else {
+      ctx.fillStyle = '#a89680'; ctx.font = '600 26px Inter, Arial, sans-serif';
+      ctx.fillText('Nessun trofeo questa stagione', W / 2, y); y += 46;
+    }
+    const topScorer = S.squad.filter((p) => p.pos !== 'POR').sort((a, b) => (b.seasonGoals || 0) - (a.seasonGoals || 0))[0];
+    if (topScorer && topScorer.seasonGoals > 0) {
+      y += 20;
+      ctx.fillStyle = '#6fb3ff'; ctx.font = '700 28px Inter, Arial, sans-serif';
+      ctx.fillText('⚽ Capocannoniere: ' + topScorer.n + ' (' + topScorer.seasonGoals + ')', W / 2, y);
+      y += 50;
+    }
+    y += 10;
+    ctx.fillStyle = '#28d9a0'; ctx.font = '800 30px Inter, Arial, sans-serif';
+    ctx.fillText('Valore del club: ' + fmtMoney(e.worth), W / 2, y);
+
+    const finish = () => {
+      ctx.fillStyle = '#6b5a44'; ctx.font = '600 20px Inter, Arial, sans-serif';
+      ctx.fillText('presidente-serie-a', W / 2, H - 40);
+      canvas.toBlob((blob) => {
+        if (!blob) { toast('Impossibile generare l\'immagine.'); return; }
+        const file = new File([blob], 'presidente-' + S.club.replace(/[^a-z0-9]+/gi, '_') + '-stagione' + S.season + '.png', { type: 'image/png' });
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+          navigator.share({ files: [file], title: 'Presidente · Serie A', text: headline + ' — ' + S.club }).catch(() => {});
+          return;
+        }
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = file.name;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      }, 'image/png');
+    };
+    try {
+      const svgBlob = new Blob([crestMarkup(S.crestShape, S.crestColors, '')], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(svgBlob);
+      const img = new Image();
+      img.onload = () => { const cw = 150, ch = 172; ctx.drawImage(img, W / 2 - cw / 2, H - ch - 94, cw, ch); URL.revokeObjectURL(url); finish(); };
+      img.onerror = finish;
+      img.src = url;
+    } catch (e2) { finish(); }
+  }
+
+  // Backup di uno slot: un unico file .json con salvataggio + piramide, scaricabile e
+  // ri-importabile (anche su un altro dispositivo/browser).
+  function exportSaveSlot(id) {
+    try {
+      const raw = localStorage.getItem(saveSlotKey(id)); if (!raw) return;
+      const save = JSON.parse(raw);
+      const poolsRaw = localStorage.getItem(savePoolsKey(id));
+      const bundle = JSON.stringify({ v: 1, exportedAt: Date.now(), save, pools: poolsRaw ? JSON.parse(poolsRaw) : null });
+      const blob = new Blob([bundle], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'presidente-' + String(save.club || 'club').replace(/[^a-z0-9]+/gi, '_') + '-s' + (save.season || 1) + '.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    } catch (e) { toast('Impossibile esportare questa carriera.'); }
+  }
+
+  function handleImportSaveFile(ev) {
+    const file = ev.target.files && ev.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const bundle = JSON.parse(reader.result);
+        const save = bundle && bundle.save ? bundle.save : bundle;   // tollerante a un vecchio export "nudo"
+        if (!save || !save.squad || !save.club) { toast('File non riconosciuto.'); return; }
+        const id = 'sv_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+        save._saveId = id;
+        localStorage.setItem(saveSlotKey(id), JSON.stringify(save));
+        if (bundle && bundle.pools) localStorage.setItem(savePoolsKey(id), JSON.stringify(bundle.pools));
+        const idx = readSavesIndex();
+        idx.push({ id, owner: save.owner, club: save.club, div: save.div, season: save.season, updated: Date.now() });
+        writeSavesIndex(idx);
+        toast('Carriera importata: ' + save.club + '.');
+        renderSaveSlots();
+      } catch (e) { toast('File non valido.'); }
+    };
+    reader.readAsText(file);
+    ev.target.value = '';
   }
 
   let takeovers = null, selTakeover = -1;
@@ -147,24 +296,26 @@
     const crestReroll = $('crestRerollBtn');
     if (crestReroll) crestReroll.addEventListener('click', () => { crestColors = randCrestColors(); updateCrestPreview(); });
     $('owRerollBtn').addEventListener('click', () => { takeovers = genTakeovers(startDiv); selTakeover = -1; renderTakeovers(); toast('Nuove condizioni di partenza sul tavolo.'); });
+    // Con gli slot multipli, comprare un nuovo club non minaccia mai le carriere già
+    // salvate (restano nell'elenco "Le tue carriere" qui sotto): nessuna conferma di
+    // sovrascrittura da chiedere.
     $('owStartBtn').addEventListener('click', () => {
       if (selTakeover < 0) { toast('Scegli prima una situazione di partenza.'); return; }
-      const go = () => startDynasty(($('owName').value || '').trim() || 'Il Presidente', takeovers[selTakeover], ($('owClubName').value || '').trim(), startDiv, startDifficulty);
-      if (!hasSave()) { go(); return; }
-      overlay(`
-        <h2>Iniziare una nuova carriera?</h2>
-        <p>La carriera salvata andrà persa.</p>
-        <div class="dyn-modal-actions">
-          <button class="dyn-btn dyn-btn-primary" id="ovConfirmNew">Sì, ricomincia</button>
-          <button class="dyn-btn" id="ovCancelNew">Annulla</button>
-        </div>`);
-      $('ovConfirmNew').onclick = () => { closeOverlay(); go(); };
-      $('ovCancelNew').onclick = closeOverlay;
+      startDynasty(($('owName').value || '').trim() || 'Il Presidente', takeovers[selTakeover], ($('owClubName').value || '').trim(), startDiv, startDifficulty);
     });
-    $('owContinueBtn').addEventListener('click', resumeDynasty);
     $('owHomeBtn').addEventListener('click', () => { saveGame(); location.href = 'index.html'; });
-    if (hasSave()) { $('owContinueBtn').classList.remove('hidden'); $('owStartBtn').textContent = 'Inizia una nuova carriera'; $('owStartBtn').className = 'dyn-btn'; }
+    renderSaveSlots();
     window.addEventListener('pagehide', saveGame);
+    const soundBtn = $('owSoundBtn');
+    if (soundBtn) {
+      const syncSoundBtn = () => { const muted = DynSound && DynSound.isMuted(); soundBtn.textContent = muted ? '🔇' : '🔊'; soundBtn.classList.toggle('muted', !!muted); };
+      syncSoundBtn();
+      soundBtn.addEventListener('click', () => { if (DynSound) DynSound.toggleMuted(); syncSoundBtn(); });
+    }
+    const trophyCaseBtn = $('owTrophyCaseBtn');
+    if (trophyCaseBtn) trophyCaseBtn.addEventListener('click', showTrophyCase);
+    const leaderboardBtn = $('owGlobalLeaderboardBtn');
+    if (leaderboardBtn) leaderboardBtn.addEventListener('click', showGlobalLeaderboard);
     $('owNextBtn').addEventListener('click', () => simMatch());
     $('owSimBtn').addEventListener('click', simToEnd);
     $('owTableBtn').addEventListener('click', showTable);
@@ -197,6 +348,7 @@
     '4231': { label: '4-2-3-1', rows: [['ATT', 1], ['CEN', 3, 'ATT', 2], ['CEN', 2], ['DIF', 4], ['POR', 1]] },
     '343': { label: '3-4-3', rows: [['ATT', 3], ['CEN', 4, 'ATT', 2], ['DIF', 3], ['POR', 1]] },
     '532': { label: '5-3-2', rows: [['ATT', 2], ['CEN', 3], ['DIF', 5], ['POR', 1]] },
+    '424': { label: '4-2-4', rows: [['ATT', 4], ['CEN', 2], ['DIF', 4], ['POR', 1]] },
   };
   // Modulo scelto per l'anteprima: solo preferenza di vista, non persistito.
   let previewFormation = '433';
@@ -363,6 +515,7 @@
   function renderBoard() {
     const d = divOf(), body = $('boardBody');
     normSquad();
+    previewFormation = S.formation;   // il modulo mostrato riflette quello persistito (ora pesa in partita)
     maybeScoutProspect();
     const fyCount = S.squad.filter(finalYear).length;
     if (!S.sponsorOpts && !S.sponsor) S.sponsorOpts = sponsorOffers();
@@ -425,12 +578,14 @@
       </div>` : ''}`;
 
     const xiPids = getPreviewXI();
+    const specOf = (spec) => MANAGER_SPECS.find((s) => s.key === spec) || MANAGER_SPECS[0];
     const rosaHTML = `
       <div class="ow-sec">
         <div class="ow-sec-title">🧠 Allenatore</div>
-        <div class="ow-mgr"><span class="ovr">${S.manager.rating}</span><span class="nm">${flagOf(S.manager)}${S.manager.n}<small>${fmtMoney(S.manager.salary)}/anno</small></span><span class="tag">In carica</span></div>
+        <div class="ow-mgr"><span class="ovr">${S.manager.rating}</span><span class="nm">${flagOf(S.manager)}${S.manager.n}<small>${fmtMoney(S.manager.salary)}/anno · ${specOf(S.manager.spec).icon} ${specOf(S.manager.spec).label}</small></span><span class="tag">In carica</span></div>
+        <div class="ow-sub" title="${specOf(S.manager.spec).desc}">${specOf(S.manager.spec).icon} ${specOf(S.manager.spec).desc}</div>
         <div class="ow-sub">Candidati (l'esonero paga il 30% di buonuscita):</div>
-        ${S.mgrOpts.map((m, i) => `<div class="ow-mgr cand"><span class="ovr">${m.rating}</span><span class="nm">${flagOf(m)}${m.n}<small>${fmtMoney(m.salary)}/anno</small></span><button class="dyn-mini ow-hire" data-hire="${i}">Assumi</button></div>`).join('')}
+        ${S.mgrOpts.map((m, i) => `<div class="ow-mgr cand"><span class="ovr">${m.rating}</span><span class="nm">${flagOf(m)}${m.n}<small>${fmtMoney(m.salary)}/anno · ${specOf(m.spec).icon} ${specOf(m.spec).label}</small></span><button class="dyn-mini ow-hire" data-hire="${i}">Assumi</button></div>`).join('')}
       </div>
       <div class="ow-sec">
         <div class="ow-sec-title">🔭 Settore giovanile</div>
@@ -469,7 +624,8 @@
         <div class="ow-squadlist">${squadRows}</div>
       </div>
       <div class="ow-sec">
-        <div class="ow-sec-title">⚽ Probabile formazione (${FORMATIONS[previewFormation].label})</div>
+        <div class="ow-sec-title">⚽ Formazione e modulo (${FORMATIONS[previewFormation].label})</div>
+        <div class="ow-sub">Il modulo non è solo estetico: uno più offensivo (3-4-3) segna di più ma incassa di più, uno più difensivo (5-3-2) il contrario.</div>
         ${formationPickerHTML()}
         ${pitchHTML(previewFormation, xiPids)}
         ${benchHTML(xiPids)}
@@ -527,11 +683,30 @@
       if (ev.target.closest('button')) return;
       openPlayerDetail(+el.dataset.pid);
     }));
+    // La cessione è irreversibile: prima di eseguirla chiediamo conferma con l'overlay
+    // (stesso pattern di "Vendi il club"/"Dimettiti"), per evitare che un tap sbagliato sul
+    // 💷 nella lista rosa costi un giocatore per sempre.
     body.querySelectorAll('.ow-x').forEach((el) => el.addEventListener('click', () => {
-      const i = S.squad.findIndex((x) => x.pid === +el.dataset.rel); const p = S.squad[i]; if (!p) return;
+      const p = S.squad.find((x) => x.pid === +el.dataset.rel); if (!p) return;
       const fee = Math.round(playerValue(p) * 0.3);
-      S.squad.splice(i, 1); S.offers = (S.offers || []).filter((o) => o.pid !== p.pid); S.budget += fee;
-      toast('Ceduto ' + p.n + ' per ' + fmtMoney(fee) + '.'); renderBoard(); saveGame();
+      overlay(`<h2>Cedere ${p.n}?</h2>
+        <div class="ow-spin-card">
+          <div class="big" style="color:${ovrTier(p.ovr).c}">${p.ovr}</div>
+          <div class="nm">${flagOf(p)}${p.n}</div>
+          <div class="meta">età ${p.age} · ${POS_LABEL[p.pos]}</div>
+          <div class="meta">Incassi <b>${fmtMoney(fee)}</b> — non si può annullare</div>
+        </div>
+        <div class="dyn-modal-actions">
+          <button class="dyn-btn dyn-btn-primary" id="ovConfirmRel">Cedi per ${fmtMoney(fee)}</button>
+          <button class="dyn-btn" id="ovCancelRel">Annulla</button>
+        </div>`);
+      $('ovConfirmRel').onclick = () => {
+        closeOverlay();
+        const i = S.squad.findIndex((x) => x.pid === p.pid); if (i < 0) return;
+        S.squad.splice(i, 1); S.offers = (S.offers || []).filter((o) => o.pid !== p.pid); S.budget += fee;
+        toast('Ceduto ' + p.n + ' per ' + fmtMoney(fee) + '.'); renderBoard(); saveGame();
+      };
+      $('ovCancelRel').onclick = closeOverlay;
     }));
     // Rinnova un contratto: disponibile in ogni momento, non solo in scadenza (utile per
     // blindare un talento prima che altri club si facciano avanti). Sempre un aumento, più
@@ -632,7 +807,7 @@
     body.querySelectorAll('[data-role]').forEach((el) => el.addEventListener('click', () => { squadRoleFilter = el.dataset.role; renderBoard(); }));
     const sortBtn = $('squadSortBtn');
     if (sortBtn) sortBtn.addEventListener('click', () => { squadSortDesc = !squadSortDesc; renderBoard(); });
-    body.querySelectorAll('[data-formation]').forEach((el) => el.addEventListener('click', () => { previewFormation = el.dataset.formation; selectedPreviewPid = null; renderBoard(); }));
+    body.querySelectorAll('[data-formation]').forEach((el) => el.addEventListener('click', () => { previewFormation = el.dataset.formation; S.formation = previewFormation; selectedPreviewPid = null; renderBoard(); saveGame(); }));
     // Scambio titolare/panchina: primo tocco seleziona, secondo tocco su un altro giocatore
     // scambia i due (stesso giocatore due volte = deseleziona). Funziona anche titolare
     // con titolare, per riordinare la formazione a piacere.
@@ -767,6 +942,10 @@
         <button class="dyn-btn dyn-btn-primary" id="ovSign">Ingaggialo</button>
         <button class="dyn-btn" id="ovPass">Passa</button>
       </div>`);
+    // Un piccolo momento in più quando lo spin pesca qualcosa di speciale: un giocatore
+    // vero (o un'icona) suona diverso e si accende di coriandoli, non solo un bordo colorato.
+    if (DynSound) { if (p.real) DynSound.spinRevealReal(); else DynSound.spinReveal(); }
+    if (p.real || p.icon) { const card = $('owOverlayModal').querySelector('.ow-spin-card'); if (card) fireConfetti(card); }
     $('ovSign').onclick = () => {
       S.squad.push(p);
       if (p.ovr >= d.avg + 7) S.sent = clamp(S.sent + 2, 0, 100);
@@ -1045,9 +1224,15 @@
         <div class="ow-fin-row total" style="margin-top:10px"><span>Valore del club</span><b>${fmtMoney(e.worth)}</b></div>
       </div>
       ${statsHTML}
+      <button class="dyn-btn" id="owShareBtn">📤 Condividi la stagione</button>
       <button class="dyn-btn dyn-btn-primary" id="owEndBtn">${e.fate ? 'Affronta le conseguenze' : S.season >= MAX_SEASONS ? 'Concludi la tua carriera' : 'Torna in sala del consiglio'}</button>`;
+    $('owShareBtn').onclick = exportSeasonCard;
     if (e.promoted || e.title || e.trophies.length) celebrate(body.querySelector('.dyn-panel'));
     body.querySelectorAll('.ow-trophy-moment').forEach((bm) => { fireConfetti(bm); setTimeout(() => fireConfetti(bm), 550); });
+    if (DynSound) {
+      if (bigMoments.length) DynSound.trophy();
+      else if (e.relegated || e.fate) DynSound.sadDown();
+    }
     $('owEndBtn').onclick = () => {
       if (e.fate === 'forced') { endDynasty('forced', 0); return; }
       if (e.fate === 'admin') { endDynasty('admin', 0); return; }
@@ -1101,11 +1286,51 @@
           <tbody>${S.history.map((hh) => `<tr><td>${hh.season}${hh.promoted ? ' ⬆️' : hh.relegated ? ' ⬇️' : ''}</td><td>${hh.div}</td><td class="num">${hh.pos}</td><td class="num">${hh.net < 0 ? '-' : ''}${fmtMoney(Math.abs(hh.net))}</td><td class="num">${fmtMoney(hh.worth)}</td><td style="font-size:11px">${hh.trophies.length ? hh.trophies.join(', ') : '-'}</td></tr>`).join('')}</tbody></table>
         </div>
       </div>
+      <button class="dyn-btn" id="owShareLbBtn">🌍 Invia alla classifica globale</button>
       <button class="dyn-btn" id="owAgainBtn">Nuova carriera</button>
       <a class="dyn-back" href="index.html">Torna alla Dynasty</a>`;
     if (S.trophies.total > 0 || how === 'retired') celebrate(body.querySelector('.dyn-panel'));
     $('owAgainBtn').onclick = () => location.reload();
+    $('owShareLbBtn').onclick = submitToLeaderboard;
     show('owEndScreen');
+  }
+
+  // Classifica globale condivisa (leaderboard.php lato server): un invio a fine carriera
+  // (facoltativo) e una lista consultabile in ogni momento dal topbar. Fallisce in
+  // silenzio-ma-avvisato se il server non risponde (es. in locale, dove il PHP non gira).
+  async function submitToLeaderboard() {
+    const btn = $('owShareLbBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Invio…'; }
+    try {
+      const res = await fetch('leaderboard.php', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ club: S.club, owner: S.owner, div: S.div, season: S.season, trophies: S.trophies.total, worth: computeWorth(), difficulty: S.difficulty }),
+      });
+      const data = await res.json().catch(() => null);
+      if (data && data.ok) { toast('🌍 Carriera inviata alla classifica globale!'); if (btn) btn.textContent = '✓ Inviata'; }
+      else { toast((data && data.error) || 'Invio non riuscito.'); if (btn) { btn.disabled = false; btn.textContent = '🌍 Invia alla classifica globale'; } }
+    } catch (err) {
+      toast('Impossibile contattare la classifica globale al momento.');
+      if (btn) { btn.disabled = false; btn.textContent = '🌍 Invia alla classifica globale'; }
+    }
+  }
+
+  async function showGlobalLeaderboard() {
+    overlay(`<h2>🌍 Classifica presidenti</h2><div class="ow-sub" style="text-align:center">Caricamento…</div><div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovClose">Chiudi</button></div>`);
+    $('ovClose').onclick = closeOverlay;
+    try {
+      const res = await fetch('leaderboard.php');
+      const data = await res.json();
+      if (!data || !data.ok) throw new Error('bad response');
+      const rows = (data.entries || []).map((e, i) => `<div class="ow-fin-row"><span>${i + 1}. ${e.club}<small style="display:block;color:var(--muted)">${e.owner} · ${(DIVS[e.div] || {}).name || ''} · ${e.trophies} trofe${e.trophies === 1 ? 'o' : 'i'}</small></span><b class="good">${Math.round(e.score).toLocaleString('it-IT')}</b></div>`).join('');
+      overlay(`<h2>🌍 Classifica presidenti</h2>
+        <div class="ow-sub" style="text-align:center">Le migliori carriere condivise da chi gioca</div>
+        <div style="max-height:58vh;overflow:auto;margin:10px -6px 4px">${rows || '<div class="ow-sub" style="margin:14px 0">Ancora nessuna carriera condivisa: sii il primo a fine partita.</div>'}</div>
+        <div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovClose">Chiudi</button></div>`);
+      $('ovClose').onclick = closeOverlay;
+    } catch (err) {
+      overlay(`<h2>🌍 Classifica presidenti</h2><div class="ow-sub" style="text-align:center">Non riesco a caricarla al momento. Riprova più tardi.</div><div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovClose">Chiudi</button></div>`);
+      $('ovClose').onclick = closeOverlay;
+    }
   }
 
   /* ================= RENDER ================= */
@@ -1133,6 +1358,14 @@
     $('owNextBtn').disabled = !S.seasonActive || S.played >= gp();
     $('owSimBtn').disabled = !S.seasonActive || S.played >= gp();
     $('owNextBtn').textContent = S.played >= gp() ? 'Stagione completata' : 'Gioca prossima partita';
+  }
+
+  // Piccolo promemoria persistente dell'obiettivo dichiarato a inizio stagione (vedi
+  // seasonTarget in sim.js), visibile per tutta la durata del campionato.
+  function renderSeasonTarget() {
+    const el = $('owSeasonTarget'); if (!el) return;
+    const t = S.seasonTargetInfo;
+    el.innerHTML = t ? `<span class="ow-target-pill ${t.key}">🎯 Obiettivo: ${t.label}</span>` : '';
   }
 
   function renderCups() {
@@ -1180,7 +1413,7 @@
       </div>` : '';
     const eventsHTML = (m.events && m.events.length) ? `<div class="mrow-scorers">${m.events.map((ev) => `<div class="sc them">${ev.kind === 'inj' ? '🚑' : '🟥'} ${flagOf(ev)}${ev.n} ${ev.kind === 'inj' ? 'ko, fuori ' + ev.weeks + ' partit' + (ev.weeks === 1 ? 'a' : 'e') : 'squalificato per la prossima'}</div>`).join('')}</div>` : '';
     row.innerHTML = `<div class="mrow-mw">G${m.mw}</div>
-      <div class="mrow-main"><div class="mrow-fix"><span class="ha ${m.home ? 'home' : 'away'}">${m.home ? 'C' : 'T'}</span> vs ${m.opp}</div>${scorersHTML}${eventsHTML}</div>
+      <div class="mrow-main"><div class="mrow-fix"><span class="ha ${m.home ? 'home' : 'away'}">${m.home ? 'C' : 'T'}</span> vs ${m.opp}${m.derby ? ' <span class="mrow-derby">🔥 DERBY</span>' : ''}</div>${scorersHTML}${eventsHTML}</div>
       <div class="mrow-res ${m.res}">${m.gf}-${m.ga}</div>`;
     $('owLog').prepend(row);
   }
@@ -1256,21 +1489,86 @@
     $('ovClose').onclick = closeOverlay;
   }
 
+  // Bacheca trofei: richiamabile in ogni momento dal topbar (non solo nel riepilogo di
+  // fine carriera), con il totale per competizione e lo storico stagione per stagione.
+  function showTrophyCase() {
+    if (!S || !S.trophies) {
+      overlay(`<h2>🏆 Bacheca trofei</h2><p class="ow-sub" style="text-align:center">Nessuna carriera attiva al momento.</p><div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovClose">Chiudi</button></div>`);
+      $('ovClose').onclick = closeOverlay;
+      return;
+    }
+    const t = S.trophies;
+    const rows = [];
+    DIVS.forEach((d, i) => { if (t.titles[i]) rows.push(['🏆 ' + d.name + ' - Titolo', t.titles[i]]); });
+    if (t.nat) rows.push(['🇮🇹 Coppa Italia', t.nat]);
+    if (t.ucl) rows.push(['🌍 ' + EURO_COMPS.ucl.name, t.ucl]);
+    if (t.uel) rows.push(['🟠 ' + EURO_COMPS.uel.name, t.uel]);
+    if (t.conf) rows.push(['🟢 ' + EURO_COMPS.conf.name, t.conf]);
+    const timeline = (S.history || []).filter((h) => h.trophies && h.trophies.length).slice().reverse();
+    overlay(`<h2>🏆 Bacheca trofei</h2>
+      <div class="ow-sub" style="text-align:center">${t.total} trofe${t.total === 1 ? 'o' : 'i'} in ${S.season} stagion${S.season === 1 ? 'e' : 'i'} con ${S.club}</div>
+      <div style="max-height:58vh;overflow:auto;margin:10px -6px 4px">
+        ${rows.length ? rows.map((r) => `<div class="ow-fin-row"><span>${r[0]}</span><b class="good">${r[1]}×</b></div>`).join('') : '<div class="ow-sub" style="margin:14px 0">Ancora nessun trofeo: il momento buono arriverà.</div>'}
+        ${timeline.length ? `<div class="ow-sec-title" style="margin-top:14px">Stagione per stagione</div>${timeline.map((h) => `<div class="ow-fin-row"><span>Stagione ${h.season} · ${h.div}</span><b class="good">${h.trophies.join(', ')}</b></div>`).join('')}` : ''}
+      </div>
+      <div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovClose">Chiudi</button></div>`);
+    $('ovClose').onclick = closeOverlay;
+  }
+
   function showClub() {
     const worth = computeWorth();
     overlay(`
       <h2>${S.club}</h2>
+      <div style="display:flex;justify-content:center;margin:2px 0 10px">${crestMarkup(S.crestShape, S.crestColors, 'ow-club-crest-preview')}</div>
       <div class="ow-fin-row"><span>Budget</span><b>${fmtMoney(S.budget)}</b></div>
       <div class="ow-fin-row"><span>Valore del club</span><b>${fmtMoney(worth)}</b></div>
       <div class="ow-fin-row"><span>Stadio</span><b>${capOf().toLocaleString('it-IT')} posti</b></div>
       ${meterHTML('Umore tifosi', S.sent, S.sent < 30)}
       ${meterHTML('Gradimento proprietario', S.ownerRating, S.ownerRating < 35)}
       <div class="dyn-modal-actions" style="margin-top:12px">
+        <button class="dyn-btn" id="ovEditCrest">🎨 Modifica stemma</button>
         <button class="dyn-btn" id="ovSellNow">💷 Vendi per ${fmtMoney(worth)}</button>
         <button class="dyn-btn dyn-btn-primary" id="ovClose">Chiudi</button>
       </div>`);
     $('ovClose').onclick = closeOverlay;
     $('ovSellNow').onclick = () => { closeOverlay(); confirmSell(); };
+    $('ovEditCrest').onclick = showCrestEditor;
+  }
+
+  // Riapre lo stesso editor visto in fase di creazione (forma + due colori), ma per il
+  // club già in carriera: prima non c'era modo di rivedere lo stemma dopo averlo scelto.
+  function showCrestEditor() {
+    let shape = S.crestShape, colors = S.crestColors.slice();
+    const syncPreview = () => {
+      const wrap = $('editCrestPreview'); if (wrap) wrap.innerHTML = crestMarkup(shape, colors, 'setup-crest');
+      $('owOverlayModal').querySelectorAll('.ow-crest-shape').forEach((el) => el.classList.toggle('on', el.dataset.shape === shape));
+    };
+    overlay(`
+      <h2>Modifica stemma</h2>
+      <span id="editCrestPreview" style="display:flex;justify-content:center;margin:2px 0 14px">${crestMarkup(shape, colors, 'setup-crest')}</span>
+      <div class="ow-crest-picker">
+        <div class="ow-crest-shapes">
+          <button type="button" class="ow-crest-shape" data-shape="shield">Scudo</button>
+          <button type="button" class="ow-crest-shape" data-shape="round">Tondo</button>
+          <button type="button" class="ow-crest-shape" data-shape="hex">Esagono</button>
+        </div>
+        <div class="ow-crest-colors">
+          <label class="ow-crest-swatch"><span>Primario</span><input type="color" id="editCrestColor1" value="${colors[0]}" /></label>
+          <label class="ow-crest-swatch"><span>Secondario</span><input type="color" id="editCrestColor2" value="${colors[1]}" /></label>
+        </div>
+        <button type="button" class="ow-crest-reroll" id="editCrestReroll">🎲 Colori casuali</button>
+      </div>
+      <div class="dyn-modal-actions" style="margin-top:12px">
+        <button class="dyn-btn dyn-btn-primary" id="ovCrestSave">Salva</button>
+        <button class="dyn-btn" id="ovCrestCancel">Annulla</button>
+      </div>`);
+    syncPreview();
+    $('owOverlayModal').querySelectorAll('.ow-crest-shape').forEach((el) => el.addEventListener('click', () => { shape = el.dataset.shape; syncPreview(); }));
+    $('editCrestColor1').addEventListener('input', (e) => { colors[0] = e.target.value; syncPreview(); });
+    $('editCrestColor2').addEventListener('input', (e) => { colors[1] = e.target.value; syncPreview(); });
+    $('editCrestReroll').addEventListener('click', () => { colors = randCrestColors(); $('editCrestColor1').value = colors[0]; $('editCrestColor2').value = colors[1]; syncPreview(); });
+    $('ovCrestSave').onclick = () => { S.crestShape = shape; S.crestColors = colors; closeOverlay(); syncHomeCrest(); renderBoard(); saveGame(); toast('Nuovo stemma salvato.'); };
+    $('ovCrestCancel').onclick = showClub;
   }
 
   /* ---------------- overlay / toast ---------------- */

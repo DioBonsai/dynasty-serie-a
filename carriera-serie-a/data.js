@@ -35,6 +35,63 @@
     { name: 'Serie A', teams: 20, avg: 81, demand: 52000, ticket: 42, prize: 105e6, perPlace: 3.1e6, promoted: 0, playoff: 0, releg: 3, euroSpots: 4, uelPos: 5, confPos: 6, promoBonus: 0, titleBonus: 30e6, spin: 6e6, premium: 30e6, cupBase: 2e6, admin: 6e6, mgrBase: 76, investor: 15e6 },
   ];
 
+  // Il modulo scelto ora pesa davvero sulla partita (prima era solo l'anteprima grafica):
+  // atk/def sono un piccolo delta aggiunto/sottratto al numero atteso di gol fatti/subiti.
+  // Un modulo più offensivo (3-4-3) segna un po' di più ma incassa un po' di più; uno più
+  // difensivo (5-3-2) il contrario. Il 4-3-3 resta il modulo "neutro" di riferimento.
+  const FORMATION_TACTICS = {
+    '433': { atk: 0, def: 0 },
+    '442': { atk: -0.03, def: -0.05 },
+    '352': { atk: 0.03, def: 0.04 },
+    '4231': { atk: 0.06, def: 0.02 },
+    '343': { atk: 0.14, def: 0.12 },
+    '532': { atk: -0.14, def: -0.12 },
+    '424': { atk: 0.22, def: 0.20 },   // il più sbilanciato in avanti di tutti: 4 attaccanti, solo 2 mediani a coprire
+  };
+
+  // Eventi narrativi casuali: pura ambientazione fra una partita e l'altra (non toccano
+  // rosa/infortuni/squalifiche, quelli restano gestiti dal motore partite), un piccolo
+  // bump di umore (a volte anche economico) per dare al gioco qualche "storia" oltre ai
+  // numeri di bilancio.
+  const NARRATIVE_EVENTS = [
+    { text: 'Un vecchio striscione della curva torna a sventolare prima della sfida più sentita: la squadra sente il calore del pubblico.', sent: 4 },
+    { text: 'Un piccolo caso spogliatoio tiene banco per qualche giorno prima di rientrare.', sent: -4 },
+    { text: 'Un club più ricco fa la corte a uno dei tuoi giovani migliori: per ora resta, ma se ne parla in giro.', sent: -2 },
+    { text: 'I tifosi organizzano una marcia di sostegno alla squadra alla vigilia di una partita delicata.', sent: 5 },
+    { text: 'La stampa locale elogia la gestione economica del club.', sent: 2, budgetPct: 0.004 },
+    { text: 'Un titolare si ferma precauzionalmente alla vigilia per un fastidio muscolare: lo staff medico preferisce non rischiare.', sent: -3 },
+    { text: 'Il settore giovanile viene lodato in un articolo sulla stampa sportiva.', sent: 3 },
+    { text: 'Le voci su un possibile cambio di proprietà agitano l\'ambiente per qualche giorno.', sent: -3 },
+    { text: 'Un ex giocatore del club torna in visita agli allenamenti: entusiasmo alle stelle nello spogliatoio.', sent: 3 },
+    { text: 'Polemiche arbitrali dopo l\'ultima uscita infiammano il dibattito in città.', sent: -2 },
+    { text: 'Un servizio TV racconta la crescita del club: la piazza si sente vista.', sent: 3 },
+    { text: 'Ritardi nei lavori allo stadio fanno discutere i tifosi abbonati.', sent: -2 },
+  ];
+
+  // Ogni allenatore (generato o candidato) ha una specializzazione, oltre al rating: un
+  // piccolo tratto distintivo, non un moltiplicatore che rende uno strettamente più forte
+  // di un altro.
+  const MANAGER_SPECS = [
+    { key: 'builder', label: 'Costruttore di giovani', icon: '🌱', desc: 'I suoi under 23 crescono un filo più in fretta a fine stagione.' },
+    { key: 'motivator', label: 'Motivatore', icon: '🔥', desc: 'Dimezza il contraccolpo da doppia promozione consecutiva e tiene la squadra sul pezzo quando l\'umore è a terra.' },
+    { key: 'tactician', label: 'Tattico', icon: '📋', desc: 'Un piccolo bonus di rendimento in campo, sempre.' },
+  ];
+
+  // Derby/rivalità storiche: coppie di nomi già presenti nei POOLS di qualche categoria
+  // (vere per Serie A/B/C, plausibili per geografia nelle categorie con nomi di fantasia).
+  // Il match conta come derby quando ENTRAMBI i nomi di una coppia si affrontano nella
+  // stessa stagione — indipendentemente da quale POOLS li contiene in quel momento, dato
+  // che la piramide viva può spostarli di categoria negli anni.
+  const DERBIES = [
+    ['Inter', 'Milan'], ['Roma', 'Lazio'], ['Torino', 'Juventus'],
+    ['Avellino', 'Benevento'], ['Padova', 'Vicenza'],
+    ['Perugia', 'Ternana'], ['Catania', 'Messina'],
+    ['Frascati', 'Marino'], ['Fiumicino', 'Ostia Antica'],
+    ['Anzio', 'Aprilia'], ['Formia', 'Gaeta'],
+    ['Chieri', 'Bra'], ['Recanatese', 'Castelfidardo'],
+  ];
+  function isDerby(nameA, nameB) { return DERBIES.some(([a, b]) => (a === nameA && b === nameB) || (a === nameB && b === nameA)); }
+
   const WORTH_BASE = [1.5e6, 4e6, 10e6, 25e6, 90e6, 450e6];
 
   const TROPHY_WORTH = [0.25e6, 0.6e6, 1.5e6, 4e6, 20e6, 280e6];   // il valore di brand duraturo di uno scudetto/titolo, per categoria
@@ -238,49 +295,121 @@
     'Franco', 'Gasperini', 'Genovese', 'Gianni', 'Grieco', 'Guidi', 'Iacobelli', 'Iannucci', 'Leoni', 'Lombardo',
     'Lorenzini', 'Maggi', 'Malavolti', 'Manzo', 'Marra', 'Melis', 'Meloni', 'Merlo', 'Mirabelli', 'Montanari',
     'Morandi', 'Nardi', 'Natali', 'Palermo', 'Palmieri', 'Pasquali', 'Pastore', 'Perrone', 'Piscopo', 'Pozzi',
+    'Abate', 'Acquaviva', 'Agostini', 'Albanese', 'Aloisi', 'Amoroso', 'Ancona', 'Antonelli', 'Arena', 'Baldini',
+    'Baresi', 'Bartolini', 'Battistini', 'Bellucci', 'Belotti', 'Benedetti', 'Bergamini', 'Berardi', 'Bertini', 'Bettini',
+    'Biondi', 'Boni', 'Bordin', 'Borghi', 'Bosi', 'Bracci', 'Brambilla', 'Bruni', 'Buonocore', 'Cacciatore',
+    'Calabrese', 'Calderone', 'Calvi', 'Camisa', 'Campana', 'Cannizzo', 'Capobianco', 'Capra', 'Caravaggio', 'Cardinale',
+    'Carnevale', 'Carraro', 'Carrera', 'Casadei', 'Casali', 'Castellano', 'Catalano', 'Cavalieri', 'Cavallaro', 'Cavalli',
+    'Ceccarelli', 'Cecchini', 'Celentano', 'Cerruti', 'Chiara', 'Cianci', 'Cimino', 'Cinquegrana', 'Cipolla', 'Cocco',
+    'Colangelo', 'Coletti', 'Collura', 'Comi', 'Conte', 'Coppa', 'Corradi', 'Corsi', 'Cosentino', 'Costanzo',
+    'Crescenzi', 'Crisci', 'Cucinotta', 'Curti', 'D\'Alessandro', 'D\'Amore', 'D\'Antonio', 'D\'Auria', 'D\'Errico', 'D\'Onofrio',
+    'De Bernardi', 'De Bonis', 'De Filippo', 'De Giorgio', 'De Grandis', 'De Marchi', 'De Martino', 'De Nardis', 'De Paoli', 'De Vito',
+    'Del Bono', 'Del Vecchio', 'Della Rocca', 'Di Bari', 'Di Bella', 'Di Biase', 'Di Carlo', 'Di Costanzo', 'Di Fabio', 'Di Gennaro',
+    'Di Giacomo', 'Di Giovanni', 'Di Lorenzo', 'Di Maggio', 'Di Matteo', 'Di Nardo', 'Di Palma', 'Di Pasquale', 'Di Salvo', 'Errico',
+    'Esposti', 'Fabiani', 'Falco', 'Falcone', 'Fanti', 'Farinelli', 'Fattori', 'Favaro', 'Fazio', 'Ferraresi',
+    'Ferrarese', 'Ferraro', 'Fiorentino', 'Fiorillo', 'Fiorini', 'Foglia', 'Forlani', 'Fornaciari', 'Forte', 'Fossati',
+    'Fracassi', 'Franzese', 'Frattini', 'Fresu', 'Frigo', 'Fumagalli', 'Gabrielli', 'Gagliardi', 'Galante', 'Galasso',
+    'Gallina', 'Gambino', 'Gargano', 'Gasparini', 'Gatto', 'Gavioli', 'Gazzola', 'Ghezzi', 'Giacobbe', 'Giampaolo',
+    'Giannetti', 'Giannini', 'Gioia', 'Giuliani', 'Golino', 'Gori', 'Governatori', 'Graziani', 'Guarino', 'Guerrieri',
+    'Guglielmi', 'Iadanza', 'Ianniello', 'Improta', 'Innocenti', 'Lai', 'Landi', 'Lanza', 'La Rocca', 'Lauria',
+    'Liguori', 'Loi', 'Lucchesi', 'Luongo', 'Maccarone', 'Magni', 'Maiorano', 'Manca', 'Manni', 'Mantovani',
+    'Marsili', 'Martino', 'Marzano', 'Mastrangelo', 'Matarazzo', 'Mazza', 'Mazzarella', 'Mazzei', 'Mazzola', 'Menegatti',
+    'Miceli', 'Michelini', 'Minervini', 'Mistretta', 'Modica', 'Montefiori', 'Montesano', 'Morbidelli', 'Morra', 'Muscara',
+    'Nappi', 'Nardelli', 'Nastasi', 'Nenci', 'Nobile', 'Nole', 'Nucci', 'Nuti', 'Onorati', 'Orsini',
+    'Ottaviani', 'Pace', 'Pagliuca', 'Palazzolo', 'Pandolfi', 'Pane', 'Panetta', 'Panzeri', 'Papa', 'Papini',
+    'Pasini', 'Piroddi', 'Passeri', 'Pastorelli', 'Patrizi', 'Pecoraro', 'Pellizzari', 'Peluso', 'Pennisi', 'Perri',
+    'Petrucci', 'Piccinini', 'Pignatelli', 'Pilotti', 'Pinna', 'Pontecorvo', 'Piovan', 'Pistoia', 'Pizzo', 'Poggi',
+    'Polverini', 'Porcelli', 'Prete', 'Puglisi', 'Quaranta', 'Quattrone', 'Ranieri', 'Rea', 'Renzi', 'Ricciardelli',
+    'Abbate', 'Accardi', 'Adamo', 'Agnello', 'Alberti', 'Albini', 'Alighieri', 'Amadei', 'Ambrosini', 'Ammirati',
+    'Anastasi', 'Andreoli', 'Angeloni', 'Ansaldo', 'Ardito', 'Arici', 'Ariosto', 'Armani', 'Arrighi', 'Ascoli',
+    'Attanasio', 'Avanzi', 'Avolio', 'Baccarini', 'Baldacci', 'Ballerini', 'Balzano', 'Banfi', 'Baraldi', 'Barchi',
+    'Barone', 'Bartoli', 'Basili', 'Bassani', 'Bassi', 'Bassini', 'Battaglini', 'Bazzi', 'Bedini', 'Bellandi',
+    'Belletti', 'Bellomo', 'Benassi', 'Bencini', 'Bendinelli', 'Benigni', 'Bentivoglio', 'Bergonzi', 'Berlinguer', 'Bertacchini',
+    'Bertoli', 'Bettoni', 'Biagi', 'Bianchetti', 'Bibbiani', 'Bignami', 'Binetti', 'Boccaccio', 'Boccardi', 'Bolognesi',
+    'Bonanni', 'Bonaventura', 'Bonvicini', 'Borelli', 'Borgognoni', 'Borsani', 'Bortolotti', 'Bosisio', 'Bragagnolo', 'Brescia',
+    'Bresciani', 'Brizzi', 'Bruschi', 'Buccella', 'Bucci', 'Buonarroti', 'Buratti', 'Caccamo', 'Cadeddu', 'Caiazzo',
+    'Calandra', 'Calisti', 'Calo', 'Camozzi', 'Campagnolo', 'Canale', 'Candela', 'Cantone', 'Capaldo', 'Capponi',
+    'Caravella', 'Carini', 'Carminati', 'Carraresi', 'Casaburi', 'Cascio', 'Casolari', 'Castiglia', 'Castiglione', 'Catania',
+    'Cattani', 'Cavaliere', 'Cazzaniga', 'Cecchetti', 'Ceccotti', 'Celi', 'Cesari', 'Chiaramonte', 'Chiodini', 'Ciampa',
+    'Ciampi', 'Ciccone', 'Ciccotti', 'Cioffi', 'Ciotti', 'Cocchi', 'Colacino', 'Colamarino', 'Collina', 'Comencini',
+    'Coniglio', 'Consoli', 'Contestabile', 'Cordaro', 'Cordisco', 'Corradini', 'Cortese', 'Costantini', 'Cottone', 'Crescimanno',
+    'Crippa', 'Curcio', 'Dallara', 'Daniele', 'De Ceglie', 'De Cesare', 'De Lisi', 'De Rossi', 'De Simone', 'De Vecchi',
+    'Della Valle', 'Denti', 'Diotallevi', 'Domenici', 'Donnini', 'Doria', 'Dossena', 'Fabris', 'Faccioli', 'Falbo',
     'Martinez', 'Fernandez', 'Garcia', 'Sanchez', 'Rodriguez', 'Lopez', 'Gonzalez', 'Perez', 'Diaz', 'Alonso',
-    'Torres', 'Ramirez', 'Ortiz',
-    'Silva', 'Santos', 'Oliveira', 'Pereira', 'Carvalho', 'Fonseca', 'Ribeiro', 'Moreira', 'Teixeira', 'Almeida',
-    'Dubois', 'Moreau', 'Laurent', 'Lefebvre', 'Girard', 'Bernard', 'Petit', 'Roux', 'Fournier', 'Mercier',
-    'Nkomo', 'Diallo', 'Traore', 'Mensah', 'Okafor', 'Eze', 'Adeyemi', 'Kone', 'Toure', 'Camara',
-    'Bakayoko', 'Diarra', 'Sow', 'Sarr', 'Ndiaye', 'Cisse',
-    'Kovac', 'Novak', 'Jankovic', 'Petrovic', 'Ivanovic', 'Radovic', 'Dragic', 'Vukovic', 'Popescu', 'Ionescu',
-    'Nagy', 'Kowalski', 'Nowak',
-    'Jansen', 'Andersen', 'Nielsen', 'Hansen', 'Larsen', 'Karlsson', 'Eriksson', 'Johansson', 'Berg', 'Lund',
-    'Muller', 'Schmidt', 'Weber', 'Wagner', 'Becker', 'Hoffmann', 'Bakker', 'Visser',
+    'Torres', 'Ramirez', 'Ortiz', 'Silva', 'Santos', 'Oliveira', 'Pereira', 'Carvalho', 'Fonseca', 'Ribeiro',
+    'Moreira', 'Teixeira', 'Almeida', 'Dubois', 'Moreau', 'Laurent', 'Lefebvre', 'Girard', 'Bernard', 'Petit',
+    'Roux', 'Fournier', 'Mercier', 'Nkomo', 'Diallo', 'Traore', 'Mensah', 'Okafor', 'Eze', 'Adeyemi',
+    'Kone', 'Toure', 'Camara', 'Bakayoko', 'Diarra', 'Sow', 'Sarr', 'Ndiaye', 'Cisse', 'Kovac',
+    'Novak', 'Jankovic', 'Petrovic', 'Ivanovic', 'Radovic', 'Dragic', 'Vukovic', 'Popescu', 'Ionescu', 'Nagy',
+    'Kowalski', 'Nowak', 'Jansen', 'Andersen', 'Nielsen', 'Hansen', 'Larsen', 'Karlsson', 'Eriksson', 'Johansson',
+    'Berg', 'Lund', 'Muller', 'Schmidt', 'Weber', 'Wagner', 'Becker', 'Hoffmann', 'Bakker', 'Visser',
     'Smith', 'Jones', 'Taylor', 'Brown', 'Wilson', 'Evans', 'Thomas', 'Roberts', 'Walker', 'Wright',
     'White', 'Green', 'Hall', 'Wood', 'Clarke', 'Turner', 'Hill', 'Ward', 'Baker', 'Cooper',
-    'Yilmaz', 'Demir', 'Kaya', 'Celik', 'Sahin', 'Aydin', 'Ozturk', 'Arslan',
-    'Papadopoulos', 'Georgiou', 'Ioannou', 'Nikolaou',
-    'Kaminski', 'Wojcik', 'Lewandowski', 'Zielinski', 'Novotny', 'Dvorak', 'Prochazka', 'Svoboda',
-    'Kvaratskhelia', 'Mamardashvili', 'Sarkisyan', 'Petrosyan',
-    'Tanaka', 'Sato', 'Suzuki', 'Kim', 'Lee', 'Park',
-    'Acosta', 'Benitez', 'Cabrera', 'Duarte', 'Espinoza', 'Flores', 'Herrera', 'Medina', 'Paredes', 'Rojas', 'Vidal', 'Zapata',
-    'Mbeki', 'Diakite', 'Coulibaly', 'Keita', 'Konate', 'Fofana', 'Balde', 'Mane', 'Adekunle', 'Nwosu', 'Chukwu',
-    'Solberg', 'Halvorsen', 'Pedersen', 'Olsen', 'Svensson', 'Lindqvist', 'Makinen', 'Virtanen',
-    'Kelly', 'Murphy', 'Walsh', 'McCarthy', 'Byrne', 'Doyle', 'Kennedy', 'Fitzgerald', 'Whelan', 'Brennan',
-    'Benali', 'Boumediene', 'Cherif', 'Haddad', 'Mansouri', 'Saadi', 'Belkacem', 'Ferhat', 'Amrani', 'Bouazza',
-    'Ghods', 'Nekounam', 'Azmoun',
-    'Shevchenko', 'Yarmolenko', 'Konoplyanka', 'Zinchenko', 'Petrov', 'Ivanov', 'Sokolov',
-    'Modric', 'Rakitic', 'Mandzukic', 'Kalinic', 'Brekalo', 'Vlasic', 'Barisic',
-    'Stanciu', 'Chiriches', 'Sanmartean', 'Marin', 'Dragomir',
-    'Vermeulen', 'Vandenberghe', 'Peeters', 'Willems', 'Mertens', 'Janssens', 'Claes', 'Wouters',
-    'Sigurdsson', 'Thorarinsson', 'Bjarnason', 'Finnbogason', 'Gudjohnsen',
-    'Cardoso', 'Machado', 'Nunes', 'Rocha', 'Pinto', 'Barbosa', 'Correia', 'Vieira', 'Faria', 'Antunes',
-    'Gimenez', 'Arce', 'Chavez', 'Vargas', 'Salazar', 'Aguilar', 'Reyes', 'Contreras', 'Munoz', 'Castro',
-    'Abubakar', 'Chukwuemeka', 'Onwuachi', 'Obi', 'Effiong', 'Yaboah', 'Appiah', 'Boateng', 'Adjei', 'Owusu',
-    'Reid', 'Stewart', 'Watson', 'Mitchell', 'Campbell', 'Anderson',
-    'Palmer', 'Foster', 'Cross', 'Hood', 'Marsh', 'Chapman', 'Dyer', 'Osei', 'Amankwah',
- ,
-    'Aramburu', 'Zubimendi', 'Merino', 'Oyarzabal', 'Barrenetxea', 'Kubo', 'Pacheco', 'Fernandes', 'Guimaraes', 'Cancelo', 'Semedo', 'Guerreiro', 'Fonte', 'Firmino', 'Coutinho', 'Neymar', 'Marquinhos', 'Alex Sandro', 'Kounde', 'Upamecano', 'Saliba', 'Kimpembe', 'Digne', 'Coman', 'Nkunku', 'Barcola', 'Diaby', 'Diakhaby', 'Doucoure', 'Bissouma', 'Kalulu', 'Krunic', 'Vlahovic', 'Kostic', 'Milenkovic', 'Sucic', 'Majer', 'Ivanusec', 'Perisic', 'Brozovic', 'Kovacic', 'Pasalic', 'Skriniar', 'Hancko', 'Duda', 'Schick', 'Coufal', 'Soucek', 'Hlozek', 'Sadilek', 'Provod', 'Mandi', 'Boudaoui', 'Zaha', 'Doucet', 'Delort', 'Boudebouz', 'Feghouli', 'Belaili', 'Bounedjah', 'Mahrez', 'Bennacer', 'Elmas', 'Aleksandrov', 'Bozhinov', 'Berkovec', 'Radoslavov', 'Nedelev', 'Delev', 'Petrescu', 'Balaur', 'Radu', 'Tanase', 'Cicaldau', 'Sorescu', 'Burca', 'Racovitan', 'Screciu', 'Baze', 'Hoxha', 'Cikalleshi', 'Ismajli', 'Mavraj', 'Xhaka', 'Shaqiri', 'Embolo', 'Akanji', 'Widmer', 'Freuler', 'Zakaria', 'Elvedi', 'Zuber', 'Fassnacht', 'Frei', 'Ajeti', 'Gavranovic', 'Stocker', 'Lang', 'Sommer', 'Vargas',
+    'Yilmaz', 'Demir', 'Kaya', 'Celik', 'Sahin', 'Aydin', 'Ozturk', 'Arslan', 'Papadopoulos', 'Georgiou',
+    'Ioannou', 'Nikolaou', 'Kaminski', 'Wojcik', 'Lewandowski', 'Zielinski', 'Novotny', 'Dvorak', 'Prochazka', 'Svoboda',
+    'Kvaratskhelia', 'Mamardashvili', 'Sarkisyan', 'Petrosyan', 'Tanaka', 'Sato', 'Suzuki', 'Kim', 'Lee', 'Park',
+    'Acosta', 'Benitez', 'Cabrera', 'Duarte', 'Espinoza', 'Flores', 'Herrera', 'Medina', 'Paredes', 'Rojas',
+    'Vidal', 'Zapata', 'Mbeki', 'Diakite', 'Coulibaly', 'Keita', 'Konate', 'Fofana', 'Balde', 'Mane',
+    'Adekunle', 'Nwosu', 'Chukwu', 'Solberg', 'Halvorsen', 'Pedersen', 'Olsen', 'Svensson', 'Lindqvist', 'Makinen',
+    'Virtanen', 'Kelly', 'Murphy', 'Walsh', 'McCarthy', 'Byrne', 'Doyle', 'Kennedy', 'Fitzgerald', 'Whelan',
+    'Brennan', 'Benali', 'Boumediene', 'Cherif', 'Haddad', 'Mansouri', 'Saadi', 'Belkacem', 'Ferhat', 'Amrani',
+    'Bouazza', 'Ghods', 'Nekounam', 'Azmoun', 'Shevchenko', 'Yarmolenko', 'Konoplyanka', 'Zinchenko', 'Petrov', 'Ivanov',
+    'Sokolov', 'Modric', 'Rakitic', 'Mandzukic', 'Kalinic', 'Brekalo', 'Vlasic', 'Barisic', 'Stanciu', 'Chiriches',
+    'Sanmartean', 'Marin', 'Dragomir', 'Vermeulen', 'Vandenberghe', 'Peeters', 'Willems', 'Mertens', 'Janssens', 'Claes',
+    'Wouters', 'Sigurdsson', 'Thorarinsson', 'Bjarnason', 'Finnbogason', 'Gudjohnsen', 'Cardoso', 'Machado', 'Nunes', 'Rocha',
+    'Pinto', 'Barbosa', 'Correia', 'Vieira', 'Faria', 'Antunes', 'Gimenez', 'Arce', 'Chavez', 'Vargas',
+    'Salazar', 'Aguilar', 'Reyes', 'Contreras', 'Munoz', 'Castro', 'Abubakar', 'Chukwuemeka', 'Onwuachi', 'Obi',
+    'Effiong', 'Yaboah', 'Appiah', 'Boateng', 'Adjei', 'Owusu', 'Reid', 'Stewart', 'Watson', 'Mitchell',
+    'Campbell', 'Anderson', 'Palmer', 'Foster', 'Cross', 'Hood', 'Marsh', 'Chapman', 'Dyer', 'Osei',
+    'Amankwah', 'Aramburu', 'Zubimendi', 'Merino', 'Oyarzabal', 'Barrenetxea', 'Kubo', 'Pacheco', 'Fernandes', 'Guimaraes',
+    'Cancelo', 'Semedo', 'Guerreiro', 'Fonte', 'Firmino', 'Coutinho', 'Neymar', 'Marquinhos', 'Alex Sandro', 'Kounde',
+    'Upamecano', 'Saliba', 'Kimpembe', 'Digne', 'Coman', 'Nkunku', 'Barcola', 'Diaby', 'Diakhaby', 'Doucoure',
+    'Bissouma', 'Kalulu', 'Krunic', 'Vlahovic', 'Kostic', 'Milenkovic', 'Sucic', 'Majer', 'Ivanusec', 'Perisic',
+    'Brozovic', 'Kovacic', 'Pasalic', 'Skriniar', 'Hancko', 'Duda', 'Schick', 'Coufal', 'Soucek', 'Hlozek',
+    'Sadilek', 'Provod', 'Mandi', 'Boudaoui', 'Zaha', 'Doucet', 'Delort', 'Boudebouz', 'Feghouli', 'Belaili',
+    'Bounedjah', 'Mahrez', 'Bennacer', 'Elmas', 'Aleksandrov', 'Bozhinov', 'Berkovec', 'Radoslavov', 'Nedelev', 'Delev',
+    'Petrescu', 'Balaur', 'Radu', 'Tanase', 'Cicaldau', 'Sorescu', 'Burca', 'Racovitan', 'Screciu', 'Baze',
+    'Hoxha', 'Cikalleshi', 'Ismajli', 'Mavraj', 'Xhaka', 'Shaqiri', 'Embolo', 'Akanji', 'Widmer', 'Freuler',
+    'Zakaria', 'Elvedi', 'Zuber', 'Fassnacht', 'Frei', 'Ajeti', 'Gavranovic', 'Stocker', 'Lang', 'Sommer',
+    'Vargas', 'Morales', 'Jimenez', 'Ruiz', 'Hernandez', 'Gutierrez', 'Navarro', 'Romero', 'Molina', 'Delgado',
+    'Ortega', 'Marquez', 'Iglesias', 'Nunez', 'Cortes', 'Guerrero', 'Vega', 'Ramos', 'Soto', 'Bravo',
+    'Rios', 'Araujo', 'Monteiro', 'Cunha', 'Pinheiro', 'Freitas', 'Neves', 'Lima', 'Batista', 'Farias',
+    'Xavier', 'Bastos', 'Soares', 'Tavares', 'Amaral', 'Peixoto', 'Dias', 'Braga', 'Miranda', 'Azevedo',
+    'Paiva', 'Lambert', 'Rousseau', 'Vincent', 'Fontaine', 'Chevalier', 'Robin', 'Morel', 'Garnier', 'Faure',
+    'Andre', 'Blanc', 'Guerin', 'Boyer', 'Barbier', 'Rey', 'Leroy', 'Colin', 'Renard', 'Perrin',
+    'Marchand', 'Fischer', 'Meyer', 'Wolf', 'Schroeder', 'Neumann', 'Schwarz', 'Zimmermann', 'Braun', 'Krueger',
+    'Hartmann', 'Lange', 'Werner', 'Krause', 'Lehmann', 'Schmitt', 'Klein', 'Kraus', 'Vogel', 'Friedrich',
+    'Seidel', 'Robinson', 'Harrison', 'Morgan', 'Bell', 'Cook', 'Bailey', 'Rogers', 'Bennett', 'Gray',
+    'James', 'Watkins', 'Price', 'Owen', 'Phillips', 'Shaw', 'Fisher', 'Graham', 'Reynolds', 'Ellis',
+    'Marshall', 'Ryan', 'O\'Connor', 'O\'Brien', 'Sullivan', 'Gallagher', 'Flynn', 'McDonnell', 'Nolan', 'Hogan',
+    'Quinn', 'Peters', 'De Vries', 'Van Dijk', 'Van den Berg', 'Jacobs', 'De Jong', 'Meijer', 'De Boer', 'Kuipers',
+    'Van Leeuwen', 'Sorensen', 'Christensen', 'Gustavsson', 'Nilsson', 'Persson', 'Jonsson', 'Vestergaard', 'Kristiansen', 'Moller',
+    'Bergstrom', 'Kowalczyk', 'Zajac', 'Wisniewski', 'Dabrowski', 'Krajnc', 'Horvat', 'Simic', 'Maric', 'Jovanovic',
+    'Stankovic', 'Todorov', 'Dimitrov', 'Angelov', 'Georgiev', 'Konstantinou', 'Christodoulou', 'Antoniou', 'Dimitriou', 'Pappas',
+    'Vasileiou', 'Kilic', 'Aksoy', 'Polat', 'Ozkan', 'Cetin', 'Dogan', 'Yamamoto', 'Watanabe', 'Ito',
+    'Nakamura', 'Kobayashi', 'Kato', 'Choi', 'Jung', 'Kang', 'Wang', 'Khalil', 'Hassan', 'Mahmoud',
+    'Youssef', 'Karimi', 'Rahimi', 'Hosseini', 'Bensalem', 'Zidane', 'Bouzid', 'Adebayo', 'Okonkwo', 'Nwachukwu',
+    'Danso', 'Asante', 'Mwangi', 'Otieno', 'Diagne', 'Faye', 'Thiam', 'Ferreira', 'Costa Silva', 'Gomes',
+    'Henrique', 'Baptista', 'Serrano', 'Leiva', 'Cardenas', 'Escobar', 'Paredes Ruiz', 'Sotelo', 'Barrios', 'Cifuentes',
+    'Bermudez', 'Renner', 'Brandt', 'Kruger', 'Bergmann', 'Schulze', 'Richter', 'Kohler', 'Ziegler', 'Stein',
+    'Vogt', 'Harding', 'Wallace', 'Stevens', 'Warren', 'Holland', 'Newton', 'Barrett', 'Hutton', 'Pearce',
+    'Sharp', 'Kavanagh', 'Molloy', 'Casey', 'Naughton', 'Hennessy', 'Lynch', 'Delaney', 'Cassidy', 'McKenna',
+    'Duffy', 'Van der Meer', 'De Groot', 'Vermeer', 'Dekker', 'Smit', 'Van Dam', 'Mulder', 'Post', 'Kramer',
+    'De Wit', 'Backman', 'Lindgren', 'Holm', 'Sandberg', 'Forsberg', 'Ekstrom', 'Palmqvist', 'Dahl', 'Wikstrom',
+    'Blomqvist', 'Duque', 'Franca', 'Assis', 'Cavaco', 'Salgado', 'Moutinho', 'Rebelo', 'Mata', 'Pinho',
+    'Cordeiro', 'Villalobos', 'Zambrano', 'Arellano', 'Bustos', 'Cardona', 'Godoy', 'Lozano', 'Mena', 'Ovalle',
+    'Quiroga', 'Renaud', 'Chauvin', 'Aubert', 'Gauthier', 'Marchal', 'Noel', 'Picard', 'Tessier', 'Caron',
+    'Lucena', 'Krieger', 'Hahn', 'Beck', 'Frank', 'Winkler', 'Busch', 'Albrecht', 'Pohl', 'Sauer',
+    'Ludwig', 'Bird', 'Chambers', 'Perkins', 'Webb', 'Simpson', 'Holmes', 'Pearson', 'Dawson', 'Sinclair',
+    'Grant',
   ];
 
   // Le prime voci di FIRST/LAST sono italiane in senso stretto (usate per i nazionali
   // italiani); il resto del pool è il mix multinazionale già esistente, riusato per
   // ogni giocatore straniero a prescindere dalla nazionalità estratta.
-  const ITA_FIRST = FIRST.slice(0, 38), ITA_LAST = LAST.slice(0, 140);
+  const ITA_FIRST = FIRST.slice(0, 38), ITA_LAST = LAST.slice(0, 540);
 
-  const FOREIGN_FIRST = FIRST.slice(38), FOREIGN_LAST = LAST.slice(140);
+  const FOREIGN_FIRST = FIRST.slice(38), FOREIGN_LAST = LAST.slice(540);
 
   /* ---------------- nazionalità ---------------- */
   // In Eccellenza la rosa è quasi tutta italiana; salendo di categoria la quota di
@@ -810,21 +939,25 @@
       key: 'facile', label: 'Facile', blurb: 'Più margine economico, avversari più abbordabili, meno imprevisti.',
       budgetMult: 1.35, teamEffDelta: 4, injuryMult: 0.7, varianceMult: 0.85, wageMult: 0.92,
       scoutCostMult: 0.85, sponsorMult: 1.15, mgrCostMult: 0.9, prospectMult: 1.2, promoStreakMalusMult: 0.6,
+      patienceMult: 0.6, eventMult: 0.7,
     },
     {
       key: 'medio', label: 'Medio', blurb: 'Il bilanciamento classico del gioco, senza sconti né penalità.',
       budgetMult: 1.0, teamEffDelta: 0, injuryMult: 1.0, varianceMult: 1.0, wageMult: 1.0,
       scoutCostMult: 1.0, sponsorMult: 1.0, mgrCostMult: 1.0, prospectMult: 1.0, promoStreakMalusMult: 1.0,
+      patienceMult: 1.0, eventMult: 1.0,
     },
     {
       key: 'difficile', label: 'Difficile', blurb: 'Budget più risicato, avversari più ostici, qualche imprevisto di troppo.',
       budgetMult: 0.75, teamEffDelta: -4, injuryMult: 1.35, varianceMult: 1.2, wageMult: 1.12,
       scoutCostMult: 1.2, sponsorMult: 0.88, mgrCostMult: 1.12, prospectMult: 0.85, promoStreakMalusMult: 1.3,
+      patienceMult: 1.3, eventMult: 1.25,
     },
     {
       key: 'estremo', label: 'Estremo', blurb: 'Si parte con pochissimo, ogni partita è in salita e gli imprevisti sono la norma.',
       budgetMult: 0.55, teamEffDelta: -8, injuryMult: 1.7, varianceMult: 1.4, wageMult: 1.25,
       scoutCostMult: 1.45, sponsorMult: 0.75, mgrCostMult: 1.3, prospectMult: 0.65, promoStreakMalusMult: 1.7,
+      patienceMult: 1.6, eventMult: 1.6,
     },
   ];
 
