@@ -198,6 +198,17 @@
     $('ovClose').onclick = closeOverlay;
   }
 
+  // Crea SUBITO una carriera vera per la stanza (categoria/difficoltà della stanza, una
+  // situazione di partenza a caso, come le altre create in singolo): nessuna carriera da
+  // scegliere/gestire a parte, entrare nella stanza significa avere già un club pronto da
+  // rifinire (comprare giocatori, allenatore, sponsor) prima di premere Pronto.
+  function createRoomCareer(name, club, div, difficulty) {
+    const t = pick(genTakeovers(div));
+    startDynasty(name, t, club, div, difficulty);
+    saveGame();
+    return S._saveId;
+  }
+
   function openMpCreateForm() {
     overlay(`<h2>🆕 Crea una stanza</h2>
       <label class="dyn-field"><span>Il tuo nome</span><input id="mpName" type="text" maxlength="18" placeholder="Il tuo nome" autocomplete="off" /></label>
@@ -208,6 +219,7 @@
       <label class="dyn-field"><span>Difficoltà (condivisa da tutti)</span>
         <select id="mpDiff">${DIFFICULTIES.map((d) => `<option value="${d.key}" ${d.key === 'medio' ? 'selected' : ''}>${d.label}</option>`).join('')}</select>
       </label>
+      <p class="ow-sub">Appena crei la stanza ti assegniamo subito un club nuovo in questa categoria: potrai rifinirlo (giocatori, allenatore, sponsor) prima di premere Pronto.</p>
       <div class="dyn-modal-actions">
         <button class="dyn-btn dyn-btn-primary" id="mpCreateGo">Crea stanza</button>
         <button class="dyn-btn" id="mpBack">Indietro</button>
@@ -215,9 +227,11 @@
     $('mpCreateGo').onclick = async () => {
       const name = ($('mpName').value || '').trim(), club = ($('mpClub').value || '').trim();
       if (!name || !club) { toast('Inserisci nome e club.'); return; }
+      const div = +$('mpDiv').value, difficulty = $('mpDiff').value;
       try {
-        const data = await mpApi('create', { name, club, div: +$('mpDiv').value, difficulty: $('mpDiff').value });
-        writeMpSession({ code: data.room.code, playerId: data.playerId });
+        const data = await mpApi('create', { name, club, div, difficulty });
+        const saveId = createRoomCareer(name, club, div, difficulty);
+        writeMpSession({ code: data.room.code, playerId: data.playerId, saveId });
         renderLobby(data.room, data.playerId);
       } catch (e) { toast(e.message || 'Impossibile creare la stanza.'); }
     };
@@ -229,6 +243,7 @@
       <label class="dyn-field"><span>Codice stanza</span><input id="mpCode" type="text" maxlength="4" placeholder="ABCD" style="text-transform:uppercase" autocomplete="off" /></label>
       <label class="dyn-field"><span>Il tuo nome</span><input id="mpName" type="text" maxlength="18" placeholder="Il tuo nome" autocomplete="off" /></label>
       <label class="dyn-field"><span>Nome del tuo club</span><input id="mpClub" type="text" maxlength="24" placeholder="Nome del club" autocomplete="off" /></label>
+      <p class="ow-sub">Appena entri ti assegniamo subito un club nuovo nella categoria della stanza: potrai rifinirlo prima di premere Pronto.</p>
       <div class="dyn-modal-actions">
         <button class="dyn-btn dyn-btn-primary" id="mpJoinGo">Entra</button>
         <button class="dyn-btn" id="mpBack">Indietro</button>
@@ -239,7 +254,8 @@
       if (!code || !name || !club) { toast('Compila tutti i campi.'); return; }
       try {
         const data = await mpApi('join', { code, name, club });
-        writeMpSession({ code, playerId: data.playerId });
+        const saveId = createRoomCareer(name, club, data.room.div, data.room.difficulty);
+        writeMpSession({ code, playerId: data.playerId, saveId });
         renderLobby(data.room, data.playerId);
       } catch (e) { toast(e.message || 'Impossibile entrare nella stanza.'); }
     };
@@ -273,17 +289,35 @@
       ${done ? '<p class="ow-sub" style="text-align:center">🏁 Stagione pronta! Scarica il tuo risultato quando vuoi.</p>' : ''}
       <div class="dyn-modal-actions">
         ${done ? `<button class="dyn-btn dyn-btn-primary" id="mpDownloadBtn">📥 Scarica il tuo risultato</button>` : `
-          <button class="dyn-btn" id="mpReadyBtn">${me && me.ready ? 'Non sono più pronto' : 'Sono pronto'}</button>
+          ${!(me && me.ready) ? `<button class="dyn-btn" id="mpManageBtn">🏟️ Gestisci la tua squadra</button>` : ''}
+          <button class="dyn-btn ${me && me.ready ? '' : 'dyn-btn-primary'}" id="mpReadyBtn">${me && me.ready ? 'Non sono più pronto' : '✅ Sono pronto'}</button>
           ${isHost ? `<button class="dyn-btn dyn-btn-primary" id="mpStartBtn" ${readyCount ? '' : 'disabled'}>▶️ Avvia la stagione${readyCount ? ' (' + readyCount + ' pront' + (readyCount === 1 ? 'o' : 'i') + ')' : ''}</button>` : ''}
         `}
         <button class="dyn-btn ow-danger" id="mpLeaveBtn">Esci dalla stanza</button>
       </div>`);
+    const manageBtn = $('mpManageBtn');
+    if (manageBtn) manageBtn.onclick = () => {
+      const sess = readMpSession();
+      if (!sess || !sess.saveId) { toast('Nessuna carriera associata a questa stanza.'); return; }
+      stopMpPolling();
+      closeOverlay();
+      resumeDynasty(sess.saveId);
+    };
     const readyBtn = $('mpReadyBtn');
     if (readyBtn) readyBtn.onclick = async () => {
       if (me && me.ready) {
         try { const data = await mpApi('ready', { code: room.code, playerId, ready: false }); renderLobby(data.room, playerId); }
         catch (e) { toast(e.message || 'Errore di rete.'); }
-      } else openReadyPicker(room, playerId);
+        return;
+      }
+      const sess = readMpSession();
+      const state = sess && sess.saveId ? loadSaveSlot(sess.saveId) : null;
+      if (!state) { toast('Nessuna carriera associata a questa stanza: esci e rientra per ricrearne una.'); return; }
+      if (state.seasonActive) { toast('La tua carriera per questa stanza ha già iniziato la stagione: torna in Dirigenza, non premere ancora "Inizia Stagione".'); return; }
+      try {
+        const data = await mpApi('ready', { code: room.code, playerId, ready: true, state });
+        renderLobby(data.room, playerId);
+      } catch (e) { toast(e.message || 'Impossibile sottomettere la carriera.'); }
     };
     const startBtn = $('mpStartBtn');
     if (startBtn) startBtn.onclick = () => hostStartMultiplayerSeason(room, playerId);
@@ -305,37 +339,6 @@
         renderLobby(fresh, playerId);
       } catch (e) { /* stanza sparita o rete assente per un giro: si riprova al prossimo poll */ }
     }, 3000);
-  }
-
-  // Sceglie quale carriera salvata (fra quelle non ancora a stagione avviata) sottomettere
-  // alla stanza: nessuna UI di creazione club dedicata al multiplayer, si riusa il sistema
-  // di salvataggio multi-slot esistente.
-  function openReadyPicker(room, playerId) {
-    const idx = readSavesIndex().slice().sort((a, b) => b.updated - a.updated);
-    const eligible = idx
-      .map((m) => ({ meta: m, state: loadSaveSlot(m.id) }))
-      .filter((x) => x.state && !x.state.seasonActive);
-    if (!eligible.length) {
-      overlay(`<h2>Nessuna carriera pronta</h2>
-        <p class="ow-sub">Per sottometterti alla stanza serve una carriera che non abbia ancora iniziato la stagione (appena creata, o fra una stagione e l'altra) — gestiscine una dalla home come faresti in singolo, poi torna qui.</p>
-        <div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovBack">Torna alla stanza</button></div>`);
-      $('ovBack').onclick = () => renderLobby(room, playerId);
-      return;
-    }
-    overlay(`<h2>Quale carriera sottometti?</h2>
-      <p class="ow-sub">Verrà adattata alla categoria e difficoltà della stanza (${(DIVS[room.div] || {}).name || ''} · ${room.difficulty}).</p>
-      <div class="dyn-modal-actions" style="gap:6px">
-        ${eligible.map((x, i) => `<button type="button" class="dyn-mini" data-pick="${i}" style="text-align:left">${x.state.club}<small style="display:block;color:var(--muted)">${(DIVS[x.state.div] || {}).name || ''} · Stagione ${x.state.season || 1}</small></button>`).join('')}
-      </div>
-      <div class="dyn-modal-actions"><button class="dyn-btn" id="mpBack">Indietro</button></div>`);
-    $('owOverlayModal').querySelectorAll('[data-pick]').forEach((el) => el.addEventListener('click', async () => {
-      const chosen = eligible[+el.dataset.pick].state;
-      try {
-        const data = await mpApi('ready', { code: room.code, playerId, ready: true, state: chosen });
-        renderLobby(data.room, playerId);
-      } catch (e) { toast(e.message || 'Impossibile sottomettere la carriera.'); }
-    }));
-    $('mpBack').onclick = () => renderLobby(room, playerId);
   }
 
   // L'host: esegue l'intera stagione condivisa nel proprio browser (runHostSeason, sim.js —
