@@ -232,6 +232,16 @@ body{
 .dyn-modal .dyn-btn{ margin-top:6px; }
 .dyn-modal-actions{ display:flex; flex-direction:column; gap:9px; }
 
+/* ---------- tutorial ---------- */
+.ow-tut-illust{ width:132px; height:132px; margin:0 auto 14px; }
+.ow-tut-illust svg{ width:100%; height:100%; display:block; }
+.ow-tut-dots{ display:flex; justify-content:center; gap:6px; margin:2px 0 16px; }
+.ow-tut-dots span{ width:7px; height:7px; border-radius:50%; background:var(--line); transition:background .2s, transform .2s; }
+.ow-tut-dots span.on{ background:var(--gold); transform:scale(1.3); }
+.ow-tut-nav{ display:flex; gap:9px; }
+.ow-tut-nav .dyn-btn{ margin-top:0; flex:1; }
+.ow-tut-skip{ display:block; width:100%; margin-top:12px; background:none; border:none; color:var(--muted); font:700 12.5px var(--sans); text-decoration:underline; cursor:pointer; padding:6px; }
+
 /* ---------- popup evento narrativo: più "pesante" del modale standard ---------- */
 .ow-event-modal{ position:relative; padding-top:6px; animation:eventPop .32s cubic-bezier(.2,1.4,.4,1); }
 .ow-event-icon{ font-size:52px; line-height:1; margin-bottom:6px; filter:drop-shadow(0 6px 14px rgba(0,0,0,.4)); animation:eventIconIn .4s ease-out; }

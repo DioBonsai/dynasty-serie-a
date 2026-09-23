@@ -61,6 +61,94 @@
   const ovrBadge = (ovr) => { const t = ovrTier(ovr); return `background:${t.bg};color:${t.c}`; };
   const specOf = (spec) => MANAGER_SPECS.find((s) => s.key === spec) || MANAGER_SPECS[0];
 
+  /* ---------------- tutorial ----------------
+     Un carosello di schermate (icona + titolo + testo), richiamabile dalla home prima di
+     comprare il club: copre l'intero giro di una carriera, dalla piramide delle categorie
+     al multiplayer. Le "immagini" sono piccole illustrazioni SVG inline nello stile del
+     gioco (nessun asset esterno da caricare), non screenshot — coerenti con la palette e
+     rese leggere anche su mobile.
+  */
+  const TUTORIAL_STEPS = [
+    {
+      icon: `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><circle cx="60" cy="60" r="50" fill="none" stroke="var(--gold)" stroke-width="4" opacity=".35"/><path d="M60 24 L69 50 L97 51 L74 67 L82 94 L60 78 L38 94 L46 67 L23 51 L51 50 Z" fill="var(--gold)"/></svg>`,
+      title: 'Benvenuto, presidente',
+      text: 'Sei il presidente di un club che parte dal basso della piramide italiana. Ogni scelta è tua: mercato, allenatore, sponsor, stadio, tattica. L\'obiettivo? Portarlo più in alto che puoi — o venderlo quando il prezzo è giusto.',
+    },
+    {
+      icon: `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><rect x="20" y="90" width="80" height="14" rx="3" fill="var(--muted)" opacity=".5"/><rect x="28" y="72" width="64" height="14" rx="3" fill="var(--dyn)" opacity=".6"/><rect x="36" y="54" width="48" height="14" rx="3" fill="var(--dyn)" opacity=".8"/><rect x="44" y="36" width="32" height="14" rx="3" fill="var(--gold)" opacity=".9"/><rect x="50" y="18" width="20" height="14" rx="3" fill="var(--gold)"/></svg>`,
+      title: 'La piramide delle categorie',
+      text: 'Sei categorie, dalla Promozione alla Serie A. All\'inizio scegli da dove partire, la difficoltà e una "situazione di partenza" (budget, tifoseria e stadio diversi): ognuna racconta una storia diversa dello stesso club.',
+    },
+    {
+      icon: `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><rect x="18" y="28" width="84" height="64" rx="12" fill="none" stroke="var(--gold)" stroke-width="4"/><circle cx="42" cy="60" r="14" fill="var(--dyn)"/><circle cx="60" cy="60" r="14" fill="var(--good)"/><circle cx="78" cy="60" r="14" fill="var(--coppa)"/><rect x="50" y="96" width="20" height="10" rx="3" fill="var(--muted)"/></svg>`,
+      title: 'Costruisci la rosa',
+      text: 'Il mercato funziona a "spin": uno base e uno di lusso, sempre più cari a ogni acquisto. Ogni tanto pescano un giocatore vero (o una leggenda ritirata, una volta in Serie A) invece che generato. Il settore giovanile e lo scouting migliorano le probabilità di trovare un talento.',
+    },
+    {
+      icon: `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><path d="M14 92 C14 50 40 24 60 24 C80 24 106 50 106 92" fill="none" stroke="var(--dyn)" stroke-width="6"/><rect x="24" y="80" width="72" height="14" rx="3" fill="var(--good)" opacity=".85"/><circle cx="60" cy="52" r="9" fill="var(--gold)"/></svg>`,
+      title: 'Allenatore, sponsor, stadio',
+      text: 'Ogni allenatore ha una specializzazione (chi fa crescere i giovani, chi tratta meglio i rinnovi, chi motiva lo spogliatoio...). Lo sponsor porta introiti fissi a stagione. Ampliare lo stadio alza la capienza e gli incassi — ma costa, e va ripagato con i risultati.',
+    },
+    {
+      icon: `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><rect x="14" y="16" width="92" height="88" rx="6" fill="none" stroke="var(--good)" stroke-width="3"/><line x1="14" y1="60" x2="106" y2="60" stroke="var(--good)" stroke-width="3"/><circle cx="60" cy="60" r="12" fill="none" stroke="var(--good)" stroke-width="3"/><circle cx="40" cy="34" r="6" fill="var(--gold)"/><circle cx="80" cy="34" r="6" fill="var(--gold)"/><circle cx="60" cy="24" r="6" fill="var(--gold)"/><circle cx="40" cy="86" r="6" fill="var(--coppa)"/><circle cx="80" cy="86" r="6" fill="var(--coppa)"/></svg>`,
+      title: 'Formazione e partite',
+      text: 'Scegli il modulo e, se vuoi, la probabile formazione titolare. Le partite si simulano da sole — ma con marcatori, assist, infortuni e cartellini veri, giocatore per giocatore: le statistiche di ognuno crescono stagione dopo stagione.',
+    },
+    {
+      icon: `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><path d="M40 24 H80 V44 C80 58 70 66 60 66 C50 66 40 58 40 44 Z" fill="var(--gold)"/><path d="M40 30 C26 30 26 50 42 50" fill="none" stroke="var(--gold)" stroke-width="5"/><path d="M80 30 C94 30 94 50 78 50" fill="none" stroke="var(--gold)" stroke-width="5"/><rect x="54" y="66" width="12" height="18" fill="var(--dyn)"/><rect x="42" y="84" width="36" height="10" rx="3" fill="var(--dyn-deep)"/></svg>`,
+      title: 'Coppa Italia e coppe europee',
+      text: 'La Coppa Italia si gioca ogni stagione, dalla Promozione in su. Arrivato in Serie A ti giochi anche Champions, Europa o Conference League in base al piazzamento: 5° e 6° posto in Europa League, 7° in Conference, le prime 4 (o la coppa vinta) in Champions.',
+    },
+    {
+      icon: `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><polyline points="18,86 42,62 60,74 100,30" fill="none" stroke="var(--good)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="100" cy="30" r="9" fill="var(--gold)"/><circle cx="60" cy="74" r="6" fill="var(--good)"/><circle cx="42" cy="62" r="6" fill="var(--good)"/></svg>`,
+      title: 'Fine stagione',
+      text: 'A fine campionato contano promozione/retrocessione, i playoff, e se hai centrato l\'obiettivo dichiarato a inizio stagione. Tutto questo muove l\'umore dei tifosi e il gradimento della proprietà — troppo basso, e rischi l\'esonero o guai economici.',
+    },
+    {
+      icon: `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><rect x="20" y="26" width="80" height="72" rx="8" fill="none" stroke="var(--dyn)" stroke-width="4"/><line x1="20" y1="46" x2="100" y2="46" stroke="var(--dyn)" stroke-width="4"/><line x1="38" y1="16" x2="38" y2="34" stroke="var(--gold)" stroke-width="5" stroke-linecap="round"/><line x1="82" y1="16" x2="82" y2="34" stroke="var(--gold)" stroke-width="5" stroke-linecap="round"/><circle cx="40" cy="64" r="5" fill="var(--muted)"/><circle cx="60" cy="64" r="5" fill="var(--good)"/><circle cx="80" cy="64" r="5" fill="var(--muted)"/><circle cx="40" cy="80" r="5" fill="var(--muted)"/><circle cx="60" cy="80" r="5" fill="var(--muted)"/><circle cx="80" cy="80" r="5" fill="var(--gold)"/></svg>`,
+      title: 'Fra una stagione e l\'altra',
+      text: 'I contratti in scadenza vanno rinnovati o si perdono a zero. C\'è un mercato di gennaio a metà stagione, e uno estivo più ricco fra un anno e l\'altro. Ogni tanto scatta un "imprevisto" — un evento narrativo con conseguenze reali, a volte con una scelta da fare.',
+    },
+    {
+      icon: `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><circle cx="40" cy="42" r="16" fill="var(--gold)"/><path d="M14 96 C14 74 26 64 40 64 C54 64 66 74 66 96 Z" fill="var(--gold)" opacity=".85"/><circle cx="82" cy="46" r="13" fill="var(--coppa)"/><path d="M60 98 C60 80 70 70 82 70 C94 70 104 80 104 98 Z" fill="var(--coppa)" opacity=".85"/></svg>`,
+      title: 'Gioca con gli amici',
+      text: 'Due modalità: hotseat locale (più carriere sullo stesso dispositivo, a turno) o stanze online — crei o entri con un codice, ognuno gestisce il proprio club, poi l\'host avvia la stagione condivisa e i risultati arrivano a tutti insieme.',
+    },
+    {
+      icon: `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><line x1="30" y1="14" x2="30" y2="104" stroke="var(--muted)" stroke-width="4"/><path d="M30 18 L90 18 L74 34 L90 50 L30 50 Z" fill="var(--gold)"/></svg>`,
+      title: 'Pronti a cominciare',
+      text: 'Il resto lo scopri giocando: ogni categoria, ogni situazione di partenza, ogni carriera racconta qualcosa di diverso. Buona fortuna, presidente.',
+    },
+  ];
+  let tutorialStep = 0;
+
+  function markTutorialSeen() { try { localStorage.setItem('dsa_tutorial_seen', '1'); } catch (e) {} }
+
+  function openTutorial() {
+    tutorialStep = 0;
+    renderTutorialStep();
+  }
+
+  function renderTutorialStep() {
+    const n = TUTORIAL_STEPS.length;
+    const s = TUTORIAL_STEPS[tutorialStep];
+    const isFirst = tutorialStep === 0, isLast = tutorialStep === n - 1;
+    overlay(`
+      <div class="ow-tut-illust">${s.icon}</div>
+      <h2>${s.title}</h2>
+      <p>${s.text}</p>
+      <div class="ow-tut-dots">${TUTORIAL_STEPS.map((_, i) => `<span class="${i === tutorialStep ? 'on' : ''}"></span>`).join('')}</div>
+      <div class="ow-tut-nav">
+        ${!isFirst ? '<button class="dyn-btn" id="tutPrev">← Indietro</button>' : ''}
+        <button class="dyn-btn dyn-btn-primary" id="tutNext">${isLast ? '🎉 Inizia!' : 'Avanti →'}</button>
+      </div>
+      ${!isLast ? '<button type="button" class="ow-tut-skip" id="tutSkip">Salta il tutorial</button>' : ''}
+    `);
+    const prevBtn = $('tutPrev'); if (prevBtn) prevBtn.onclick = () => { tutorialStep--; renderTutorialStep(); };
+    $('tutNext').onclick = () => { markTutorialSeen(); if (isLast) closeOverlay(); else { tutorialStep++; renderTutorialStep(); } };
+    const skipBtn = $('tutSkip'); if (skipBtn) skipBtn.onclick = () => { markTutorialSeen(); closeOverlay(); };
+  }
+
   // Riprende una carriera salvata: per id specifico (scelto dall'elenco carriere) o,
   // omesso, l'ultimo slot attivo (comportamento storico di "Continua").
   function resumeDynasty(id) {
@@ -693,6 +781,11 @@
     if (leaderboardBtn) leaderboardBtn.addEventListener('click', showGlobalLeaderboard);
     const mpBtn = $('owMultiplayerBtn');
     if (mpBtn) mpBtn.addEventListener('click', openMultiplayerHub);
+    const tutBtn = $('owTutorialBtn');
+    if (tutBtn) tutBtn.addEventListener('click', openTutorial);
+    // Prima visita in assoluto (nessuna carriera salvata, tutorial mai visto): si apre da
+    // solo, un'unica volta — resta comunque richiamabile a mano dalla home in ogni momento.
+    try { if (!localStorage.getItem('dsa_tutorial_seen') && !hasSave()) openTutorial(); } catch (e) {}
     $('owNextBtn').addEventListener('click', () => simMatch());
     $('owSimBtn').addEventListener('click', simToEnd);
     $('owTableBtn').addEventListener('click', showTable);
