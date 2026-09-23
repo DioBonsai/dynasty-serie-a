@@ -122,8 +122,6 @@
   ];
   let tutorialStep = 0;
 
-  function markTutorialSeen() { try { localStorage.setItem('dsa_tutorial_seen', '1'); } catch (e) {} }
-
   function openTutorial() {
     tutorialStep = 0;
     renderTutorialStep();
@@ -145,8 +143,8 @@
       ${!isLast ? '<button type="button" class="ow-tut-skip" id="tutSkip">Salta il tutorial</button>' : ''}
     `);
     const prevBtn = $('tutPrev'); if (prevBtn) prevBtn.onclick = () => { tutorialStep--; renderTutorialStep(); };
-    $('tutNext').onclick = () => { markTutorialSeen(); if (isLast) closeOverlay(); else { tutorialStep++; renderTutorialStep(); } };
-    const skipBtn = $('tutSkip'); if (skipBtn) skipBtn.onclick = () => { markTutorialSeen(); closeOverlay(); };
+    $('tutNext').onclick = () => { if (isLast) closeOverlay(); else { tutorialStep++; renderTutorialStep(); } };
+    const skipBtn = $('tutSkip'); if (skipBtn) skipBtn.onclick = closeOverlay;
   }
 
   // Riprende una carriera salvata: per id specifico (scelto dall'elenco carriere) o,
@@ -783,9 +781,6 @@
     if (mpBtn) mpBtn.addEventListener('click', openMultiplayerHub);
     const tutBtn = $('owTutorialBtn');
     if (tutBtn) tutBtn.addEventListener('click', openTutorial);
-    // Prima visita in assoluto (nessuna carriera salvata, tutorial mai visto): si apre da
-    // solo, un'unica volta — resta comunque richiamabile a mano dalla home in ogni momento.
-    try { if (!localStorage.getItem('dsa_tutorial_seen') && !hasSave()) openTutorial(); } catch (e) {}
     $('owNextBtn').addEventListener('click', () => simMatch());
     $('owSimBtn').addEventListener('click', simToEnd);
     $('owTableBtn').addEventListener('click', showTable);
