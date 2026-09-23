@@ -239,7 +239,8 @@
 
   /* ---------------- multiplayer: stanze condivise ----------------
      Identità (nome/club) e stato per persona sincronizzati via room.php (stesso pattern
-     minimale di leaderboard.php — un file JSON per stanza, niente account), a due fasi:
+     minimale di leaderboard.php — un file JSON per stanza, niente account). La stanza vive per
+     più stagioni di fila (nextRound), un round alla volta, in quattro fasi:
 
      1) Lobby: ognuno preme "Pronto" (solo un flag). Quando lo sono tutti l'host preme "Avvia
         sessione" (fase -> 'session'), oppure forza l'avvio anche se qualcuno manca.
@@ -247,19 +248,30 @@
         single-player normali, Sala del Consiglio — nessuna UI di creazione club separata, si
         riusa il sistema di salvataggio multi-slot esistente: readSavesIndex/loadSaveSlot), poi
         ripreme "Pronto" sottomettendo la carriera. Quando lo sono tutti l'host preme "Inizia
-        simulazione" (o forza con chi è pronto): esegue runHostSeason (sim.js, Fase 2b) nel
-        proprio browser e pubblica il risultato. Da lì ciascuno scarica e avvia la propria
-        simulazione quando vuole, in autonomia, senza aspettare gli altri.
+        simulazione" (o forza con chi è pronto).
+     3) Simulazione: dalla seconda stagione in poi ciascun umano può essere in una categoria
+        diversa dagli altri (promozioni/retrocessioni individuali) — l'host raggruppa i pronti
+        per categoria (hostBeginMatchdaySim) e avanza TUTTI i gruppi di una giornata alla volta
+        (stepHostMatchday, sim.js — Fase 2b) pubblicando ad ogni giornata la classifica di
+        ciascun gruppo (pushMatchday): ognuno vede solo quella della propria categoria mentre
+        aspetta. Quando tutte le categorie hanno finito, l'host preme "Vedi resoconto"
+        (finishHostSeason + submitResult) e pubblica il risultato di tutti.
+     4) Round chiuso: ciascuno scarica il proprio risultato quando vuole (resta agganciato alla
+        stessa stanza/salvataggio, non se ne va); quando tutti hanno scaricato (o l'host forza)
+        l'host apre la prossima stagione (nextRound), si torna al punto 2 con le carriere già
+        avanzate di un anno.
   */
   const MP_SESSION_KEY = 'dsa_mp_session';
   let mpPollTimer = null;
   // Fase vista nell'ultimo render, per suonare una notifica solo quando la stanza CAMBIA
   // fase (non ad ogni poll che ridisegna la stessa fase).
   let mpLastPhase = null;
-  // La simulazione giornata-per-giornata in corso, SOLO nella scheda dell'host (setupHostSeason
-  // + stepHostMatchday, sim.js): non è persistita da nessuna parte, vive finché questa pagina
-  // resta aperta.
-  let mpHostRun = null;
+  // Le simulazioni giornata-per-giornata in corso, SOLO nella scheda dell'host (setupHostSeason
+  // + stepHostMatchday, sim.js): una per ogni categoria in cui gioca almeno un umano pronto
+  // questo turno (dalla seconda stagione in poi, promozioni/retrocessioni individuali possono
+  // separare i giocatori su categorie diverse). Non è persistita da nessuna parte, vive finché
+  // questa pagina resta aperta.
+  let mpHostRuns = null;
 
   function readMpSession() { try { return JSON.parse(localStorage.getItem(MP_SESSION_KEY)); } catch (e) { return null; } }
   function writeMpSession(s) { try { localStorage.setItem(MP_SESSION_KEY, JSON.stringify(s)); } catch (e) {} }
@@ -381,14 +393,27 @@
     const allSessionReady = room.phase === 'readyForSim';
     const readyCount = room.players.filter((p) => p.ready).length;
     const total = room.players.length;
+    const ackedCount = room.players.filter((p) => p.acked).length;
+    const allAcked = total > 0 && ackedCount === total;
     const live = room.live || null;
+    // "Vedi resoconto" richiede che TUTTE le categorie coinvolte abbiano finito le proprie
+    // giornate: live.matchday/live.total sono già il massimo fra tutte (vedi pushMatchdaySnapshot).
     const simDone = !!(live && live.matchday >= live.total);
+    // Dalla seconda stagione in poi ciascun umano può essere in una categoria diversa dagli
+    // altri (promozioni/retrocessioni individuali): ognuno vede SOLO il gruppo/categoria a cui
+    // appartiene lui, non un'unica classifica condivisa. L'appartenenza si legge dalla propria
+    // ultima carriera sottomessa (me.state.div), ancora presente durante tutta la simulazione.
+    const myDiv = me && me.state ? me.state.div : null;
+    const myGroup = live && live.groups ? live.groups.find((g) => g.div === myDiv) : null;
+    const myGroupDone = !!(myGroup && myGroup.matchday >= myGroup.total);
 
     let stageLabel = '';
     if (inLobbyStage) stageLabel = '⏳ In attesa che tutti siano pronti, poi l\'host avvia la sessione.';
     else if (inSessionStage) stageLabel = '🏟️ Sessione avviata: gestisci il tuo club, poi ripremi Pronto quando hai finito.';
-    else if (inSimStage) stageLabel = simDone ? '🏁 Stagione simulata: in attesa che l\'host pubblichi il resoconto.' : ('⚽ Simulazione in corso — giornata ' + (live ? live.matchday : 0) + '/' + (live ? live.total : '?') + '.');
-    else if (done) stageLabel = '🏁 Stagione pronta! Scarica il tuo risultato quando vuoi.';
+    else if (inSimStage) {
+      if (!myGroup) stageLabel = '⚽ Simulazione in corso — non fai parte di questo turno.';
+      else stageLabel = myGroupDone ? '🏁 La tua stagione è simulata: in attesa che l\'host pubblichi il resoconto di tutti.' : ('⚽ Simulazione in corso — ' + (myGroup.divName || '') + ', giornata ' + myGroup.matchday + '/' + myGroup.total + '.');
+    } else if (done) stageLabel = '🏁 Stagione pronta! Scarica il tuo risultato quando vuoi.';
 
     // Un suono solo quando la fase è appena cambiata rispetto all'ultimo render (non ad
     // ogni poll che ridisegna la stessa fase) — così anche chi non ha appena cliccato un
@@ -400,16 +425,16 @@
     mpLastPhase = room.phase;
 
     // Durante la simulazione niente più elenco "chi è pronto": al suo posto la classifica
-    // generale condivisa, che si aggiorna ad ogni giornata che l'host manda avanti.
+    // della TUA categoria, che si aggiorna ad ogni giornata che l'host manda avanti.
     const playersListHTML = `<div class="dyn-modal-actions" style="gap:6px">
         ${room.players.map((p) => `<div class="ow-fin-row"><span>${p.club}${p.id === room.hostId ? ' 👑' : ''}<small style="display:block;color:var(--muted)">${p.name}</small></span><b class="${p.ready ? 'good' : ''}">${p.ready ? '✅ Pronto' : '⏳ In attesa'}</b></div>`).join('')}
       </div>`;
-    // Classifica intera della categoria (tutte le squadre, non solo gli umani della stanza):
-    // stesse zone colorate (promozione/playoff/retrocessione/coppe) della classifica del
-    // singolo giocatore, con le righe umane in evidenza (classe "me") invece di una sola.
-    const d = DIVS[room.div] || {};
+    // Classifica intera della TUA categoria (tutte le squadre, non solo gli umani della
+    // stanza): stesse zone colorate (promozione/playoff/retrocessione/coppe) della classifica
+    // del singolo giocatore, con le righe umane in evidenza (classe "me") invece di una sola.
+    const d = DIVS[myDiv] || {};
     const liveTableHTML = `<div style="max-height:48vh;overflow:auto;margin:0 -6px">
-      ${live ? `<table class="dyn-table"><thead><tr><th>Squadra</th><th>Mister</th><th class="num">Pt</th><th class="num">DR</th></tr></thead><tbody>${live.table.map((r, i) => {
+      ${myGroup ? `<table class="dyn-table"><thead><tr><th>Squadra</th><th>Mister</th><th class="num">Pt</th><th class="num">DR</th></tr></thead><tbody>${myGroup.table.map((r, i) => {
         const zone = (d.euroSpots && i < d.euroSpots) ? 'ucl' : (d.uelPos && i === d.uelPos - 1) ? 'uel' : (d.confPos && i === d.confPos - 1) ? 'conf' : (d.promoted && i < d.promoted) ? 'ucl' : (d.playoff && i >= d.promoted && i < d.promoted + d.playoff) ? 'po' : (d.releg && i >= d.teams - d.releg) ? 'rel' : '';
         return `<tr class="${r.isHuman ? 'me' : ''} ${zone}"><td>${i + 1}. ${r.club}</td><td style="font-size:11px;color:var(--muted)">${r.mgr || '-'}</td><td class="num">${r.pts}</td><td class="num">${r.gd > 0 ? '+' : ''}${r.gd}</td></tr>`;
       }).join('')}</tbody></table>` : '<div class="ow-sub">In attesa che l\'host avvii la simulazione…</div>'}
@@ -421,7 +446,12 @@
       <p class="ow-sub" style="text-align:center">${stageLabel}</p>
       ${inSimStage ? liveTableHTML : playersListHTML}
       <div class="dyn-modal-actions">
-        ${done ? `<button class="dyn-btn dyn-btn-primary" id="mpDownloadBtn">📥 Scarica il tuo risultato</button>` : inSimStage ? `
+        ${done ? `
+          <div class="ow-sub" style="text-align:center">${ackedCount}/${total} hanno scaricato il resoconto</div>
+          <button class="dyn-btn dyn-btn-primary" id="mpDownloadBtn">📥 Scarica il tuo risultato</button>
+          ${isHost ? `<button class="dyn-btn dyn-btn-primary" id="mpNextRoundBtn" ${allAcked ? '' : 'disabled'}>▶️ Avvia la prossima stagione${allAcked ? '' : ' (' + ackedCount + '/' + total + ')'}</button>` : ''}
+          ${isHost && !allAcked ? `<button class="dyn-btn" id="mpForceNextRoundBtn">⏭️ Forza senza aspettare tutti</button>` : ''}
+        ` : inSimStage ? `
           ${isHost ? (simDone
             ? `<button class="dyn-btn dyn-btn-primary" id="mpFinishBtn">🏁 Vedi resoconto</button>`
             : `<button class="dyn-btn dyn-btn-primary" id="mpNextDayBtn">▶️ Prossima giornata${live ? ' (' + live.matchday + '/' + live.total + ')' : ''}</button>`)
@@ -460,6 +490,11 @@
       const state = sess && sess.saveId ? loadSaveSlot(sess.saveId) : null;
       if (!state) { toast('Nessuna carriera associata a questa stanza: esci e rientra per ricrearne una.', 'error'); return; }
       if (state.seasonActive) { toast('La tua carriera per questa stanza ha già iniziato la stagione: torna in Dirigenza, non premere ancora "Inizia Stagione".', 'error'); return; }
+      // Stesso controllo di startSeason() (sim.js): budget/rosa insufficienti altrimenti
+      // farebbero fallire in silenzio la tua simulazione nel browser dell'host.
+      if (state.squad.length < MIN_SQUAD) { toast('Ti servono almeno ' + MIN_SQUAD + ' giocatori per iniziare la prossima stagione. Ingaggia svincolati gratis se sei a corto.', 'error'); return; }
+      const billCheck = wageBill(state) + state.manager.salary;
+      if (state.budget < billCheck) { toast('Ti mancano ' + fmtMoney(billCheck - state.budget) + ' per il monte ingaggi della prossima stagione: vendi giocatori o trova soldi prima di essere pronto.', 'error'); return; }
       try {
         const data = await mpApi('ready', { code: room.code, playerId, ready: true, state });
         if (DynSound) DynSound.tap();
@@ -482,41 +517,54 @@
     if (forceSimBtn) forceSimBtn.onclick = () => hostBeginMatchdaySim(room, playerId, true);
     const nextDayBtn = $('mpNextDayBtn');
     if (nextDayBtn) nextDayBtn.onclick = async () => {
-      if (!mpHostRun) { toast('Simulazione non trovata in questa scheda: riaprila dalla scheda con cui l\'hai avviata.', 'error'); return; }
+      if (!mpHostRuns) { toast('Simulazione non trovata in questa scheda: riaprila dalla scheda con cui l\'hai avviata.', 'error'); return; }
       nextDayBtn.disabled = true;
       try {
-        stepHostMatchday(mpHostRun);
+        // Ogni categoria avanza di una giornata per conto suo: chi ha meno giornate totali
+        // (categorie con meno squadre) semplicemente smette di avanzare prima delle altre.
+        mpHostRuns.forEach((run) => { if (run.matchday < run.total) stepHostMatchday(run); });
         if (DynSound) DynSound.tap();
-        await pushMatchdaySnapshot(room, playerId, mpHostRun, true);
+        await pushMatchdaySnapshot(room, playerId, mpHostRuns, true);
       } catch (e) { toast(e.message || 'Errore di rete.', 'error'); nextDayBtn.disabled = false; }
     };
     const finishBtn = $('mpFinishBtn');
     if (finishBtn) finishBtn.onclick = async () => {
-      if (!mpHostRun) { toast('Simulazione non trovata in questa scheda: riaprila dalla scheda con cui l\'hai avviata.', 'error'); return; }
+      if (!mpHostRuns) { toast('Simulazione non trovata in questa scheda: riaprila dalla scheda con cui l\'hai avviata.', 'error'); return; }
       finishBtn.disabled = true;
       try {
-        finishHostSeason(mpHostRun);
         const results = {};
-        mpHostRun.playerIds.forEach((pid, i) => { results[pid] = mpHostRun.ctxs[i]; });
+        mpHostRuns.forEach((run) => {
+          finishHostSeason(run);
+          run.playerIds.forEach((pid, i) => { results[pid] = run.ctxs[i]; });
+        });
         const data = await mpApi('submitResult', { code: room.code, playerId, results, force: true });
-        mpHostRun = null;
+        mpHostRuns = null;
         if (DynSound) DynSound.whistle();
         renderLobby(data.room, playerId);
       } catch (e) { toast(e.message || 'Impossibile pubblicare il resoconto.', 'error'); finishBtn.disabled = false; }
     };
     const downloadBtn = $('mpDownloadBtn');
     if (downloadBtn) downloadBtn.onclick = () => downloadMyResult(room, playerId);
+    const nextRoundBtn = $('mpNextRoundBtn');
+    if (nextRoundBtn) nextRoundBtn.onclick = async () => {
+      try { const data = await mpApi('nextRound', { code: room.code, playerId }); renderLobby(data.room, playerId); }
+      catch (e) { toast(e.message || 'Impossibile avviare la prossima stagione.', 'error'); }
+    };
+    const forceNextRoundBtn = $('mpForceNextRoundBtn');
+    if (forceNextRoundBtn) forceNextRoundBtn.onclick = async () => {
+      try { const data = await mpApi('nextRound', { code: room.code, playerId, force: true }); renderLobby(data.room, playerId); }
+      catch (e) { toast(e.message || 'Impossibile avviare la prossima stagione.', 'error'); }
+    };
     $('mpLeaveBtn').onclick = async () => {
       stopMpPolling();
       try { await mpApi('leave', { code: room.code, playerId }); } catch (e) {}
       clearMpSession();
       mpLastPhase = null;
-      mpHostRun = null;
+      mpHostRuns = null;
       closeOverlay();
     };
-    // Niente polling una volta pubblicato il risultato: ognuno lo scarica quando vuole,
-    // non c'è più nulla che possa cambiare sotto i piedi.
-    if (done) return;
+    // La stanza continua a cambiare anche a stagione pubblicata (l'host può aprire la
+    // prossima appena tutti hanno scaricato): niente più stop del poll su "done".
     mpPollTimer = setInterval(async () => {
       try {
         const fresh = await mpFetchState(room.code);
@@ -526,14 +574,15 @@
     }, 3000);
   }
 
-  // Classifica generale condivisa: la stagione intera della categoria (tutti i club, bot
-  // compresi — gli stessi che ctx.table già tiene per ciascun umano, con le squadre più
-  // scarse del pool sostituite dagli umani in fase di setup), non solo i club umani della
-  // stanza. Si parte dalla ctx.table di un umano qualsiasi (bot e "io" già corretti dentro
-  // computeTable), e si sovrascrivono le righe degli ALTRI umani con i loro pts/gd reali:
-  // dentro quella ctx.table contano solo gli scontri diretti già giocati con loro, non il
-  // loro punteggio vero nell'intero campionato (la correzione completa arriva solo a fine
-  // stagione in finishHostSeason, qui va rifatta ad ogni giornata per lo stesso motivo).
+  // Classifica di UNA categoria: la stagione intera (tutti i club, bot compresi — gli stessi
+  // che ctx.table già tiene per ciascun umano di quel gruppo, con le squadre più scarse del
+  // pool sostituite dagli umani in fase di setup), non solo i club umani di quel gruppo. Si
+  // parte dalla ctx.table di un umano qualsiasi del gruppo (bot e "io" già corretti dentro
+  // computeTable), e si sovrascrivono le righe degli ALTRI umani dello stesso gruppo coi loro
+  // pts/gd reali: dentro quella ctx.table contano solo gli scontri diretti già giocati con
+  // loro, non il loro punteggio vero nell'intero campionato (la correzione completa arriva
+  // solo a fine stagione in finishHostSeason, qui va rifatta ad ogni giornata per lo stesso
+  // motivo).
   function buildLiveTable(run) {
     const base = (run.ctxs[0] && run.ctxs[0].table) || [];
     const humanByClub = new Map(run.ctxs.map((c) => [c.club, c]));
@@ -544,17 +593,35 @@
     }).sort((a, b) => b.pts - a.pts || b.gd - a.gd);
   }
 
-  async function pushMatchdaySnapshot(room, playerId, run, force) {
-    const table = buildLiveTable(run);
-    const data = await mpApi('pushMatchday', { code: room.code, playerId, matchday: run.matchday, total: run.total, table, force: !!force });
+  // Una "run" per categoria (`runs`, array): ognuna col proprio numero di giornate totali
+  // (categorie con meno squadre finiscono prima). Il progresso complessivo che l'host vede sul
+  // suo bottone è il massimo fra tutte — "fatto" scatta solo quando lo sono TUTTE.
+  function buildLiveGroups(runs) {
+    return runs.map((run) => ({
+      div: run.div,
+      divName: (DIVS[run.div] || {}).name || ('Categoria ' + run.div),
+      matchday: run.matchday,
+      total: run.total,
+      table: buildLiveTable(run),
+    }));
+  }
+
+  async function pushMatchdaySnapshot(room, playerId, runs, force) {
+    const groups = buildLiveGroups(runs);
+    const matchday = Math.max(...groups.map((g) => g.matchday));
+    const total = Math.max(...groups.map((g) => g.total));
+    const data = await mpApi('pushMatchday', { code: room.code, playerId, matchday, total, groups, force: !!force });
     renderLobby(data.room, playerId);
   }
 
-  // L'host: prepara la stagione condivisa (setupHostSeason, sim.js — Fase 2b) e simula subito
-  // la prima giornata, poi mostra il pannello di controllo (renderLobby, fase 'simulating')
-  // con cui avanzare una giornata alla volta vedendo la classifica generale aggiornarsi. La
-  // "run" vive solo nella scheda dell'host: se la ricarica, deve riaprire la stanza da lì per
-  // continuare (limite noto, accettabile per un gioco hobby senza backend con stato persistente).
+  // L'host: raggruppa i giocatori pronti per categoria (dalla seconda stagione in poi possono
+  // essere in categorie diverse: promozioni/retrocessioni individuali), prepara una stagione
+  // condivisa per gruppo (setupHostSeason, sim.js — Fase 2b) e simula subito la prima giornata
+  // di ciascuna, poi mostra il pannello di controllo (renderLobby, fase 'simulating') con cui
+  // avanzare una giornata alla volta su TUTTE le categorie insieme, ognuno vedendo solo la
+  // classifica della propria. Le "run" vivono solo nella scheda dell'host: se la ricarica, deve
+  // riaprire la stanza da lì per continuare (limite noto, accettabile per un gioco hobby senza
+  // backend con stato persistente).
   async function hostBeginMatchdaySim(room, playerId, force) {
     // Chi non ha ancora ripremuto Pronto in sessione resta fuori da questa stagione — se
     // l'host forza l'avvio, si procede solo con chi ha davvero sottomesso una carriera.
@@ -563,12 +630,23 @@
     const btn = $('mpStartSimBtn') || $('mpForceSimBtn');
     if (btn) { btn.disabled = true; btn.textContent = 'Avvio in corso…'; }
     try {
-      const ctxs = readyPlayers.map((p) => JSON.parse(JSON.stringify(p.state)));
-      const run = setupHostSeason(ctxs, room.div, room.difficulty);
-      run.playerIds = readyPlayers.map((p) => p.id);
-      stepHostMatchday(run);
-      mpHostRun = run;
-      await pushMatchdaySnapshot(room, playerId, run, !!force);
+      const byDiv = new Map();
+      readyPlayers.forEach((p) => {
+        const div = p.state.div;
+        if (!byDiv.has(div)) byDiv.set(div, []);
+        byDiv.get(div).push(p);
+      });
+      const runs = [];
+      byDiv.forEach((players, div) => {
+        const ctxs = players.map((p) => JSON.parse(JSON.stringify(p.state)));
+        const run = setupHostSeason(ctxs, div, room.difficulty);
+        run.div = div;
+        run.playerIds = players.map((p) => p.id);
+        stepHostMatchday(run);
+        runs.push(run);
+      });
+      mpHostRuns = runs;
+      await pushMatchdaySnapshot(room, playerId, runs, !!force);
     } catch (e) {
       toast(e.message || 'Impossibile avviare la simulazione.', 'error');
       if (btn) { btn.disabled = false; btn.textContent = '▶️ Inizia simulazione'; }
@@ -576,19 +654,20 @@
   }
 
   // Applica il proprio "pezzo" del risultato condiviso al salvataggio locale — stesso slot
-  // (_saveId) della carriera sottomessa, quindi lo sovrascrive — e chiude la sessione
-  // multiplayer: la stanza resta per chi non ha ancora scaricato.
+  // (_saveId) della carriera sottomessa, quindi lo sovrascrive. La sessione multiplayer NON si
+  // chiude: la stanza continua per la prossima stagione (nextRound), quindi si segnala solo di
+  // aver scaricato (ackResult) e si resta agganciati alla stessa stanza/salvataggio.
   function downloadMyResult(room, playerId) {
     const result = room.results && room.results[playerId];
     if (!result) { toast('Risultato non trovato.', 'error'); return; }
     stopMpPolling();
-    clearMpSession();
     mpLastPhase = null;
     closeOverlay();
     if (DynSound) DynSound.kickoff();
     S = result;
     normSquad();
     saveGame();
+    mpApi('ackResult', { code: room.code, playerId }).catch(() => {});
     if (S._end) renderSeasonEnd(); else renderBoard();
   }
 
@@ -1415,6 +1494,14 @@
     if (resetXI) resetXI.addEventListener('click', () => { S.previewXI = null; selectedPreviewPid = null; renderBoard(); saveGame(); });
     if (mpBoard) {
       $('mpBoardReadyBtn').onclick = async () => {
+        // Stesso controllo di startSeason() (sim.js) prima di lasciar partire la stagione in
+        // singolo: lì un budget/rosa insufficiente blocca "Inizia Stagione" con un avviso. In
+        // multiplayer "Inizia Stagione" non esiste più (la stagione la avvia l'host per tutti),
+        // quindi lo stesso controllo va fatto qui, altrimenti la tua simulazione fallirebbe in
+        // silenzio nel browser dell'host (startSeason si ferma senza toast per un ctx remoto).
+        if (S.squad.length < MIN_SQUAD) { toast('Ti servono almeno ' + MIN_SQUAD + ' giocatori per iniziare la prossima stagione. Ingaggia svincolati gratis se sei a corto.', 'error'); return; }
+        const bill = kickoffBill();
+        if (S.budget < bill) { toast('Ti mancano ' + fmtMoney(bill - S.budget) + ' per il monte ingaggi della prossima stagione: vendi giocatori, prendi il bonus investitore o trova soldi prima di essere pronto.', 'error'); return; }
         saveGame();
         try {
           const data = await mpApi('ready', { code: mpSess.code, playerId: mpSess.playerId, ready: true, state: S });
