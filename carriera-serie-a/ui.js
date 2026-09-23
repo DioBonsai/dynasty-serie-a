@@ -259,7 +259,10 @@
      4) Round chiuso: ciascuno scarica il proprio risultato quando vuole (resta agganciato alla
         stessa stanza/salvataggio, non se ne va); quando tutti hanno scaricato (o l'host forza)
         l'host apre la prossima stagione (nextRound), si torna al punto 2 con le carriere già
-        avanzate di un anno.
+        avanzate di un anno. La dynasty dura come in singolo, fino a MAX_SEASONS (20): quando
+        chi ha giocato l'ultimo round era già alla stagione 20, "Avvia la prossima stagione"
+        sparisce e la stanza finisce lì (room.php: TTL lungo apposta, 180 giorni, per
+        sopravvivere a settimane/mesi fra una stagione e l'altra).
   */
   const MP_SESSION_KEY = 'dsa_mp_session';
   let mpPollTimer = null;
@@ -406,6 +409,11 @@
     const myDiv = me && me.state ? me.state.div : null;
     const myGroup = live && live.groups ? live.groups.find((g) => g.div === myDiv) : null;
     const myGroupDone = !!(myGroup && myGroup.matchday >= myGroup.total);
+    // La dynasty dura come in singolo, fino a MAX_SEASONS: quando chi ha giocato questo round
+    // era già all'ultima stagione, non ha senso offrire "Avvia la prossima stagione" — la
+    // stanza si chiude qui, ognuno scarica il proprio resoconto finale.
+    const participants = room.players.filter((p) => p.state);
+    const dynastyOver = done && participants.length > 0 && participants.every((p) => p.state.season >= MAX_SEASONS);
 
     let stageLabel = '';
     if (inLobbyStage) stageLabel = '⏳ In attesa che tutti siano pronti, poi l\'host avvia la sessione.';
@@ -413,7 +421,8 @@
     else if (inSimStage) {
       if (!myGroup) stageLabel = '⚽ Simulazione in corso — non fai parte di questo turno.';
       else stageLabel = myGroupDone ? '🏁 La tua stagione è simulata: in attesa che l\'host pubblichi il resoconto di tutti.' : ('⚽ Simulazione in corso — ' + (myGroup.divName || '') + ', giornata ' + myGroup.matchday + '/' + myGroup.total + '.');
-    } else if (done) stageLabel = '🏁 Stagione pronta! Scarica il tuo risultato quando vuoi.';
+    } else if (dynastyOver) stageLabel = '🏆 Dynasty conclusa dopo ' + MAX_SEASONS + ' stagioni! Scarica il tuo resoconto finale quando vuoi.';
+    else if (done) stageLabel = '🏁 Stagione pronta! Scarica il tuo risultato quando vuoi.';
 
     // Un suono solo quando la fase è appena cambiata rispetto all'ultimo render (non ad
     // ogni poll che ridisegna la stessa fase) — così anche chi non ha appena cliccato un
@@ -449,8 +458,10 @@
         ${done ? `
           <div class="ow-sub" style="text-align:center">${ackedCount}/${total} hanno scaricato il resoconto</div>
           <button class="dyn-btn dyn-btn-primary" id="mpDownloadBtn">📥 Scarica il tuo risultato</button>
-          ${isHost ? `<button class="dyn-btn dyn-btn-primary" id="mpNextRoundBtn" ${allAcked ? '' : 'disabled'}>▶️ Avvia la prossima stagione${allAcked ? '' : ' (' + ackedCount + '/' + total + ')'}</button>` : ''}
-          ${isHost && !allAcked ? `<button class="dyn-btn" id="mpForceNextRoundBtn">⏭️ Forza senza aspettare tutti</button>` : ''}
+          ${dynastyOver ? `<div class="ow-sub" style="text-align:center">🏆 Nessuna stagione successiva: la dynasty di questa stanza finisce qui.</div>` : `
+            ${isHost ? `<button class="dyn-btn dyn-btn-primary" id="mpNextRoundBtn" ${allAcked ? '' : 'disabled'}>▶️ Avvia la prossima stagione${allAcked ? '' : ' (' + ackedCount + '/' + total + ')'}</button>` : ''}
+            ${isHost && !allAcked ? `<button class="dyn-btn" id="mpForceNextRoundBtn">⏭️ Forza senza aspettare tutti</button>` : ''}
+          `}
         ` : inSimStage ? `
           ${isHost ? (simDone
             ? `<button class="dyn-btn dyn-btn-primary" id="mpFinishBtn">🏁 Vedi resoconto</button>`

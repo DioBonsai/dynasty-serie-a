@@ -53,7 +53,10 @@ header('Cache-Control: no-store');
 
 $DIR = __DIR__;
 $MAX_PLAYERS = 6;
-$ROOM_TTL_SECONDS = 24 * 3600;   // stanze più vecchie di così vengono ripulite al volo
+// Una stanza dura tutta la dynasty (fino a 20 stagioni, MAX_SEASONS in data.js), giocata con
+// calma nel tempo libero: 24 ore sarebbero bastate solo per una singola sessione, qui serve
+// margine per settimane/mesi di inattività fra una stagione e l'altra senza perdere la stanza.
+$ROOM_TTL_SECONDS = 180 * 24 * 3600;
 $CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // niente 0/O/1/I, meno errori a mano
 
 function fail($msg, $code = 400) {
