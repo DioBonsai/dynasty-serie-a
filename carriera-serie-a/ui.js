@@ -404,8 +404,15 @@
     const playersListHTML = `<div class="dyn-modal-actions" style="gap:6px">
         ${room.players.map((p) => `<div class="ow-fin-row"><span>${p.club}${p.id === room.hostId ? ' 👑' : ''}<small style="display:block;color:var(--muted)">${p.name}</small></span><b class="${p.ready ? 'good' : ''}">${p.ready ? '✅ Pronto' : '⏳ In attesa'}</b></div>`).join('')}
       </div>`;
-    const liveTableHTML = `<div class="dyn-modal-actions" style="gap:6px;flex-direction:column;align-items:stretch">
-        ${live ? live.table.map((r, i) => `<div class="ow-fin-row"><span>${i + 1}. ${r.club}</span><b>${r.pts} pt <small style="color:var(--muted)">(${r.played}g · ${r.w}V ${r.d}N ${r.l}P · ${r.gf}-${r.ga})</small></b></div>`).join('') : '<div class="ow-sub">In attesa che l\'host avvii la simulazione…</div>'}
+    // Classifica intera della categoria (tutte le squadre, non solo gli umani della stanza):
+    // stesse zone colorate (promozione/playoff/retrocessione/coppe) della classifica del
+    // singolo giocatore, con le righe umane in evidenza (classe "me") invece di una sola.
+    const d = DIVS[room.div] || {};
+    const liveTableHTML = `<div style="max-height:48vh;overflow:auto;margin:0 -6px">
+      ${live ? `<table class="dyn-table"><thead><tr><th>Squadra</th><th>Mister</th><th class="num">Pt</th><th class="num">DR</th></tr></thead><tbody>${live.table.map((r, i) => {
+        const zone = (d.euroSpots && i < d.euroSpots) ? 'ucl' : (d.uelPos && i === d.uelPos - 1) ? 'uel' : (d.confPos && i === d.confPos - 1) ? 'conf' : (d.promoted && i < d.promoted) ? 'ucl' : (d.playoff && i >= d.promoted && i < d.promoted + d.playoff) ? 'po' : (d.releg && i >= d.teams - d.releg) ? 'rel' : '';
+        return `<tr class="${r.isHuman ? 'me' : ''} ${zone}"><td>${i + 1}. ${r.club}</td><td style="font-size:11px;color:var(--muted)">${r.mgr || '-'}</td><td class="num">${r.pts}</td><td class="num">${r.gd > 0 ? '+' : ''}${r.gd}</td></tr>`;
+      }).join('')}</tbody></table>` : '<div class="ow-sub">In attesa che l\'host avvii la simulazione…</div>'}
       </div>`;
 
     overlay(`
@@ -519,16 +526,22 @@
     }, 3000);
   }
 
-  // Classifica generale condivisa: solo i club umani della `run` (non le 20 squadre della
-  // categoria), quello che conta per chi sta giocando insieme in questa stanza.
+  // Classifica generale condivisa: la stagione intera della categoria (tutti i club, bot
+  // compresi — gli stessi che ctx.table già tiene per ciascun umano, con le squadre più
+  // scarse del pool sostituite dagli umani in fase di setup), non solo i club umani della
+  // stanza. Si parte dalla ctx.table di un umano qualsiasi (bot e "io" già corretti dentro
+  // computeTable), e si sovrascrivono le righe degli ALTRI umani con i loro pts/gd reali:
+  // dentro quella ctx.table contano solo gli scontri diretti già giocati con loro, non il
+  // loro punteggio vero nell'intero campionato (la correzione completa arriva solo a fine
+  // stagione in finishHostSeason, qui va rifatta ad ogni giornata per lo stesso motivo).
   function buildLiveTable(run) {
-    return run.ctxs.map((ctx) => {
-      const results = ctx.results || [];
-      const w = results.filter((r) => r.res === 'W').length;
-      const d = results.filter((r) => r.res === 'D').length;
-      const l = results.filter((r) => r.res === 'L').length;
-      return { club: ctx.club, played: ctx.played, w, d, l, gf: ctx.gf, ga: ctx.ga, pts: ctx.pts };
-    }).sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga));
+    const base = (run.ctxs[0] && run.ctxs[0].table) || [];
+    const humanByClub = new Map(run.ctxs.map((c) => [c.club, c]));
+    return base.map((row) => {
+      const h = humanByClub.get(row.name);
+      if (h) return { club: h.club, pts: h.pts, gd: h.gf - h.ga, mgr: h.manager ? h.manager.n : '', isHuman: true };
+      return { club: row.name, pts: row.pts, gd: row.gd, mgr: row.mgr ? row.mgr.n : '', isHuman: false };
+    }).sort((a, b) => b.pts - a.pts || b.gd - a.gd);
   }
 
   async function pushMatchdaySnapshot(room, playerId, run, force) {
