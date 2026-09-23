@@ -94,13 +94,21 @@
     { icon: '😠', title: 'Caso spogliatoio', text: 'Un piccolo caso spogliatoio tiene banco per qualche giorno prima di rientrare.', sent: -4 },
     { icon: '📣', title: 'Marcia dei tifosi', text: 'I tifosi organizzano una marcia di sostegno alla squadra alla vigilia di una partita delicata.', sent: 5 },
     { icon: '📰', title: 'Elogio della stampa', text: 'La stampa locale elogia la gestione economica del club.', sent: 2, budgetPct: 0.004 },
-    { icon: '🚑', title: 'Allarme alla vigilia', text: 'Un titolare si ferma precauzionalmente alla vigilia per un fastidio muscolare: lo staff medico preferisce non rischiare.', sent: -3 },
+    {
+      icon: '🚑', title: 'Allarme alla vigilia',
+      requires: (S) => S.squad && S.squad.some((p) => !p.loan),
+      build: (S) => ({ player: S.squad.filter((p) => !p.loan).sort((a, b) => b.ovr - a.ovr)[0] }),
+      text: (S, ctx) => (ctx && ctx.player ? ctx.player.n : 'Un titolare') + ' si ferma precauzionalmente alla vigilia per un fastidio muscolare: lo staff medico preferisce non rischiare.',
+      sent: -3,
+    },
     { icon: '🌱', title: 'Il vivaio fa notizia', text: 'Il settore giovanile viene lodato in un articolo sulla stampa sportiva.', sent: 3 },
     { icon: '📺', title: 'Servizio TV', text: 'Un servizio TV racconta la crescita del club: la piazza si sente vista.', sent: 3 },
     { icon: '🏗️', title: 'Ritardi allo stadio', text: 'Ritardi nei lavori allo stadio fanno discutere i tifosi abbonati.', sent: -2 },
     {
       icon: '💰', title: 'Sirene di mercato',
-      text: 'Un club più ricco fa la corte a uno dei tuoi giovani migliori: la piazza aspetta una tua parola.',
+      requires: (S) => S.squad && S.squad.some((p) => !p.loan && p.age <= 24),
+      build: (S) => ({ player: S.squad.filter((p) => !p.loan && p.age <= 24).sort((a, b) => b.ovr - a.ovr)[0] }),
+      text: (S, ctx) => 'Un club più ricco fa la corte a ' + (ctx && ctx.player ? ctx.player.n : 'uno dei tuoi giovani migliori') + ': la piazza aspetta una tua parola.',
       choices: [
         { label: 'Rassicura pubblicamente i tifosi', sent: 4 },
         { label: 'Lascia correre le voci', sent: -3 },
@@ -140,7 +148,9 @@
     },
     {
       icon: '🎓', title: 'Talento del vivaio in pressing',
-      text: 'Un prodotto del settore giovanile chiede al mister maggiore spazio in prima squadra.',
+      requires: (S) => S.squad && S.squad.some((p) => !p.loan && p.age <= 21),
+      build: (S) => ({ player: S.squad.filter((p) => !p.loan && p.age <= 21).sort((a, b) => a.age - b.age)[0] }),
+      text: (S, ctx) => (ctx && ctx.player ? ctx.player.n : 'Un prodotto del settore giovanile') + ' chiede al mister maggiore spazio in prima squadra.',
       choices: [
         { label: 'Promettigli spazio nelle prossime partite', sent: 3 },
         { label: 'Chiedigli ancora un po\' di pazienza', sent: -2 },
@@ -204,7 +214,9 @@
     },
     {
       icon: '🗯️', title: 'Giocatore nel mirino dei social',
-      text: 'Un big della rosa è bersaglio di critiche pesanti sui social dopo l\'ultima uscita.',
+      requires: (S) => S.squad && S.squad.some((p) => !p.loan),
+      build: (S) => ({ player: S.squad.filter((p) => !p.loan).sort((a, b) => b.ovr - a.ovr)[0] }),
+      text: (S, ctx) => (ctx && ctx.player ? ctx.player.n : 'Un big della rosa') + ' è bersaglio di critiche pesanti sui social dopo l\'ultima uscita.',
       choices: [
         { label: 'Difendilo pubblicamente', sent: 2, ownerRating: 1 },
         { label: 'Lascia correre senza commenti', sent: -2 },
@@ -238,6 +250,7 @@
       choices: [
         {
           label: 'Accetta il rinnovo anticipato',
+          hint: '+2 umore, +10% incasso sponsor annuo, contratto rinnovato per intero',
           apply: (S) => {
             if (!S.sponsor) return;
             S.sponsor.perYear = Math.round(S.sponsor.perYear * 1.1 / 1e4) * 1e4;
@@ -256,6 +269,7 @@
       choices: [
         {
           label: 'Fallo giocare titolare',
+          hint: '30% di rischio infortunio (1-3 giornate, -4 umore), altrimenti +3 umore',
           apply: (S, ctx) => {
             const p = ctx && ctx.player; if (!p) return;
             if (Math.random() < 0.3) {

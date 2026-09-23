@@ -50,6 +50,7 @@
   // (bianco) → buono (azzurro) → ottimo (verde) → fuoriclasse (oro), sulla scala
   // 40-99 usata dal gioco.
   function ovrTier(ovr) {
+    if (ovr > 100) return { c: 'var(--purple)', bg: 'rgba(176,111,255,.16)' };
     if (ovr >= 85) return { c: 'var(--gold)', bg: 'rgba(255,210,74,.16)' };
     if (ovr >= 75) return { c: 'var(--good)', bg: 'rgba(40,217,160,.14)' };
     if (ovr >= 65) return { c: '#6fb3ff', bg: 'rgba(111,179,255,.14)' };
@@ -58,6 +59,7 @@
   }
 
   const ovrBadge = (ovr) => { const t = ovrTier(ovr); return `background:${t.bg};color:${t.c}`; };
+  const specOf = (spec) => MANAGER_SPECS.find((s) => s.key === spec) || MANAGER_SPECS[0];
 
   // Riprende una carriera salvata: per id specifico (scelto dall'elenco carriere) o,
   // omesso, l'ultimo slot attivo (comportamento storico di "Continua").
@@ -76,6 +78,295 @@
       if (S.played === (gp() >> 1) && !S.winterDone) openWinter();
     }
     else { renderBoard(); }
+  }
+
+  // Pannello hotseat: più proprietari (=più slot) che si passano il dispositivo a turno.
+  // Non tocca l'architettura del salvataggio, orchestra solo quale slot va ripreso quando:
+  // il puntatore di turno avanza appena qualcuno TOCCA "inizia il turno", non quando esce
+  // dalla carriera (vedi commento su HOTSEAT_KEY in sim.js) — così qualunque via d'uscita
+  // dal gioco lascia comunque pronto il turno di chi segue.
+  function renderHotseatPanel() {
+    const wrap = $('hotseatWrap'); if (!wrap) return;
+    const idx = readSavesIndex();
+    let h = readHotseat();
+    if (h) {
+      // Pota gli slot che nel frattempo sono spariti (carriera venduta/eliminata): una
+      // sessione con meno di 2 giocatori rimasti non è più una sessione hotseat.
+      h.ids = h.ids.filter((id) => idx.some((m) => m.id === id));
+      if (h.ids.length < 2) { clearHotseat(); h = null; }
+      else { h.turn = ((h.turn % h.ids.length) + h.ids.length) % h.ids.length; writeHotseat(h); }
+    }
+    if (h) {
+      const metaOf = (id) => idx.find((m) => m.id === id);
+      const nextMeta = metaOf(h.ids[h.turn]);
+      wrap.innerHTML = `
+        <div class="ow-hotseat">
+          <div class="dyn-aggr-label" style="text-align:center;margin:6px 0 8px">🎮 Sessione hotseat</div>
+          <button type="button" class="dyn-btn dyn-btn-primary" id="hotseatNextBtn">📱 Passa il dispositivo — tocca per il turno di ${(nextMeta && nextMeta.owner) || 'Giocatore'} (${(nextMeta && nextMeta.club) || 'Club'})</button>
+          <div class="ow-hotseat-order">${h.ids.map((id, i) => { const m = metaOf(id); return `<span class="${i === h.turn ? 'on' : ''}">${(m && m.club) || '?'}</span>`; }).join(' → ')}</div>
+          <button type="button" class="dyn-mini ow-danger" id="hotseatEndBtn">Termina sessione hotseat</button>
+        </div>`;
+      $('hotseatNextBtn').onclick = () => {
+        const cur = readHotseat(); if (!cur) return;
+        const id = cur.ids[cur.turn];
+        cur.turn = (cur.turn + 1) % cur.ids.length;
+        writeHotseat(cur);
+        resumeDynasty(id);
+      };
+      $('hotseatEndBtn').onclick = () => { clearHotseat(); renderHotseatPanel(); };
+    } else {
+      wrap.innerHTML = idx.length >= 2
+        ? `<button type="button" class="dyn-mini" id="hotseatCreateBtn" style="margin:8px auto 0;display:block">🎮 Crea sessione hotseat</button>`
+        : '';
+      const btn = $('hotseatCreateBtn');
+      if (btn) btn.onclick = openHotseatPicker;
+    }
+  }
+
+  // Scelta di chi partecipa (fra le carriere già salvate) e in che ordine gioca: l'ordine
+  // di spunta diventa l'ordine di turno.
+  function openHotseatPicker() {
+    const idx = readSavesIndex().slice().sort((a, b) => b.updated - a.updated);
+    const picked = [];
+    overlay(`<h2>🎮 Crea sessione hotseat</h2>
+      <p class="ow-sub">Spunta le carriere che si alternano sullo stesso dispositivo, nell'ordine in cui le spunti.</p>
+      <div class="dyn-modal-actions" style="gap:6px">
+        ${idx.map((m) => `<label class="ow-fin-row" style="cursor:pointer"><input type="checkbox" data-pick="${m.id}" style="margin-right:8px" /><span>${m.club || 'Club'}<small style="display:block;color:var(--muted)">${m.owner || ''}</small></span></label>`).join('')}
+      </div>
+      <div class="dyn-modal-actions">
+        <button class="dyn-btn dyn-btn-primary" id="ovHotseatStart">Inizia sessione</button>
+        <button class="dyn-btn" id="ovHotseatCancel">Annulla</button>
+      </div>`);
+    $('owOverlayModal').querySelectorAll('[data-pick]').forEach((el) => el.addEventListener('change', () => {
+      const id = el.dataset.pick;
+      if (el.checked) picked.push(id); else { const i = picked.indexOf(id); if (i >= 0) picked.splice(i, 1); }
+    }));
+    $('ovHotseatStart').onclick = () => {
+      if (picked.length < 2) { toast('Scegli almeno due carriere per la sessione hotseat.'); return; }
+      writeHotseat({ ids: picked.slice(), turn: 0 });
+      closeOverlay();
+      renderHotseatPanel();
+      toast('Sessione hotseat creata: ' + picked.length + ' giocatori.');
+    };
+    $('ovHotseatCancel').onclick = closeOverlay;
+  }
+
+  /* ---------------- multiplayer: stanze condivise ----------------
+     Identità (nome/club) e stato "pronto" per persona sincronizzati via room.php (stesso
+     pattern minimale di leaderboard.php — un file JSON per stanza, niente account). "Pronto"
+     ora porta con sé una carriera vera, già gestita con gli strumenti single-player normali
+     (Sala del Consiglio) e non ancora a stagione avviata — nessuna UI di creazione club
+     separata per il multiplayer, si riusa il sistema di salvataggio multi-slot esistente
+     (readSavesIndex/loadSaveSlot). Quando tutti sono pronti, l'host esegue runHostSeason
+     (sim.js, Fase 2b) nel proprio browser e pubblica il risultato; ciascuno lo scarica e lo
+     applica al proprio salvataggio.
+  */
+  const MP_SESSION_KEY = 'dsa_mp_session';
+  let mpPollTimer = null;
+
+  function readMpSession() { try { return JSON.parse(localStorage.getItem(MP_SESSION_KEY)); } catch (e) { return null; } }
+  function writeMpSession(s) { try { localStorage.setItem(MP_SESSION_KEY, JSON.stringify(s)); } catch (e) {} }
+  function clearMpSession() { try { localStorage.removeItem(MP_SESSION_KEY); } catch (e) {} }
+  function stopMpPolling() { if (mpPollTimer) { clearInterval(mpPollTimer); mpPollTimer = null; } }
+
+  async function mpApi(action, payload) {
+    const res = await fetch('room.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ action }, payload)) });
+    const data = await res.json().catch(() => null);
+    if (!data || !data.ok) throw new Error((data && data.error) || 'Errore di rete.');
+    return data;
+  }
+
+  async function mpFetchState(code) {
+    const res = await fetch('room.php?action=state&code=' + encodeURIComponent(code));
+    const data = await res.json().catch(() => null);
+    if (!data || !data.ok) throw new Error((data && data.error) || 'Stanza non trovata.');
+    return data.room;
+  }
+
+  function openMultiplayerHub() {
+    const sess = readMpSession();
+    if (sess && sess.code && sess.playerId) { resumeLobby(sess.code, sess.playerId); return; }
+    overlay(`<h2>👥 Gioca con gli amici</h2>
+      <p class="ow-sub">Una stanza condivisa "a turno sincrono": ognuno gestisce il proprio club per conto suo (con gli strumenti soliti, una carriera normale non ancora a stagione avviata), poi tocca Pronto scegliendo quale carriera sottomettere. Appena lo sono tutti, l'host avvia la stagione e il risultato arriva a tutti insieme.</p>
+      <div class="dyn-modal-actions">
+        <button class="dyn-btn dyn-btn-primary" id="mpCreateBtn">🆕 Crea una stanza</button>
+        <button class="dyn-btn" id="mpJoinBtn">🔑 Entra con un codice</button>
+        <button class="dyn-btn" id="ovClose">Chiudi</button>
+      </div>`);
+    $('mpCreateBtn').onclick = openMpCreateForm;
+    $('mpJoinBtn').onclick = openMpJoinForm;
+    $('ovClose').onclick = closeOverlay;
+  }
+
+  function openMpCreateForm() {
+    overlay(`<h2>🆕 Crea una stanza</h2>
+      <label class="dyn-field"><span>Il tuo nome</span><input id="mpName" type="text" maxlength="18" placeholder="Il tuo nome" autocomplete="off" /></label>
+      <label class="dyn-field"><span>Nome del tuo club</span><input id="mpClub" type="text" maxlength="24" placeholder="Nome del club" autocomplete="off" /></label>
+      <label class="dyn-field"><span>Categoria di partenza (condivisa da tutti)</span>
+        <select id="mpDiv">${DIVS.map((d, i) => `<option value="${i}">${d.name}</option>`).join('')}</select>
+      </label>
+      <label class="dyn-field"><span>Difficoltà (condivisa da tutti)</span>
+        <select id="mpDiff">${DIFFICULTIES.map((d) => `<option value="${d.key}" ${d.key === 'medio' ? 'selected' : ''}>${d.label}</option>`).join('')}</select>
+      </label>
+      <div class="dyn-modal-actions">
+        <button class="dyn-btn dyn-btn-primary" id="mpCreateGo">Crea stanza</button>
+        <button class="dyn-btn" id="mpBack">Indietro</button>
+      </div>`);
+    $('mpCreateGo').onclick = async () => {
+      const name = ($('mpName').value || '').trim(), club = ($('mpClub').value || '').trim();
+      if (!name || !club) { toast('Inserisci nome e club.'); return; }
+      try {
+        const data = await mpApi('create', { name, club, div: +$('mpDiv').value, difficulty: $('mpDiff').value });
+        writeMpSession({ code: data.room.code, playerId: data.playerId });
+        renderLobby(data.room, data.playerId);
+      } catch (e) { toast(e.message || 'Impossibile creare la stanza.'); }
+    };
+    $('mpBack').onclick = openMultiplayerHub;
+  }
+
+  function openMpJoinForm() {
+    overlay(`<h2>🔑 Entra in una stanza</h2>
+      <label class="dyn-field"><span>Codice stanza</span><input id="mpCode" type="text" maxlength="4" placeholder="ABCD" style="text-transform:uppercase" autocomplete="off" /></label>
+      <label class="dyn-field"><span>Il tuo nome</span><input id="mpName" type="text" maxlength="18" placeholder="Il tuo nome" autocomplete="off" /></label>
+      <label class="dyn-field"><span>Nome del tuo club</span><input id="mpClub" type="text" maxlength="24" placeholder="Nome del club" autocomplete="off" /></label>
+      <div class="dyn-modal-actions">
+        <button class="dyn-btn dyn-btn-primary" id="mpJoinGo">Entra</button>
+        <button class="dyn-btn" id="mpBack">Indietro</button>
+      </div>`);
+    $('mpJoinGo').onclick = async () => {
+      const code = ($('mpCode').value || '').trim().toUpperCase();
+      const name = ($('mpName').value || '').trim(), club = ($('mpClub').value || '').trim();
+      if (!code || !name || !club) { toast('Compila tutti i campi.'); return; }
+      try {
+        const data = await mpApi('join', { code, name, club });
+        writeMpSession({ code, playerId: data.playerId });
+        renderLobby(data.room, data.playerId);
+      } catch (e) { toast(e.message || 'Impossibile entrare nella stanza.'); }
+    };
+    $('mpBack').onclick = openMultiplayerHub;
+  }
+
+  async function resumeLobby(code, playerId) {
+    try {
+      const room = await mpFetchState(code);
+      if (!room.players.some((p) => p.id === playerId)) { clearMpSession(); openMultiplayerHub(); return; }
+      renderLobby(room, playerId);
+    } catch (e) { clearMpSession(); openMultiplayerHub(); }
+  }
+
+  function renderLobby(room, playerId) {
+    stopMpPolling();
+    const me = room.players.find((p) => p.id === playerId);
+    const isHost = room.hostId === playerId;
+    const allReady = room.phase === 'allReady';
+    const done = room.phase === 'done';
+    overlay(`
+      <h2>👥 Stanza ${room.code}</h2>
+      <p class="ow-sub">${(DIVS[room.div] || {}).name || ''} · condividi il codice <b>${room.code}</b> con chi manca.</p>
+      <div class="dyn-modal-actions" style="gap:6px">
+        ${room.players.map((p) => `<div class="ow-fin-row"><span>${p.club}${p.id === room.hostId ? ' 👑' : ''}<small style="display:block;color:var(--muted)">${p.name}</small></span><b class="${p.ready ? 'good' : ''}">${p.ready ? '✅ Pronto' : '⏳ In attesa'}</b></div>`).join('')}
+      </div>
+      ${done ? '<p class="ow-sub" style="text-align:center">🏁 Stagione pronta! Scarica il tuo risultato quando vuoi.</p>'
+        : allReady ? (isHost
+          ? '<p class="ow-sub" style="text-align:center">🎉 Tutti pronti! Quando vuoi, avvia la stagione condivisa.</p>'
+          : '<p class="ow-sub" style="text-align:center">🎉 Tutti pronti! In attesa che l\'host avvii la stagione…</p>')
+        : ''}
+      <div class="dyn-modal-actions">
+        ${done ? `<button class="dyn-btn dyn-btn-primary" id="mpDownloadBtn">📥 Scarica il tuo risultato</button>`
+          : allReady && isHost ? `<button class="dyn-btn dyn-btn-primary" id="mpStartBtn">▶️ Avvia la stagione</button>`
+          : `<button class="dyn-btn dyn-btn-primary" id="mpReadyBtn">${me && me.ready ? 'Non sono più pronto' : 'Sono pronto'}</button>`}
+        <button class="dyn-btn ow-danger" id="mpLeaveBtn">Esci dalla stanza</button>
+      </div>`);
+    const readyBtn = $('mpReadyBtn');
+    if (readyBtn) readyBtn.onclick = async () => {
+      if (me && me.ready) {
+        try { const data = await mpApi('ready', { code: room.code, playerId, ready: false }); renderLobby(data.room, playerId); }
+        catch (e) { toast(e.message || 'Errore di rete.'); }
+      } else openReadyPicker(room, playerId);
+    };
+    const startBtn = $('mpStartBtn');
+    if (startBtn) startBtn.onclick = () => hostStartMultiplayerSeason(room, playerId);
+    const downloadBtn = $('mpDownloadBtn');
+    if (downloadBtn) downloadBtn.onclick = () => downloadMyResult(room, playerId);
+    $('mpLeaveBtn').onclick = async () => {
+      stopMpPolling();
+      try { await mpApi('leave', { code: room.code, playerId }); } catch (e) {}
+      clearMpSession();
+      closeOverlay();
+    };
+    // Niente polling una volta pubblicato il risultato: ognuno lo scarica quando vuole,
+    // non c'è più nulla che possa cambiare sotto i piedi.
+    if (done) return;
+    mpPollTimer = setInterval(async () => {
+      try {
+        const fresh = await mpFetchState(room.code);
+        if (!fresh.players.some((p) => p.id === playerId)) { stopMpPolling(); clearMpSession(); toast('Sei stato rimosso dalla stanza.'); closeOverlay(); return; }
+        renderLobby(fresh, playerId);
+      } catch (e) { /* stanza sparita o rete assente per un giro: si riprova al prossimo poll */ }
+    }, 3000);
+  }
+
+  // Sceglie quale carriera salvata (fra quelle non ancora a stagione avviata) sottomettere
+  // alla stanza: nessuna UI di creazione club dedicata al multiplayer, si riusa il sistema
+  // di salvataggio multi-slot esistente.
+  function openReadyPicker(room, playerId) {
+    const idx = readSavesIndex().slice().sort((a, b) => b.updated - a.updated);
+    const eligible = idx
+      .map((m) => ({ meta: m, state: loadSaveSlot(m.id) }))
+      .filter((x) => x.state && !x.state.seasonActive);
+    if (!eligible.length) {
+      overlay(`<h2>Nessuna carriera pronta</h2>
+        <p class="ow-sub">Per sottometterti alla stanza serve una carriera che non abbia ancora iniziato la stagione (appena creata, o fra una stagione e l'altra) — gestiscine una dalla home come faresti in singolo, poi torna qui.</p>
+        <div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovBack">Torna alla stanza</button></div>`);
+      $('ovBack').onclick = () => renderLobby(room, playerId);
+      return;
+    }
+    overlay(`<h2>Quale carriera sottometti?</h2>
+      <p class="ow-sub">Verrà adattata alla categoria e difficoltà della stanza (${(DIVS[room.div] || {}).name || ''} · ${room.difficulty}).</p>
+      <div class="dyn-modal-actions" style="gap:6px">
+        ${eligible.map((x, i) => `<button type="button" class="dyn-mini" data-pick="${i}" style="text-align:left">${x.state.club}<small style="display:block;color:var(--muted)">${(DIVS[x.state.div] || {}).name || ''} · Stagione ${x.state.season || 1}</small></button>`).join('')}
+      </div>
+      <div class="dyn-modal-actions"><button class="dyn-btn" id="mpBack">Indietro</button></div>`);
+    $('owOverlayModal').querySelectorAll('[data-pick]').forEach((el) => el.addEventListener('click', async () => {
+      const chosen = eligible[+el.dataset.pick].state;
+      try {
+        const data = await mpApi('ready', { code: room.code, playerId, ready: true, state: chosen });
+        renderLobby(data.room, playerId);
+      } catch (e) { toast(e.message || 'Impossibile sottomettere la carriera.'); }
+    }));
+    $('mpBack').onclick = () => renderLobby(room, playerId);
+  }
+
+  // L'host: esegue l'intera stagione condivisa nel proprio browser (runHostSeason, sim.js —
+  // Fase 2b, stesso motore del singolo giocatore) e pubblica un risultato per ciascuno.
+  async function hostStartMultiplayerSeason(room, playerId) {
+    const btn = $('mpStartBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Simulazione in corso…'; }
+    try {
+      const ctxs = room.players.map((p) => JSON.parse(JSON.stringify(p.state)));
+      runHostSeason(ctxs, room.div, room.difficulty);
+      const results = {};
+      room.players.forEach((p, i) => { results[p.id] = ctxs[i]; });
+      const data = await mpApi('submitResult', { code: room.code, playerId, results });
+      renderLobby(data.room, playerId);
+    } catch (e) {
+      toast(e.message || 'Impossibile avviare la stagione.');
+      if (btn) { btn.disabled = false; btn.textContent = '▶️ Avvia la stagione'; }
+    }
+  }
+
+  // Applica il proprio "pezzo" del risultato condiviso al salvataggio locale — stesso slot
+  // (_saveId) della carriera sottomessa, quindi lo sovrascrive — e chiude la sessione
+  // multiplayer: la stanza resta per chi non ha ancora scaricato.
+  function downloadMyResult(room, playerId) {
+    const result = room.results && room.results[playerId];
+    if (!result) { toast('Risultato non trovato.'); return; }
+    stopMpPolling();
+    clearMpSession();
+    closeOverlay();
+    S = result;
+    normSquad();
+    saveGame();
+    if (S._end) renderSeasonEnd(); else renderBoard();
   }
 
   // Elenco "Le tue carriere" nella schermata di setup: una card per slot salvato, con
@@ -115,6 +406,7 @@
     }));
     const imp = $('importSaveInput');
     if (imp) imp.addEventListener('change', handleImportSaveFile);
+    renderHotseatPanel();
   }
 
   // Card riassuntiva della stagione appena chiusa, disegnata su un canvas e scaricata come
@@ -391,6 +683,8 @@
     if (trophyCaseBtn) trophyCaseBtn.addEventListener('click', showTrophyCase);
     const leaderboardBtn = $('owGlobalLeaderboardBtn');
     if (leaderboardBtn) leaderboardBtn.addEventListener('click', showGlobalLeaderboard);
+    const mpBtn = $('owMultiplayerBtn');
+    if (mpBtn) mpBtn.addEventListener('click', openMultiplayerHub);
     $('owNextBtn').addEventListener('click', () => simMatch());
     $('owSimBtn').addEventListener('click', simToEnd);
     $('owTableBtn').addEventListener('click', showTable);
@@ -653,7 +947,6 @@
       </div>` : ''}`;
 
     const xiPids = getPreviewXI();
-    const specOf = (spec) => MANAGER_SPECS.find((s) => s.key === spec) || MANAGER_SPECS[0];
     const rosaHTML = `
       <div class="ow-sec">
         <div class="ow-sec-title">🧠 Allenatore</div>
@@ -778,7 +1071,7 @@
       $('ovConfirmRel').onclick = () => {
         closeOverlay();
         const i = S.squad.findIndex((x) => x.pid === p.pid); if (i < 0) return;
-        S.squad.splice(i, 1); S.offers = (S.offers || []).filter((o) => o.pid !== p.pid); S.budget += fee;
+        pushAlumnus(p); S.squad.splice(i, 1); S.offers = (S.offers || []).filter((o) => o.pid !== p.pid); S.budget += fee;
         toast('Ceduto ' + p.n + ' per ' + fmtMoney(fee) + '.'); renderBoard(); saveGame();
       };
       $('ovCancelRel').onclick = closeOverlay;
@@ -807,7 +1100,7 @@
       const pid = +el.dataset.acc; const o = (S.offers || []).find((x) => x.pid === pid);
       const i = S.squad.findIndex((x) => x.pid === pid); if (!o || i < 0) return;
       const p = S.squad[i];
-      S.budget += o.fee; S.squad.splice(i, 1); S.offers = S.offers.filter((x) => x.pid !== pid);
+      pushAlumnus(p); S.budget += o.fee; S.squad.splice(i, 1); S.offers = S.offers.filter((x) => x.pid !== pid);
       if (p.ovr >= divOf().avg + 6) S.sent = clamp(S.sent - 3, 0, 100);
       toast('Venduto ' + p.n + ' al ' + o.club + ' per ' + fmtMoney(o.fee) + '.'); renderBoard(); saveGame();
     }));
@@ -1047,13 +1340,27 @@
   // stagione in corso, richiamabile toccando la sua riga nell'elenco Rosa.
   function openPlayerDetail(pid) {
     const p = S.squad.find((x) => x.pid === pid); if (!p) return;
+    if (p.joinedSeason == null) p.joinedSeason = S.season;
     const isGK = p.pos === 'POR';
+    const seasons = Math.max(1, (S.season - p.joinedSeason) + 1);
+    const totalApps = (p.careerApps || 0) + (p.seasonApps || 0);
+    const totalGoals = (p.careerGoals || 0) + (p.seasonGoals || 0);
+    const totalAssists = (p.careerAssists || 0) + (p.seasonAssists || 0);
+    const totalCleanSheets = (p.careerCleanSheets || 0) + (p.seasonCleanSheets || 0);
+    const tenureRow = `<div class="ow-fin-row"><span>In squadra da</span><b>${seasons} stagion${seasons === 1 ? 'e' : 'i'}</b></div>`;
     const statRows = isGK
       ? `<div class="ow-fin-row"><span>Presenze stagionali</span><b>🎽 ${p.seasonApps || 0}</b></div>
-         <div class="ow-fin-row"><span>Clean sheet stagionali</span><b>🧤 ${p.seasonCleanSheets || 0}</b></div>`
+         <div class="ow-fin-row"><span>Clean sheet stagionali</span><b>🧤 ${p.seasonCleanSheets || 0}</b></div>
+         ${tenureRow}
+         <div class="ow-fin-row"><span>Presenze totali</span><b>🎽 ${totalApps}</b></div>
+         <div class="ow-fin-row"><span>Clean sheet totali</span><b>🧤 ${totalCleanSheets}</b></div>`
       : `<div class="ow-fin-row"><span>Presenze stagionali</span><b>🎽 ${p.seasonApps || 0}</b></div>
          <div class="ow-fin-row"><span>Gol stagionali</span><b>⚽ ${p.seasonGoals || 0}</b></div>
-         <div class="ow-fin-row"><span>Assist stagionali</span><b>👟 ${p.seasonAssists || 0}</b></div>`;
+         <div class="ow-fin-row"><span>Assist stagionali</span><b>👟 ${p.seasonAssists || 0}</b></div>
+         ${tenureRow}
+         <div class="ow-fin-row"><span>Presenze totali</span><b>🎽 ${totalApps}</b></div>
+         <div class="ow-fin-row"><span>Gol totali</span><b>⚽ ${totalGoals}</b></div>
+         <div class="ow-fin-row"><span>Assist totali</span><b>👟 ${totalAssists}</b></div>`;
     overlay(`
       <h2>Scheda giocatore</h2>
       <div class="ow-spin-card${p.real ? ' is-real' : ''}">
@@ -1108,6 +1415,24 @@
   // colorato, animazione d'ingresso), che richiede un click esplicito per proseguire — una X
   // in alto a destra per i semplici avvisi, oppure le scelte stesse quando ce ne sono (niente
   // scorciatoia per saltarle: la scelta stessa è il "premi un bottone per continuare").
+  // Riassunto testuale ed esplicito del bonus/malus numerico di un evento o di una sua
+  // scelta (sent/budgetPct/ownerRating/fanbaseDelta/prestige): niente più effetti "a
+  // sorpresa" nascosti nel codice, l'utente vede il numero prima o subito dopo aver scelto.
+  // Gli effetti con `apply(S, ctx)` custom (sponsor, infortunio) non hanno numeri fissi da
+  // mostrare qui: usano un `hint` scritto a mano in NARRATIVE_EVENTS.
+  function narrativeEffectSummary(eff, inline) {
+    if (!eff) return '';
+    if (eff.hint) return inline ? `<span class="ow-eff-hint">${eff.hint}</span>` : eff.hint;
+    const parts = [];
+    if (eff.sent) parts.push((eff.sent > 0 ? '+' : '') + eff.sent + ' umore');
+    if (eff.budgetPct) parts.push((eff.budgetPct > 0 ? '+' : '') + (Math.round(eff.budgetPct * 1000) / 10) + '% budget');
+    if (eff.ownerRating) parts.push((eff.ownerRating > 0 ? '+' : '') + eff.ownerRating + ' reputazione');
+    if (eff.fanbaseDelta) parts.push((eff.fanbaseDelta > 0 ? '+' : '') + eff.fanbaseDelta + ' bacino tifosi');
+    if (eff.prestige) parts.push((eff.prestige > 0 ? '+' : '') + fmtMoney(eff.prestige) + ' prestigio');
+    if (!parts.length) return '';
+    return inline ? `<span class="ow-eff-hint">${parts.join(' · ')}</span>` : parts.join(' · ');
+  }
+
   function openNarrativeEventOverlay(ev) {
     const hasChoices = Array.isArray(ev.choices) && ev.choices.length > 0;
     // `build` fissa UNA volta sola (all'apertura) i dettagli concreti dell'evento — es. quale
@@ -1117,15 +1442,17 @@
     const text = typeof ev.text === 'function' ? ev.text(S, ctx) : ev.text;
     if (!hasChoices) applyNarrativeEffect(ev, ctx);   // un solo esito: si applica subito, il popup lo racconta
     const finish = () => { closeOverlay(); S._pause = false; checkSeasonMilestones(); };
+    const outcomeSummary = !hasChoices ? narrativeEffectSummary(ev) : '';
     overlay(`
       <div class="ow-event-modal">
         ${!hasChoices ? '<button type="button" class="ow-modal-x" id="ovEventX" aria-label="Chiudi">✕</button>' : ''}
         <div class="ow-event-icon">${ev.icon || '📰'}</div>
         <h2>${ev.title || 'Imprevisto'}</h2>
         <p>${text}</p>
+        ${outcomeSummary ? `<p class="ow-sub">${outcomeSummary}</p>` : ''}
         <div class="dyn-modal-actions">
           ${hasChoices
-            ? ev.choices.map((c, i) => `<button type="button" class="dyn-btn ${i === 0 ? 'dyn-btn-primary' : ''}" data-choice="${i}">${c.label}</button>`).join('')
+            ? ev.choices.map((c, i) => `<button type="button" class="dyn-btn ${i === 0 ? 'dyn-btn-primary' : ''}" data-choice="${i}">${c.label}${narrativeEffectSummary(c, true)}</button>`).join('')
             : '<button type="button" class="dyn-btn dyn-btn-primary" id="ovEventClose">Continua</button>'}
         </div>
       </div>`);
@@ -1142,7 +1469,7 @@
 
   function openWinter() {
     S._pause = true;
-    if (!S._janCands) S._janCands = [spinPlayer(false), spinPlayer(false), spinPlayer(false)];
+    if (!S._janCands) S._janCands = [spinPlayer(false, undefined, 3), spinPlayer(false, undefined, 3), spinPlayer(false, undefined, 3)];
     if (S._janSwitchUsed == null) S._janSwitchUsed = false;
     if (!S._janMgrCands) S._janMgrCands = [genManager(2), genManager(5)];
     renderWinterOverlay();
@@ -1173,9 +1500,9 @@
       <h2>❄️ Il mercato di gennaio</h2>
       <p>A metà strada. ${ord(currentPos())} in ${d.name}. Budget ${fmtMoney(S.budget)}.</p>
       ${cands.length ? cands.map(cardHTML).join('') : '<div class="ow-sub">Nessun altro candidato in questa finestra.</div>'}
-      <div class="ow-mgr"><span class="ovr" style="${ovrBadge(S.manager.rating)}">${S.manager.rating}</span><span class="nm">${flagOf(S.manager)}${S.manager.n}<small>Allenatore in carica</small></span><span class="tag">In carica</span></div>
+      <div class="ow-mgr"><span class="ovr" style="${ovrBadge(S.manager.rating)}">${S.manager.rating}</span><span class="nm">${flagOf(S.manager)}${S.manager.n}<small>${specOf(S.manager.spec).icon} ${specOf(S.manager.spec).label} · Allenatore in carica</small></span><span class="tag">In carica</span></div>
       <div class="ow-sub" style="margin:8px 0 6px;text-align:left">Esonera (30% di buonuscita) e nomina:</div>
-      ${mgrCands.map((m, i) => `<div class="ow-mgr cand"><span class="ovr" style="${ovrBadge(m.rating)}">${m.rating}</span><span class="nm">${flagOf(m)}${m.n}<small>${fmtMoney(m.salary)}/anno, metà pagata subito</small></span><button class="dyn-mini" data-wh="${i}">Assumi</button></div>`).join('')}
+      ${mgrCands.map((m, i) => `<div class="ow-mgr cand"><span class="ovr" style="${ovrBadge(m.rating)}">${m.rating}</span><span class="nm">${flagOf(m)}${m.n}<small>${fmtMoney(m.salary)}/anno, metà pagata subito · ${specOf(m.spec).icon} ${specOf(m.spec).label}</small></span><button class="dyn-mini" data-wh="${i}" title="${specOf(m.spec).desc}">Assumi</button></div>`).join('')}
       <div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovPlayOn">Continua così</button></div>`);
     $('ovPlayOn').onclick = () => { S.winterDone = true; S._pause = false; S._janCands = null; S._janSwitchUsed = false; S._janMgrCands = null; closeOverlay(); saveGame(); if (S.played >= gp()) endSeason(); };
     document.querySelectorAll('#owOverlayModal [data-jan-loan]').forEach((el) => el.addEventListener('click', () => {
@@ -1200,7 +1527,7 @@
       if (S._janSwitchUsed) return;
       const i = +el.dataset.janSwitch; if (!S._janCands[i]) return;
       const old = S._janCands[i];
-      S._janCands[i] = spinPlayer(false);
+      S._janCands[i] = spinPlayer(false, undefined, 3);
       S._janSwitchUsed = true;
       toast('Cambi ' + old.n + ' con un altro candidato.');
       saveGame(); renderWinterOverlay();
@@ -1382,6 +1709,18 @@
     ['ucl', 'uel', 'conf'].forEach((k) => { if (S.trophies[k]) honours.push(S.trophies[k] + 'x ' + EURO_COMPS[k].name); });
     const topDiv = S.history.reduce((a, hh) => Math.max(a, DIVS.findIndex((x) => x.name === hh.div)), S.div);
     const promotions = S.history.filter((hh) => hh.promoted).length;
+    // I migliori di sempre: chi è ancora in rosa (totali di carriera + stagione in corso) più
+    // chi se n'è andato nel frattempo (venduto, svincolato, ritirato — vedi pushAlumnus),
+    // altrimenti solo chi è rimasto fino all'ultimo giorno finirebbe in bacheca.
+    const allTime = (S.squad || []).map((p) => ({
+      n: p.n, pos: p.pos,
+      apps: (p.careerApps || 0) + (p.seasonApps || 0),
+      goals: (p.careerGoals || 0) + (p.seasonGoals || 0),
+      assists: (p.careerAssists || 0) + (p.seasonAssists || 0),
+      cleanSheets: (p.careerCleanSheets || 0) + (p.seasonCleanSheets || 0),
+    })).concat(S.alumni || [])
+      .sort((a, b) => (b.goals + b.assists) - (a.goals + a.assists) || b.apps - a.apps)
+      .slice(0, 5);
     const sparkRow = (label, values, color) => `
       <div class="ow-spark-row"><span class="lbl">${label}</span></div>
       ${sparklineSVG(values, color)}`;
@@ -1397,6 +1736,11 @@
         </div>
         <div class="dyn-verdict">Livello massimo: <b>${DIVS[Math.max(0, topDiv)].name}</b> · Stadio: <b>${capOf().toLocaleString('it-IT')} posti</b> · Trofei: <b>${S.trophies.total}</b></div>
       </div>
+      ${allTime.length ? `
+      <div class="pl-card" style="padding:14px 12px">
+        <div class="dyn-top-sub" style="text-align:left;margin-bottom:8px">I migliori di sempre</div>
+        ${allTime.map((p) => `<div class="ow-fin-row"><span>${p.n}<small style="display:block;color:var(--muted)">${POS_LABEL[p.pos] || p.pos} · 🎽 ${p.apps} presenz${p.apps === 1 ? 'a' : 'e'}</small></span><b>${p.pos === 'POR' ? '🧤 ' + p.cleanSheets : '⚽ ' + p.goals + ' · 👟 ' + p.assists}</b></div>`).join('')}
+      </div>` : ''}
       <div class="pl-card" style="padding:14px 12px">
         <div class="dyn-top-sub" style="text-align:left;margin-bottom:10px">La bacheca, stagione per stagione</div>
         ${sparkRow('Posizione in classifica (su, meglio)', S.history.map((hh) => -hh.pos), 'var(--gold)')}
@@ -1601,9 +1945,11 @@
 
   function tableHTML() {
     const d = divOf();
-    return `<table class="dyn-table"><thead><tr><th>Squadra</th><th class="num">Pt</th><th class="num">DR</th></tr></thead><tbody>${S.table.map((t, i) => {
+    const played = Math.max(1, S.played || 0);
+    return `<table class="dyn-table"><thead><tr><th>Squadra</th><th>Mister</th><th class="num">Pt</th><th class="num">Media</th><th class="num">DR</th></tr></thead><tbody>${S.table.map((t, i) => {
       const zone = (d.euroSpots && i < d.euroSpots) ? 'ucl' : (d.uelPos && i === d.uelPos - 1) ? 'uel' : (d.confPos && i === d.confPos - 1) ? 'conf' : (d.promoted && i < d.promoted) ? 'ucl' : (d.playoff && i >= d.promoted && i < d.promoted + d.playoff) ? 'po' : (d.releg && i >= d.teams - d.releg) ? 'rel' : '';
-      return `<tr class="${t.me ? 'me' : ''} ${zone}"><td>${i + 1}. ${t.name}</td><td class="num">${t.pts}</td><td class="num">${t.gd > 0 ? '+' : ''}${t.gd}</td></tr>`;
+      const ppg = S.played > 0 ? (t.pts / played).toFixed(2) : '-';
+      return `<tr class="${t.me ? 'me' : ''} ${zone}"><td>${i + 1}. ${t.name}</td><td style="font-size:11px;color:var(--muted)">${t.mgr ? t.mgr.n : '-'}</td><td class="num">${t.pts}</td><td class="num">${ppg}</td><td class="num">${t.gd > 0 ? '+' : ''}${t.gd}</td></tr>`;
     }).join('')}</tbody></table>`;
   }
 
