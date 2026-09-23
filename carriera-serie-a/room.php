@@ -8,9 +8,15 @@
  * dei campi, un tetto ai giocatori per stanza, scritture con lock esclusivo, pulizia
  * automatica delle stanze vecchie.
  *
- * POST room.php {action:'create', name, club, div, difficulty}      -> crea una stanza, ti
+ * POST room.php {action:'create', name, club, div, difficulty, roomName?} -> crea una stanza, ti
  *   aggiunge come host+primo giocatore
- * POST room.php {action:'join', code, name, club}                   -> entra in una stanza esistente
+ * POST room.php {action:'join', code, name, club, div?}             -> entra in una stanza
+ *   esistente; `div` (opzionale) sceglie la propria categoria di partenza invece di ereditare
+ *   sempre quella con cui la stanza è nata (utile a chi entra a dynasty già avviata)
+ * POST room.php {action:'rename', code, playerId, roomName}         -> solo l'host: cambia il
+ *   nome della stanza (il codice resta comunque l'unico modo di entrarci)
+ * POST room.php {action:'chat', code, playerId, text}               -> aggiunge un messaggio
+ *   alla chat della stanza (log condiviso, ultimi 60 messaggi, nessuna logica di gioco)
  * POST room.php {action:'ready', code, playerId, ready, state?}     -> imposta il tuo stato
  *   "pronto" per la fase in cui si trova la stanza. In lobby (fase 'lobby'/'allReadyLobby') è
  *   solo un flag, nessuno stato richiesto. In sessione (fase 'session'/'readyForSim') quando
@@ -21,10 +27,15 @@
  * POST room.php {action:'pushMatchday', code, playerId, matchday, total, groups, force?} ->
  *   solo l'host: pubblica le classifiche aggiornate (una per categoria, `groups`) dopo aver
  *   simulato una giornata (fase -> 'simulating'); `matchday`/`total` sono il massimo fra tutte
- *   le categorie, per il progresso complessivo che vede l'host
+ *   le categorie, per il progresso complessivo che vede l'host. Ogni `groups[i]` porta anche
+ *   `resume` (i ctx completi di quel gruppo, non solo la classifica): se l'host sparisce a metà
+ *   simulazione, chiunque prenda il suo posto può ricostruire la run da qui invece di restare
+ *   bloccato sull'ultima giornata pubblicata.
  * POST room.php {action:'submitResult', code, playerId, results, force?} -> solo l'host:
  *   pubblica il risultato della stagione simulata (una voce per playerId), chiude il round
- *   (`done`); richiede che tutti abbiano premuto pronto in sessione, a meno di force=true
+ *   (`done`); richiede che tutti abbiano premuto pronto in sessione, a meno di force=true.
+ *   Aggiorna anche `hallOfFame` (uno storico sintetico per playerId: club, categoria,
+ *   posizione, trofei di quella stagione), che sopravvive ai round successivi.
  * POST room.php {action:'ackResult', code, playerId}                 -> segnali di aver
  *   scaricato il tuo risultato di questo round (solo un flag, nessuna logica)
  * POST room.php {action:'nextRound', code, playerId, force?}         -> solo l'host: apre la
@@ -34,6 +45,8 @@
  *   dynasty per tutti prima delle 20 stagioni (fase -> 'terminated', per sempre); ciascuno
  *   vende il proprio club per conto suo (in locale, endDynasty in sim.js — non è mai stato
  *   compito di questo endpoint calcolare quanto vale un club)
+ * POST room.php {action:'kick', code, playerId, targetId}           -> solo l'host: rimuove un
+ *   altro giocatore dalla stanza (stessa logica di 'leave', avviata da un altro)
  * POST room.php {action:'leave', code, playerId}                    -> esci dalla stanza
  * GET  room.php?action=state&code=XXXX                               -> stato attuale (poll)
  *
@@ -138,6 +151,13 @@ function public_room($room) {
     return $room;
 }
 
+// Log minimo, append-only, best-effort (mai bloccante: se fallisce non deve rompere la
+// richiesta) — utile solo per capire da fuori se una stanza è ancora viva prima che scada il
+// TTL lungo (180 giorni). Non è mai letto da questo script, solo scritto.
+function log_activity($dir, $code, $action) {
+    @file_put_contents($dir . '/activity.log', date('c') . ' ' . $code . ' ' . $action . "\n", FILE_APPEND | LOCK_EX);
+}
+
 $method = $_SERVER['REQUEST_METHOD'];
 
 if ($method === 'GET') {
@@ -155,10 +175,11 @@ if ($method !== 'POST') fail('Metodo non supportato.', 405);
 
 $raw = file_get_contents('php://input');
 // La lobby (create/join/leave) sta larga in pochi byte; 'ready' porta dentro una carriera
-// intera (rosa, storico, ecc.) e 'submitResult' porta i risultati di TUTTI i giocatori della
-// stanza insieme — un tetto largo (comunque ben dentro il post_max_size tipico di un hosting
-// condiviso) invece del 4KB che bastava alla sola lobby.
-if (strlen($raw) > 2 * 1024 * 1024) fail('Corpo della richiesta troppo grande.');
+// intera (rosa, storico, ecc.), 'submitResult' porta i risultati di TUTTI i giocatori insieme,
+// e 'pushMatchday' porta anche i ctx completi di ogni categoria (per poter riprendere la
+// simulazione se l'host sparisce) — un tetto largo (comunque ben dentro il post_max_size
+// tipico di un hosting condiviso) invece del 4KB che bastava alla sola lobby.
+if (strlen($raw) > 8 * 1024 * 1024) fail('Corpo della richiesta troppo grande.');
 $body = json_decode($raw, true);
 if (!is_array($body)) fail('JSON non valido.');
 
@@ -171,6 +192,7 @@ if ($action === 'create') {
     $club = clean_name($body['club'] ?? '', 24);
     $div = isset($body['div']) ? (int) $body['div'] : 0;
     $difficulty = clean_name($body['difficulty'] ?? '', 12);
+    $roomName = clean_name($body['roomName'] ?? '', 30);
     if (!in_array($difficulty, ['facile', 'medio', 'difficile', 'estremo'], true)) $difficulty = 'medio';
     if ($name === '' || $club === '') fail('Nome proprietario/club mancante.');
     if ($div < 0 || $div > 5) fail('Categoria non valida.');
@@ -188,6 +210,7 @@ if ($action === 'create') {
 
     $room = [
         'code' => $code,
+        'name' => $roomName !== '' ? $roomName : null,
         'createdAt' => $now,
         'updatedAt' => $now,
         'div' => $div,
@@ -197,13 +220,21 @@ if ($action === 'create') {
         'players' => [
             ['id' => $playerId, 'name' => $name, 'club' => $club, 'ready' => false, 'joinedAt' => $now],
         ],
+        'chat' => [],
+        'hallOfFame' => [],
     ];
     if (!write_json_file_locked(room_path($DIR, $code), $room)) fail('Impossibile salvare la stanza.', 500);
+    log_activity($DIR, $code, 'create');
     echo json_encode(['ok' => true, 'playerId' => $playerId, 'room' => public_room($room)]);
     exit;
 }
 
 if ($action === 'join') {
+    // Anche l'ingresso in una stanza è un buon momento per la pulizia opportunistica: create
+    // non è l'unica azione a poterla far scattare (altrimenti, se nessuno crea più stanze
+    // nuove sull'hosting, le vecchie abbandonate non vengono mai più toccate).
+    cleanup_old_rooms($DIR, $ROOM_TTL_SECONDS);
+
     $code = strtoupper(trim($body['code'] ?? ''));
     $name = clean_name($body['name'] ?? '', 18);
     $club = clean_name($body['club'] ?? '', 24);
@@ -223,14 +254,70 @@ if ($action === 'join') {
     foreach ($room['players'] as $p) {
         if (mb_strtolower($p['club']) === mb_strtolower($club)) { flock($fp, LOCK_UN); fclose($fp); fail('C\'è già un club con questo nome nella stanza.'); }
     }
+    // Chi entra a dynasty già avviata (fase 'session'/'readyForSim'/'simulating' di un round
+    // successivo al primo) può scegliere la propria categoria di partenza, invece di ereditare
+    // sempre quella con cui la stanza è nata — gli altri, ormai, potrebbero essere altrove.
+    $div = isset($body['div']) ? (int) $body['div'] : (int) ($room['div'] ?? 0);
+    if ($div < 0 || $div > 5) $div = (int) ($room['div'] ?? 0);
 
     $playerId = gen_player_id();
     $now = time();
-    $room['players'][] = ['id' => $playerId, 'name' => $name, 'club' => $club, 'ready' => false, 'joinedAt' => $now];
+    $room['players'][] = ['id' => $playerId, 'name' => $name, 'club' => $club, 'ready' => false, 'joinedAt' => $now, 'joinDiv' => $div];
     $room['updatedAt'] = $now;
     ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($room)); fflush($fp);
     flock($fp, LOCK_UN); fclose($fp);
+    log_activity($DIR, $code, 'join');
     echo json_encode(['ok' => true, 'playerId' => $playerId, 'room' => public_room($room)]);
+    exit;
+}
+
+if ($action === 'rename') {
+    $code = strtoupper(trim($body['code'] ?? ''));
+    $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    $roomName = clean_name($body['roomName'] ?? '', 30);
+    if ($code === '' || $playerId === '') fail('Richiesta non valida.');
+
+    $path = room_path($DIR, $code);
+    $fp = fopen($path, 'c+');
+    if (!$fp) fail('Stanza non trovata.', 404);
+    flock($fp, LOCK_EX);
+    $raw = stream_get_contents($fp);
+    $room = $raw ? json_decode($raw, true) : null;
+    if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
+    if ($room['hostId'] !== $playerId) { flock($fp, LOCK_UN); fclose($fp); fail('Solo l\'host può rinominare la stanza.', 403); }
+    $room['name'] = $roomName !== '' ? $roomName : null;
+    $room['updatedAt'] = time();
+    ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($room)); fflush($fp);
+    flock($fp, LOCK_UN); fclose($fp);
+    echo json_encode(['ok' => true, 'room' => public_room($room)]);
+    exit;
+}
+
+if ($action === 'chat') {
+    $code = strtoupper(trim($body['code'] ?? ''));
+    $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    $text = clean_name($body['text'] ?? '', 200);
+    if ($code === '' || $playerId === '' || $text === '') fail('Richiesta non valida.');
+
+    $path = room_path($DIR, $code);
+    $fp = fopen($path, 'c+');
+    if (!$fp) fail('Stanza non trovata.', 404);
+    flock($fp, LOCK_EX);
+    $raw = stream_get_contents($fp);
+    $room = $raw ? json_decode($raw, true) : null;
+    if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
+    $sender = null;
+    foreach ($room['players'] as $p) { if ($p['id'] === $playerId) { $sender = $p; break; } }
+    if (!$sender) { flock($fp, LOCK_UN); fclose($fp); fail('Non fai parte di questa stanza.', 404); }
+    if (!isset($room['chat']) || !is_array($room['chat'])) $room['chat'] = [];
+    $room['chat'][] = ['id' => $playerId, 'name' => $sender['name'], 'club' => $sender['club'], 'text' => $text, 'at' => time()];
+    // Solo gli ultimi 60 messaggi: una chat di stanza, non un archivio — tiene la stanza
+    // leggera anche dopo mesi di dynasty.
+    if (count($room['chat']) > 60) $room['chat'] = array_slice($room['chat'], -60);
+    $room['updatedAt'] = time();
+    ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($room)); fflush($fp);
+    flock($fp, LOCK_UN); fclose($fp);
+    echo json_encode(['ok' => true, 'room' => public_room($room)]);
     exit;
 }
 
@@ -362,6 +449,29 @@ if ($action === 'submitResult') {
     $room['results'] = $results;
     $room['phase'] = 'done';
     unset($room['live']);
+    // Albo d'oro della stanza: un riepilogo sintetico per playerId che sopravvive ai round
+    // successivi (a differenza di `results`, che nextRound azzera) — l'unico posto dove
+    // rimane traccia di TUTTA la dynasty vista dalla stanza, non solo dal salvataggio del
+    // singolo giocatore. Non è mai calcolo di gioco: solo estrazione dei campi già pronti
+    // dentro ctx._end che l'host ha calcolato.
+    if (!isset($room['hallOfFame']) || !is_array($room['hallOfFame'])) $room['hallOfFame'] = [];
+    foreach ($results as $pid => $ctx) {
+        if (!is_array($ctx)) continue;
+        $end = $ctx['_end'] ?? null;
+        if (!is_array($end)) continue;
+        if (!isset($room['hallOfFame'][$pid]) || !is_array($room['hallOfFame'][$pid])) $room['hallOfFame'][$pid] = [];
+        $room['hallOfFame'][$pid][] = [
+            'season' => $ctx['season'] ?? null,
+            'owner' => $ctx['owner'] ?? null,
+            'club' => $ctx['club'] ?? null,
+            'div' => $ctx['div'] ?? null,
+            'pos' => $end['pos'] ?? null,
+            'promoted' => !empty($end['promoted']),
+            'relegated' => !empty($end['relegated']),
+            'title' => !empty($end['title']),
+            'trophies' => isset($end['trophies']) && is_array($end['trophies']) ? $end['trophies'] : [],
+        ];
+    }
     $room['updatedAt'] = time();
     ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($room)); fflush($fp);
     flock($fp, LOCK_UN); fclose($fp);
@@ -445,6 +555,40 @@ if ($action === 'terminate') {
     $room['updatedAt'] = time();
     ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($room)); fflush($fp);
     flock($fp, LOCK_UN); fclose($fp);
+    log_activity($DIR, $code, 'terminate');
+    echo json_encode(['ok' => true, 'room' => public_room($room)]);
+    exit;
+}
+
+if ($action === 'kick') {
+    $code = strtoupper(trim($body['code'] ?? ''));
+    $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    $targetId = is_string($body['targetId'] ?? null) ? $body['targetId'] : '';
+    if ($code === '' || $playerId === '' || $targetId === '') fail('Richiesta non valida.');
+    if ($targetId === $playerId) fail('Non puoi espellere te stesso: usa "Esci dalla stanza".');
+
+    $path = room_path($DIR, $code);
+    $fp = fopen($path, 'c+');
+    if (!$fp) fail('Stanza non trovata.', 404);
+    flock($fp, LOCK_EX);
+    $raw = stream_get_contents($fp);
+    $room = $raw ? json_decode($raw, true) : null;
+    if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
+    if ($room['hostId'] !== $playerId) { flock($fp, LOCK_UN); fclose($fp); fail('Solo l\'host può espellere un giocatore.', 403); }
+    if (!in_array($targetId, array_column($room['players'], 'id'), true)) { flock($fp, LOCK_UN); fclose($fp); fail('Giocatore non trovato in questa stanza.', 404); }
+    $room['players'] = array_values(array_filter($room['players'], function ($p) use ($targetId) { return $p['id'] !== $targetId; }));
+    // Stessa logica di "leave" da qui in poi: la stanza si adatta come se se ne fosse uscito
+    // da solo (fase invariata a simulazione/round chiuso/terminata, altrimenti si rifà pronto).
+    $prevPhase = $room['phase'] ?? 'lobby';
+    if (!in_array($prevPhase, ['simulating', 'done', 'terminated'], true)) {
+        $room['phase'] = in_array($prevPhase, ['session', 'readyForSim'], true) ? 'session' : 'lobby';
+        foreach ($room['players'] as &$p) { $p['ready'] = false; }
+        unset($p);
+    }
+    $room['updatedAt'] = time();
+    ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($room)); fflush($fp);
+    flock($fp, LOCK_UN); fclose($fp);
+    log_activity($DIR, $code, 'kick:' . $targetId);
     echo json_encode(['ok' => true, 'room' => public_room($room)]);
     exit;
 }

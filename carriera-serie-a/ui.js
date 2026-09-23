@@ -282,7 +282,7 @@
   function readMpSession() { try { return JSON.parse(localStorage.getItem(MP_SESSION_KEY)); } catch (e) { return null; } }
   function writeMpSession(s) { try { localStorage.setItem(MP_SESSION_KEY, JSON.stringify(s)); } catch (e) {} }
   function clearMpSession() { try { localStorage.removeItem(MP_SESSION_KEY); } catch (e) {} }
-  function stopMpPolling() { if (mpPollTimer) { clearInterval(mpPollTimer); mpPollTimer = null; } }
+  function stopMpPolling() { if (mpPollTimer) { clearTimeout(mpPollTimer); mpPollTimer = null; } }
 
   async function mpApi(action, payload) {
     const res = await fetch('room.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ action }, payload)) });
@@ -326,6 +326,7 @@
 
   function openMpCreateForm() {
     overlay(`<h2>🆕 Crea una stanza</h2>
+      <label class="dyn-field"><span>Nome della stanza (facoltativo)</span><input id="mpRoomName" type="text" maxlength="30" placeholder="Es. Lega degli amici" autocomplete="off" /></label>
       <label class="dyn-field"><span>Il tuo nome</span><input id="mpName" type="text" maxlength="18" placeholder="Il tuo nome" autocomplete="off" /></label>
       <label class="dyn-field"><span>Nome del tuo club</span><input id="mpClub" type="text" maxlength="24" placeholder="Nome del club" autocomplete="off" /></label>
       <label class="dyn-field"><span>Categoria di partenza (condivisa da tutti)</span>
@@ -343,8 +344,9 @@
       const name = ($('mpName').value || '').trim(), club = ($('mpClub').value || '').trim();
       if (!name || !club) { toast('Inserisci nome e club.'); return; }
       const div = +$('mpDiv').value, difficulty = $('mpDiff').value;
+      const roomName = ($('mpRoomName').value || '').trim();
       try {
-        const data = await mpApi('create', { name, club, div, difficulty });
+        const data = await mpApi('create', { name, club, div, difficulty, roomName });
         const saveId = createRoomCareer(name, club, div, difficulty);
         writeMpSession({ code: data.room.code, playerId: data.playerId, saveId });
         mpLastPhase = null;
@@ -359,7 +361,10 @@
       <label class="dyn-field"><span>Codice stanza</span><input id="mpCode" type="text" maxlength="4" placeholder="ABCD" style="text-transform:uppercase" autocomplete="off" /></label>
       <label class="dyn-field"><span>Il tuo nome</span><input id="mpName" type="text" maxlength="18" placeholder="Il tuo nome" autocomplete="off" /></label>
       <label class="dyn-field"><span>Nome del tuo club</span><input id="mpClub" type="text" maxlength="24" placeholder="Nome del club" autocomplete="off" /></label>
-      <p class="ow-sub">Appena entri ti assegniamo subito un club nuovo nella categoria della stanza: potrai rifinirlo prima di premere Pronto.</p>
+      <label class="dyn-field"><span>Categoria di partenza</span>
+        <select id="mpJoinDiv"><option value="">Stessa della stanza</option>${DIVS.map((d, i) => `<option value="${i}">${d.name}</option>`).join('')}</select>
+      </label>
+      <p class="ow-sub">Appena entri ti assegniamo subito un club nuovo: potrai rifinirlo prima di premere Pronto. Se la dynasty è già avanti e gli altri sono ormai in categorie diverse, scegli pure la tua invece di ereditare quella con cui la stanza è nata.</p>
       <div class="dyn-modal-actions">
         <button class="dyn-btn dyn-btn-primary" id="mpJoinGo">Entra</button>
         <button class="dyn-btn" id="mpBack">Indietro</button>
@@ -367,10 +372,15 @@
     $('mpJoinGo').onclick = async () => {
       const code = ($('mpCode').value || '').trim().toUpperCase();
       const name = ($('mpName').value || '').trim(), club = ($('mpClub').value || '').trim();
+      const divVal = $('mpJoinDiv').value;
       if (!code || !name || !club) { toast('Compila tutti i campi.', 'error'); return; }
       try {
-        const data = await mpApi('join', { code, name, club });
-        const saveId = createRoomCareer(name, club, data.room.div, data.room.difficulty);
+        const payload = { code, name, club };
+        if (divVal !== '') payload.div = +divVal;
+        const data = await mpApi('join', payload);
+        const me = data.room.players.find((p) => p.id === data.playerId);
+        const div = (me && me.joinDiv != null) ? me.joinDiv : data.room.div;
+        const saveId = createRoomCareer(name, club, div, data.room.difficulty);
         writeMpSession({ code, playerId: data.playerId, saveId });
         mpLastPhase = null;
         renderLobby(data.room, data.playerId);
@@ -431,37 +441,62 @@
     } else if (dynastyOver) stageLabel = '🏆 Dynasty conclusa dopo ' + MAX_SEASONS + ' stagioni! Scarica il tuo resoconto finale quando vuoi.';
     else if (done) stageLabel = '🏁 Stagione pronta! Scarica il tuo risultato quando vuoi.';
 
-    // Un suono solo quando la fase è appena cambiata rispetto all'ultimo render (non ad
-    // ogni poll che ridisegna la stessa fase) — così anche chi non ha appena cliccato un
-    // bottone si accorge che la stanza è passata avanti.
-    if (DynSound && mpLastPhase !== null && mpLastPhase !== room.phase) {
-      if (room.phase === 'session' || room.phase === 'simulating' || room.phase === 'done') DynSound.chime();
-      else if (room.phase === 'allReadyLobby' || room.phase === 'readyForSim') DynSound.notify();
-      else if (room.phase === 'terminated') DynSound.sadDown();
+    // Un suono (e, se concesso, una notifica di sistema se la scheda è in background) solo
+    // quando la fase è appena cambiata rispetto all'ultimo render — non ad ogni poll che
+    // ridisegna la stessa fase — così anche chi non ha appena cliccato un bottone si accorge
+    // che la stanza è passata avanti anche senza tenere la pagina in primo piano.
+    if (mpLastPhase !== null && mpLastPhase !== room.phase) {
+      if (DynSound) {
+        if (room.phase === 'session' || room.phase === 'simulating' || room.phase === 'done') DynSound.chime();
+        else if (room.phase === 'allReadyLobby' || room.phase === 'readyForSim') DynSound.notify();
+        else if (room.phase === 'terminated') DynSound.sadDown();
+      }
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.hidden) {
+        try { new Notification('👥 Stanza ' + room.code, { body: stageLabel || 'Qualcosa è cambiato nella stanza.' }); } catch (e) {}
+      }
     }
     mpLastPhase = room.phase;
 
     // Durante la simulazione niente più elenco "chi è pronto": al suo posto la classifica
-    // della TUA categoria, che si aggiorna ad ogni giornata che l'host manda avanti.
+    // della TUA categoria, che si aggiorna ad ogni giornata che l'host manda avanti — con
+    // l'ultimo risultato che hai giocato in evidenza (buildMatchdayNews), sfide fra presidenti
+    // segnalate a parte invece di passare come una partita come le altre.
     const playersListHTML = `<div class="dyn-modal-actions" style="gap:6px">
-        ${room.players.map((p) => `<div class="ow-fin-row"><span>${p.club}${p.id === room.hostId ? ' 👑' : ''}<small style="display:block;color:var(--muted)">${p.name}</small></span><b class="${p.ready ? 'good' : ''}">${p.ready ? '✅ Pronto' : '⏳ In attesa'}</b></div>`).join('')}
+        ${room.players.map((p) => `<div class="ow-fin-row"><span>${p.club}${p.id === room.hostId ? ' 👑' : ''}<small style="display:block;color:var(--muted)">${p.name}</small></span><b class="${p.ready ? 'good' : ''}">${p.ready ? '✅ Pronto' : '⏳ In attesa'}</b>${isHost && p.id !== playerId ? `<button class="ow-x" data-kick="${p.id}" title="Espelli dalla stanza">✖</button>` : ''}</div>`).join('')}
       </div>`;
+    const myNews = myGroup && myGroup.news ? myGroup.news.find((n) => me && n.club === me.club) : null;
+    const newsHTML = myNews ? `<div class="ow-fin-row" style="margin-bottom:6px"><span>${myNews.vsHuman ? '🤝 Sfida fra presidenti vs ' + myNews.vsHumanClub : (myNews.home ? 'In casa vs ' : 'In trasferta vs ') + myNews.opp}</span><b class="${myNews.res === 'W' ? 'good' : myNews.res === 'L' ? 'bad' : ''}">${myNews.gf}-${myNews.ga}</b></div>` : '';
     // Classifica intera della TUA categoria (tutte le squadre, non solo gli umani della
     // stanza): stesse zone colorate (promozione/playoff/retrocessione/coppe) della classifica
     // del singolo giocatore, con le righe umane in evidenza (classe "me") invece di una sola.
     const d = DIVS[myDiv] || {};
-    const liveTableHTML = `<div style="max-height:48vh;overflow:auto;margin:0 -6px">
+    const liveTableHTML = `${newsHTML}<div style="max-height:44vh;overflow:auto;margin:0 -6px">
       ${myGroup ? `<table class="dyn-table"><thead><tr><th>Squadra</th><th>Mister</th><th class="num">Pt</th><th class="num">DR</th></tr></thead><tbody>${myGroup.table.map((r, i) => {
         const zone = (d.euroSpots && i < d.euroSpots) ? 'ucl' : (d.uelPos && i === d.uelPos - 1) ? 'uel' : (d.confPos && i === d.confPos - 1) ? 'conf' : (d.promoted && i < d.promoted) ? 'ucl' : (d.playoff && i >= d.promoted && i < d.promoted + d.playoff) ? 'po' : (d.releg && i >= d.teams - d.releg) ? 'rel' : '';
         return `<tr class="${r.isHuman ? 'me' : ''} ${zone}"><td>${i + 1}. ${r.club}</td><td style="font-size:11px;color:var(--muted)">${r.mgr || '-'}</td><td class="num">${r.pts}</td><td class="num">${r.gd > 0 ? '+' : ''}${r.gd}</td></tr>`;
       }).join('')}</tbody></table>` : '<div class="ow-sub">In attesa che l\'host avvii la simulazione…</div>'}
       </div>`;
+    // Chat semplicissima della stanza: ultimi messaggi (room.chat, room.php li tiene già
+    // limitati agli ultimi 60) più un campo per scriverne uno nuovo — visibile in ogni fase,
+    // per coordinarsi senza dover uscire dall'app.
+    const chat = room.chat || [];
+    const chatHTML = `
+      <div class="ow-sec-title" style="margin-top:10px">💬 Chat della stanza</div>
+      <div id="mpChatLog" style="max-height:100px;overflow:auto;font-size:12px;background:rgba(127,127,127,.08);border-radius:8px;padding:6px 8px;margin-bottom:6px">
+        ${chat.length ? chat.map((m) => `<div style="margin-bottom:2px"><b>${m.club || m.name}:</b> ${m.text}</div>`).join('') : '<div class="ow-sub" style="margin:0">Nessun messaggio ancora.</div>'}
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        <input id="mpChatInput" type="text" maxlength="200" placeholder="Scrivi un messaggio…" autocomplete="off" style="flex:1;min-width:0" />
+        <button class="dyn-btn dyn-btn-primary" id="mpChatSend">Invia</button>
+      </div>`;
+    const canNotify = typeof Notification !== 'undefined';
 
     overlay(`
-      <h2>👥 Stanza ${room.code}</h2>
+      <h2>👥 ${room.name ? room.name : ('Stanza ' + room.code)}${isHost ? ` <button class="ow-x" id="mpRenameBtn" title="Rinomina stanza" style="font-size:13px;vertical-align:middle">✏️</button>` : ''}</h2>
       <p class="ow-sub">${(DIVS[room.div] || {}).name || ''} · condividi il codice <b>${room.code}</b> con chi manca.</p>
       <p class="ow-sub" style="text-align:center">${stageLabel}</p>
       ${inSimStage ? liveTableHTML : playersListHTML}
+      ${chatHTML}
       <div class="dyn-modal-actions">
         ${terminated ? `
           <button class="dyn-btn dyn-btn-primary" id="mpSellEndBtn">💷 Vendi il club e concludi la carriera</button>
@@ -473,9 +508,11 @@
             ${isHost && !allAcked ? `<button class="dyn-btn" id="mpForceNextRoundBtn">⏭️ Forza senza aspettare tutti</button>` : ''}
           `}
         ` : inSimStage ? `
-          ${isHost ? (simDone
-            ? `<button class="dyn-btn dyn-btn-primary" id="mpFinishBtn">🏁 Vedi resoconto</button>`
-            : `<button class="dyn-btn dyn-btn-primary" id="mpNextDayBtn">▶️ Prossima giornata${live ? ' (' + live.matchday + '/' + live.total + ')' : ''}</button>`)
+          ${isHost ? (!mpHostRuns
+            ? `<button class="dyn-btn dyn-btn-primary" id="mpResumeSimBtn">🔄 Riprendi la simulazione da qui</button>`
+            : simDone
+              ? `<button class="dyn-btn dyn-btn-primary" id="mpFinishBtn">🏁 Vedi resoconto</button>`
+              : `<button class="dyn-btn dyn-btn-primary" id="mpNextDayBtn">▶️ Prossima giornata${live ? ' (' + live.matchday + '/' + live.total + ')' : ''}</button>`)
             : `<div class="ow-sub">⏳ L'host sta simulando le giornate, aggiornamento automatico.</div>`}
         ` : `
           ${inSessionStage && !(me && me.ready) ? `<button class="dyn-btn" id="mpManageBtn">🏟️ Gestisci la tua squadra</button>` : ''}
@@ -485,9 +522,31 @@
           ${isHost && inSessionStage ? `<button class="dyn-btn dyn-btn-primary" id="mpStartSimBtn" ${allSessionReady ? '' : 'disabled'}>▶️ Inizia simulazione${allSessionReady ? '' : ' (' + readyCount + '/' + total + ' pronti)'}</button>` : ''}
           ${isHost && inSessionStage && !allSessionReady && readyCount > 0 ? `<button class="dyn-btn" id="mpForceSimBtn">⏭️ Forza simulazione senza aspettare tutti</button>` : ''}
         `}
+        <button class="dyn-btn" id="mpHofBtn">🏆 Albo d'oro della stanza</button>
+        ${canNotify && Notification.permission === 'default' ? `<button class="dyn-btn" id="mpNotifyBtn">🔔 Avvisami se cambia qualcosa</button>` : ''}
         ${isHost && !terminated ? `<button class="dyn-btn ow-danger" id="mpTerminateBtn">🛑 Termina la dynasty per tutti</button>` : ''}
         <button class="dyn-btn ow-danger" id="mpLeaveBtn">Esci dalla stanza</button>
       </div>`);
+    const chatLogEl = $('mpChatLog'); if (chatLogEl) chatLogEl.scrollTop = chatLogEl.scrollHeight;
+    const renameBtn = $('mpRenameBtn');
+    if (renameBtn) renameBtn.onclick = () => confirmRenameRoom(room, playerId);
+    document.querySelectorAll('#owOverlayModal [data-kick]').forEach((el) => el.addEventListener('click', () => confirmKickPlayer(room, playerId, el.dataset.kick)));
+    const chatSendBtn = $('mpChatSend');
+    const chatInput = $('mpChatInput');
+    if (chatSendBtn) chatSendBtn.onclick = async () => {
+      const text = (chatInput.value || '').trim();
+      if (!text) return;
+      chatInput.value = '';
+      try { const data = await mpApi('chat', { code: room.code, playerId, text }); renderLobby(data.room, playerId); }
+      catch (e) { toast(e.message || 'Messaggio non inviato.', 'error'); }
+    };
+    if (chatInput) chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); chatSendBtn.click(); } });
+    const hofBtn = $('mpHofBtn');
+    if (hofBtn) hofBtn.onclick = () => showHallOfFame(room, playerId);
+    const notifyBtn = $('mpNotifyBtn');
+    if (notifyBtn) notifyBtn.onclick = async () => { try { await Notification.requestPermission(); } catch (e) {} renderLobby(room, playerId); };
+    const resumeSimBtn = $('mpResumeSimBtn');
+    if (resumeSimBtn) resumeSimBtn.onclick = () => resumeMatchdaySimFromLive(room, playerId);
     const manageBtn = $('mpManageBtn');
     if (manageBtn) manageBtn.onclick = () => {
       const sess = readMpSession();
@@ -545,7 +604,11 @@
         // Ogni categoria avanza di una giornata per conto suo: chi ha meno giornate totali
         // (categorie con meno squadre) semplicemente smette di avanzare prima delle altre.
         mpHostRuns.forEach((run) => { if (run.matchday < run.total) stepHostMatchday(run); });
-        if (DynSound) DynSound.tap();
+        // Un suono diverso quando questa giornata ha visto almeno una sfida diretta fra due
+        // presidenti (vsHuman, sim.js: stepHostMatchday) — il momento più bello del
+        // multiplayer, non deve passare come una giornata come le altre.
+        const anyHumanClash = mpHostRuns.some((run) => run.ctxs.some((c) => { const r = c.results[c.results.length - 1]; return r && r.vsHuman; }));
+        if (DynSound) { if (anyHumanClash) DynSound.chime(); else DynSound.tap(); }
         await pushMatchdaySnapshot(room, playerId, mpHostRuns, true);
       } catch (e) { toast(e.message || 'Errore di rete.', 'error'); nextDayBtn.disabled = false; }
     };
@@ -590,14 +653,21 @@
       closeOverlay();
     };
     // La stanza continua a cambiare anche a stagione pubblicata (l'host può aprire la
-    // prossima appena tutti hanno scaricato): niente più stop del poll su "done".
-    mpPollTimer = setInterval(async () => {
-      try {
-        const fresh = await mpFetchState(room.code);
-        if (!fresh.players.some((p) => p.id === playerId)) { stopMpPolling(); clearMpSession(); toast('Sei stato rimosso dalla stanza.'); closeOverlay(); return; }
-        renderLobby(fresh, playerId);
-      } catch (e) { /* stanza sparita o rete assente per un giro: si riprova al prossimo poll */ }
-    }, 3000);
+    // prossima appena tutti hanno scaricato): niente più stop del poll su "done". Il ritmo si
+    // allunga da solo (fino a un tetto di 15s) finché non cambia nulla — confrontando
+    // `updatedAt`, che ogni azione che tocca la stanza aggiorna — e torna subito a 3s appena
+    // succede qualcosa: niente più un poll fisso a raffica per ore su una lobby ferma.
+    const schedulePoll = (lastUpdatedAt, delay) => {
+      mpPollTimer = setTimeout(async () => {
+        try {
+          const fresh = await mpFetchState(room.code);
+          if (!fresh.players.some((p) => p.id === playerId)) { stopMpPolling(); clearMpSession(); toast('Sei stato rimosso dalla stanza.'); closeOverlay(); return; }
+          if (fresh.updatedAt !== lastUpdatedAt) { renderLobby(fresh, playerId); return; }
+          schedulePoll(lastUpdatedAt, Math.min(Math.round(delay * 1.6), 15000));
+        } catch (e) { schedulePoll(lastUpdatedAt, delay); }   // rete assente per un giro: si riprova senza rallentare
+      }, delay);
+    };
+    schedulePoll(room.updatedAt, 3000);
   }
 
   // Conferma per l'host: chiude la dynasty di questa stanza per sempre, prima delle 20
@@ -648,6 +718,72 @@
     $('ovMpBack').onclick = () => renderLobby(room, playerId);
   }
 
+  // Solo l'host: cambia il nome della stanza (il codice resta comunque l'unico modo di
+  // entrarci — il nome è solo un'etichetta comoda al posto del codice a 4 lettere).
+  function confirmRenameRoom(room, playerId) {
+    overlay(`
+      <h2>✏️ Rinomina stanza</h2>
+      <label class="dyn-field"><span>Nome della stanza</span><input id="mpRenameInput" type="text" maxlength="30" value="${room.name || ''}" placeholder="Es. Lega degli amici" autocomplete="off" /></label>
+      <div class="dyn-modal-actions">
+        <button class="dyn-btn dyn-btn-primary" id="ovRenameGo">Salva</button>
+        <button class="dyn-btn" id="ovRenameNo">Annulla</button>
+      </div>`);
+    $('ovRenameGo').onclick = async () => {
+      const roomName = ($('mpRenameInput').value || '').trim();
+      try { const data = await mpApi('rename', { code: room.code, playerId, roomName }); renderLobby(data.room, playerId); }
+      catch (e) { toast(e.message || 'Impossibile rinominare la stanza.', 'error'); renderLobby(room, playerId); }
+    };
+    $('ovRenameNo').onclick = () => renderLobby(room, playerId);
+  }
+
+  // Solo l'host: espelle un altro giocatore dalla stanza (stessa richiesta di conferma delle
+  // altre azioni senza ritorno di questa stanza).
+  function confirmKickPlayer(room, playerId, targetId) {
+    const target = room.players.find((p) => p.id === targetId);
+    overlay(`
+      <h2>✖ Espelli dalla stanza</h2>
+      <p>Rimuove <b>${target ? target.club : 'questo giocatore'}</b>${target ? ' (' + target.name + ')' : ''} dalla stanza. Non si può annullare.</p>
+      <div class="dyn-modal-actions">
+        <button class="dyn-btn ow-danger" id="ovKickGo">Espelli</button>
+        <button class="dyn-btn" id="ovKickNo">Annulla</button>
+      </div>`);
+    $('ovKickGo').onclick = async () => {
+      try { const data = await mpApi('kick', { code: room.code, playerId, targetId }); renderLobby(data.room, playerId); }
+      catch (e) { toast(e.message || 'Impossibile espellere il giocatore.', 'error'); renderLobby(room, playerId); }
+    };
+    $('ovKickNo').onclick = () => renderLobby(room, playerId);
+  }
+
+  // Albo d'oro della stanza: lo storico sintetico per playerId che room.php accumula ad ogni
+  // submitResult (room.hallOfFame) — sopravvive ai round successivi, a differenza di
+  // `results` che nextRound azzera, quindi è l'unico posto dove si vede l'intera dynasty
+  // vista dalla stanza invece che dal solo salvataggio del singolo giocatore.
+  function showHallOfFame(room, playerId) {
+    const hof = room.hallOfFame || {};
+    const rows = room.players.map((p) => ({ p, seasons: hof[p.id] || [] }))
+      .concat(Object.keys(hof).filter((pid) => !room.players.some((p) => p.id === pid))
+        .map((pid) => ({ p: { id: pid, name: '(uscito dalla stanza)', club: (hof[pid][0] && hof[pid][0].club) || '?' }, seasons: hof[pid] })));
+    overlay(`
+      <h2>🏆 Albo d'oro della stanza</h2>
+      <div style="max-height:62vh;overflow:auto;margin:0 -6px">
+        ${rows.length ? rows.map(({ p, seasons }) => {
+          const titles = seasons.filter((s) => s.title).length;
+          const trophyCount = seasons.reduce((a, s) => a + (s.trophies ? s.trophies.length : 0), 0);
+          return `<div class="ow-sec" style="margin-bottom:12px">
+            <div class="ow-sec-title">${p.club}<small style="display:block;color:var(--muted);font-weight:normal">${p.name}</small></div>
+            <div class="ow-fin-row"><span>Stagioni giocate</span><b>${seasons.length}</b></div>
+            <div class="ow-fin-row"><span>Titoli vinti</span><b>${titles}</b></div>
+            <div class="ow-fin-row"><span>Trofei totali</span><b>${trophyCount}</b></div>
+            ${seasons.length ? `<div style="overflow-x:auto"><table class="dyn-table"><thead><tr><th>S</th><th>Categoria</th><th class="num">Pos</th><th>Trofei</th></tr></thead><tbody>
+              ${seasons.map((s) => `<tr><td>${s.season ?? '-'}${s.promoted ? ' ⬆️' : s.relegated ? ' ⬇️' : ''}</td><td>${(DIVS[s.div] || {}).name || s.div}</td><td class="num">${s.pos ?? '-'}</td><td style="font-size:11px">${s.trophies && s.trophies.length ? s.trophies.join(', ') : '-'}</td></tr>`).join('')}
+            </tbody></table></div>` : '<div class="ow-sub">Ancora nessuna stagione conclusa.</div>'}
+          </div>`;
+        }).join('') : '<div class="ow-sub">Ancora nessuna stagione conclusa in questa stanza.</div>'}
+      </div>
+      <div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovHofClose">Chiudi</button></div>`);
+    $('ovHofClose').onclick = () => renderLobby(room, playerId);
+  }
+
   // Classifica di UNA categoria: la stagione intera (tutti i club, bot compresi — gli stessi
   // che ctx.table già tiene per ciascun umano di quel gruppo, con le squadre più scarse del
   // pool sostituite dagli umani in fase di setup), non solo i club umani di quel gruppo. Si
@@ -667,9 +803,23 @@
     }).sort((a, b) => b.pts - a.pts || b.gd - a.gd);
   }
 
+  // L'ultima giornata giocata da ciascun umano del gruppo, per il piccolo "notiziario" che
+  // ognuno vede sopra la propria classifica — con le sfide dirette fra presidenti (vsHuman,
+  // sim.js: stepHostMatchday) segnalate a parte invece di passare come una partita come le altre.
+  function buildMatchdayNews(run) {
+    return run.ctxs.map((c) => {
+      const row = (c.results || [])[c.results.length - 1];
+      if (!row) return null;
+      return { club: c.club, opp: row.opp, home: row.home, gf: row.gf, ga: row.ga, res: row.res, vsHuman: !!row.vsHuman, vsHumanClub: row.vsHumanClub || null };
+    }).filter(Boolean);
+  }
+
   // Una "run" per categoria (`runs`, array): ognuna col proprio numero di giornate totali
   // (categorie con meno squadre finiscono prima). Il progresso complessivo che l'host vede sul
-  // suo bottone è il massimo fra tutte — "fatto" scatta solo quando lo sono TUTTE.
+  // suo bottone è il massimo fra tutte — "fatto" scatta solo quando lo sono TUTTE. `resume`
+  // porta anche i ctx completi del gruppo (non solo la classifica): se l'host sparisce a metà
+  // simulazione, chiunque prenda il suo posto può ricostruire la run da lì (resumeMatchdaySimFromLive)
+  // invece di restare bloccato sull'ultima giornata pubblicata.
   function buildLiveGroups(runs) {
     return runs.map((run) => ({
       div: run.div,
@@ -677,6 +827,8 @@
       matchday: run.matchday,
       total: run.total,
       table: buildLiveTable(run),
+      news: buildMatchdayNews(run),
+      resume: { ctxs: run.ctxs, bots: run.bots, playerIds: run.playerIds },
     }));
   }
 
@@ -686,6 +838,31 @@
     const total = Math.max(...groups.map((g) => g.total));
     const data = await mpApi('pushMatchday', { code: room.code, playerId, matchday, total, groups, force: !!force });
     renderLobby(data.room, playerId);
+  }
+
+  // Se l'host di questa scheda non ha (più) la simulazione in memoria — perché l'ha aperta di
+  // nuovo dopo un ricaricamento, o perché il ruolo di host è appena passato a lei/lui dopo che
+  // l'host originale è uscito a metà simulazione (room.php: leave) — la ricostruisce dall'ultimo
+  // `resume` pubblicato, invece di restare bloccati per sempre sull'ultima giornata vista.
+  function resumeMatchdaySimFromLive(room, playerId) {
+    const groups = (room.live && room.live.groups) || [];
+    const runs = groups.map((g) => {
+      if (!g.resume || !Array.isArray(g.resume.ctxs) || !g.resume.ctxs.length) return null;
+      const ctxs = g.resume.ctxs;
+      return {
+        ctxs,
+        bots: g.resume.bots || [],
+        playerIds: g.resume.playerIds || [],
+        fixtures: ctxs.map((c) => c.fixtures),
+        div: g.div,
+        matchday: g.matchday,
+        total: g.total,
+      };
+    }).filter(Boolean);
+    if (!runs.length) { toast('Nessun dato di ripresa disponibile: bisognerà aspettare il prossimo "Vedi resoconto" forzato o ricominciare da un nuovo round.', 'error'); return; }
+    mpHostRuns = runs;
+    toast('Simulazione ripresa dall\'ultima giornata pubblicata.', 'success');
+    renderLobby(room, playerId);
   }
 
   // L'host: raggruppa i giocatori pronti per categoria (dalla seconda stagione in poi possono
@@ -2075,6 +2252,10 @@
         <div class="dyn-trophies">${trophyChips}</div>
         ${playoffHTML}
         ${cupPathHTML}
+        ${(e.mpEvents && e.mpEvents.length) ? `
+          <div class="ow-sec-title" style="margin-top:12px">📰 Cronaca della stagione</div>
+          ${e.mpEvents.map((ev) => `<div class="ow-fin-row" style="align-items:flex-start"><span>${ev.icon || '📰'} <b>${ev.title || ''}</b><small style="display:block;color:var(--muted)">${ev.text || ''}</small></span></div>`).join('')}
+        ` : ''}
         ${tableRecapHTML}
         <div class="ow-sec-title" style="margin-top:12px">📋 Bilancio economico</div>
         ${e.statement.map((r) => r[1] === 0 && r[0].indexOf('avvio') > 0 ? `<div class="ow-fin-row memo"><span>${r[0]}</span><b>già pagati</b></div>` : `<div class="ow-fin-row"><span>${r[0]}</span><b class="${r[1] < 0 ? 'bad' : ''}">${r[1] < 0 ? '-' : '+'}${fmtMoney(Math.abs(r[1]))}</b></div>`).join('')}

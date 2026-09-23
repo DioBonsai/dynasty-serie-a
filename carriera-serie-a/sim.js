@@ -1296,10 +1296,40 @@
     const eligible = NARRATIVE_EVENTS.filter((e) => !e.requires || e.requires(ctx));
     if (!eligible.length) return false;
     const ev = pick(eligible);
-    if (ctx !== S) return false;   // niente popup per un club "remoto" simulato in blocco dall'host
+    // Niente popup per un club "remoto" simulato in blocco dall'host multiplayer — ma l'evento
+    // non sparisce nel nulla: si auto-risolve con un esito semplice e resta nel resoconto di
+    // fine stagione (vedi autoResolveNarrativeEvent), così la dynasty condivisa non perde del
+    // tutto la "voce" degli imprevisti che la rende viva in singolo.
+    if (ctx !== S) { autoResolveNarrativeEvent(ev, ctx); return false; }
     ctx._pause = true;
     openNarrativeEventOverlay(ev);
     return true;
+  }
+
+  // Risoluzione automatica di un evento narrativo per un ctx "remoto" (host multiplayer): le
+  // scelte con un `apply` su misura scrivono sempre su `S` per costruzione (rinnovo sponsor,
+  // rischio infortunio di un giocatore preciso) — mai sicure da eseguire su un ctx che non è
+  // quello attivo, quindi si scartano a favore dell'altra opzione (o l'evento passa senza
+  // effetto meccanico, restando comunque annotato). Gli eventi senza scelte usano sempre solo
+  // campi numerici semplici, mai `apply` — sicuri da applicare così come sono.
+  function autoResolveNarrativeEvent(ev, ctx) {
+    const built = typeof ev.build === 'function' ? ev.build(ctx) : null;
+    const text = typeof ev.text === 'function' ? ev.text(ctx, built) : ev.text;
+    let eff = ev;
+    if (Array.isArray(ev.choices) && ev.choices.length) {
+      eff = ev.choices.find((c) => typeof c.apply !== 'function') || null;
+    } else if (typeof ev.apply === 'function') {
+      eff = null;
+    }
+    if (eff) {
+      if (eff.sent) ctx.sent = clamp(ctx.sent + eff.sent, 0, 100);
+      if (eff.budgetPct) ctx.budget += Math.round(ctx.budget * eff.budgetPct);
+      if (eff.ownerRating) ctx.ownerRating = clamp(ctx.ownerRating + eff.ownerRating, 0, 100);
+      if (eff.fanbaseDelta) ctx.fanbase = Math.round(clamp(ctx.fanbase + eff.fanbaseDelta, 0.7, 3.0) * 100) / 100;
+      if (eff.prestige) ctx.prestige += eff.prestige;
+    }
+    if (!ctx._mpEvents) ctx._mpEvents = [];
+    ctx._mpEvents.push({ icon: ev.icon, title: ev.title, text });
   }
 
   // Applica l'effetto di un evento senza scelte, o della scelta presa per uno che ne ha. La
@@ -1807,7 +1837,11 @@
       att, statement,
       net, sentItems, ratingDelta, worth,
       cupPaths: { nat: (ctx.cups.nat && ctx.cups.nat.path) || [], euro: (ctx.cups.euro && ctx.cups.euro.path) || [] },
+      // Eventi narrativi auto-risolti in multiplayer (autoResolveNarrativeEvent): non hanno
+      // avuto un popup, ma restano qui per non sparire dal resoconto di fine stagione.
+      mpEvents: ctx._mpEvents || [],
     };
+    ctx._mpEvents = [];
     if (local) renderSeasonEnd();
   }
 
@@ -1998,6 +2032,13 @@
         const { gf, ga } = rollMatchScore(dVal, homeCtx);
         simMatch(homeCtx, { gf, ga });
         simMatch(awayCtx, { gf: ga, ga: gf });
+        // Sfida diretta fra due presidenti: si marca l'ultima riga appena aggiunta a ciascuno
+        // (simMatch fa sempre ctx.results.push), così l'host può segnalarla nella cronaca
+        // della giornata invece di lasciarla passare come una partita come le altre.
+        const homeRow = homeCtx.results[homeCtx.results.length - 1];
+        const awayRow = awayCtx.results[awayCtx.results.length - 1];
+        if (homeRow) { homeRow.vsHuman = true; homeRow.vsHumanClub = awayCtx.club; }
+        if (awayRow) { awayRow.vsHuman = true; awayRow.vsHumanClub = homeCtx.club; }
       } else {
         simMatch(ctx);
       }
