@@ -284,6 +284,60 @@
         { label: 'Tienilo precauzionalmente a riposo', sent: -1 },
       ],
     },
+    // ---- altri dieci imprevisti, stesso mix di prima: alcuni a esito singolo, altri a
+    // scelta, un paio legati a un giocatore preciso della rosa ----
+    { icon: '⚽', title: 'Vittoria in amichevole a sorpresa', text: 'Un\'amichevole estiva contro una big finisce con un successo inatteso: la piazza ne parla per giorni.', sent: 4 },
+    { icon: '💸', title: 'Ritardo nei pagamenti minori', text: 'Un fornitore lamenta un ritardo nei pagamenti: nulla di grave, ma la stampa locale ne fa un caso.', sent: -2, budgetPct: -0.003 },
+    {
+      icon: '🎂', title: 'Compleanno in gruppo',
+      requires: (S) => S.squad && S.squad.some((p) => !p.loan),
+      build: (S) => ({ player: pick(S.squad.filter((p) => !p.loan)) }),
+      text: (S, ctx) => 'Lo spogliatoio festeggia il compleanno di ' + (ctx && ctx.player ? ctx.player.n : 'un compagno') + ' con una piccola festa a sorpresa.',
+      sent: 3,
+    },
+    {
+      icon: '🎬', title: 'Un documentario sul club',
+      text: 'Una produzione indipendente propone un documentario sulla stagione del club.',
+      choices: [
+        { label: 'Apri le porte alle telecamere', prestige: 1.5e6, sent: 2 },
+        { label: 'Meglio restare riservati', ownerRating: 1 },
+      ],
+    },
+    { icon: '🚌', title: 'Trasferta complicata', text: 'Uno sciopero dei trasporti rende difficile raggiungere lo stadio per l\'ultima trasferta: pochi tifosi al seguito.', sent: -2 },
+    {
+      icon: '🗣️', title: 'Discorso del capitano',
+      requires: (S) => S.squad && S.squad.some((p) => !p.loan),
+      build: (S) => ({ player: S.squad.filter((p) => !p.loan).sort((a, b) => b.ovr - a.ovr)[0] }),
+      text: (S, ctx) => (ctx && ctx.player ? ctx.player.n : 'Il capitano') + ' tiene un discorso allo spogliatoio prima della sfida più difficile della stagione.',
+      sent: 4,
+    },
+    {
+      icon: '📵', title: 'Caso social nel settore giovanile',
+      text: 'Un post polemico di un giovane del vivaio sui social fa discutere.',
+      choices: [
+        { label: 'Richiamo privato, si passa oltre', sent: -1 },
+        { label: 'Comunicato ufficiale di scuse', sent: 2, ownerRating: -1 },
+      ],
+    },
+    {
+      icon: '🏟️', title: 'Naming rights per lo stadio',
+      text: 'Un\'azienda locale propone di legare il proprio nome allo stadio per una stagione.',
+      choices: [
+        { label: 'Accetta l\'accordo', budgetPct: 0.01, sent: -2 },
+        { label: 'Rifiuta, lo stadio resta suo', sent: 2 },
+      ],
+    },
+    {
+      icon: '😴', title: 'Un titolare chiede riposo',
+      requires: (S) => S.squad && S.squad.some((p) => !p.loan),
+      build: (S) => ({ player: S.squad.filter((p) => !p.loan).sort((a, b) => b.ovr - a.ovr)[0] }),
+      text: (S, ctx) => (ctx && ctx.player ? ctx.player.n : 'Un titolare') + ' chiede di essere risparmiato nella prossima gara per stanchezza accumulata.',
+      choices: [
+        { label: 'Accontentalo', sent: 2 },
+        { label: 'Chiedigli comunque il massimo', sent: -2 },
+      ],
+    },
+    { icon: '🌟', title: 'Elogio dall\'estero', text: 'Una rivista sportiva straniera dedica un elogio al progetto tecnico del club.', prestige: 1e6, sent: 3 },
   ];
 
   // Ogni allenatore (generato o candidato) ha una specializzazione, oltre al rating: un

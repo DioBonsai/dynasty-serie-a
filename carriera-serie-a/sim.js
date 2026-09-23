@@ -1278,7 +1278,7 @@
   // (openNarrativeEventOverlay, in ui.js) e mette in pausa la stagione finché non viene
   // chiuso: ritorna true in quel caso, così simMatch sa di doversi fermare lì.
   function maybeNarrativeEvent(ctx = S) {
-    const chance = 0.05 * (diffOf(null, ctx).eventMult || 1);
+    const chance = 0.042 * (diffOf(null, ctx).eventMult || 1);
     if (Math.random() >= chance) return false;
     // Alcuni eventi hanno senso solo con certe condizioni (es. serve uno sponsor attivo, o
     // almeno un giocatore in rosa): `requires` li esclude dal pool finché non sono eleggibili.
