@@ -1158,6 +1158,10 @@
     ctx.sent = clamp(ctx.sent + TICKETS[ctx.ticket].sent, 0, 100);
     ctx.seasonActive = true; ctx.winterDone = false; ctx._janCands = null; ctx._janSwitchUsed = false; ctx._janMgrCands = null;
     ctx.played = 0; ctx.pts = 0; ctx.gf = 0; ctx.ga = 0; ctx.wins = 0; ctx.results = []; ctx.last5 = []; ctx.form = 0;
+    // Chi è in panchina ORA, per il resoconto di fine stagione (endSeason) — se a gennaio ne
+    // arriva un altro, il suo nome si aggiunge qui invece di sostituirlo: il resoconto deve
+    // mostrare TUTTI gli allenatori avuti in quella stagione, non solo l'ultimo.
+    ctx._seasonManagers = ctx.manager ? [ctx.manager.n] : [];
     // Azzera le statistiche (valgono per la stagione in corso) e tira una "forma stagionale":
     // la maggior parte dei giocatori resta vicina alla norma, ma ogni tanto qualcuno esplode
     // (fino quasi al doppio della sua resa attesa) o vive un'annata opaca (anche la metà).
@@ -1868,7 +1872,11 @@
     // cambiato): la classifica in-stagione non mostra più questo dato riga per riga per tutte
     // le squadre (fuorviante per gli avversari), resta solo qui, per la propria squadra, stagione
     // per stagione, nel resoconto di fine carriera.
-    ctx.history.push({ season: ctx.season, div: d.name, pos, promoted, relegated, trophies, net, worth, budget: ctx.budget, ppg: Math.round((ctx.pts / Math.max(1, ctx.played)) * 100) / 100, mgr: ctx.manager ? ctx.manager.n : null });
+    // Se a gennaio è arrivato un nuovo allenatore, `_seasonManagers` li ha entrambi (in ordine
+    // di arrivo): il resoconto di fine carriera deve mostrarli tutti, non solo l'ultimo in
+    // panchina a fine anno.
+    const seasonMgrs = (ctx._seasonManagers && ctx._seasonManagers.length) ? ctx._seasonManagers : (ctx.manager ? [ctx.manager.n] : []);
+    ctx.history.push({ season: ctx.season, div: d.name, pos, promoted, relegated, trophies, net, worth, budget: ctx.budget, ppg: Math.round((ctx.pts / Math.max(1, ctx.played)) * 100) / 100, mgr: seasonMgrs.length ? seasonMgrs.join(' → ') : null });
     const statement = [
       ['Incasso stadio (' + att.toLocaleString('it-IT') + ' medi)', matchday],
       ['Merchandising (tifoseria ' + ctx.fanbase.toFixed(2) + ')', merch],

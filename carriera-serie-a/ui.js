@@ -2151,7 +2151,10 @@
       const m = S._janMgrCands[+el.dataset.wh]; if (!m) return;
       const cost = Math.round(S.manager.salary * 0.3) + Math.round(m.salary * 0.5);
       if (S.budget < cost) { toast('Non puoi permetterti il cambio (buonuscita + metà stipendio).', 'error'); return; }
-      S.budget -= cost; S.manager = m; toast(m.n + ' prende il timone a stagione in corso.', 'spend');
+      S.budget -= cost; S.manager = m;
+      if (!S._seasonManagers) S._seasonManagers = [];
+      S._seasonManagers.push(m.n);
+      toast(m.n + ' prende il timone a stagione in corso.', 'spend');
       saveGame(); renderWinterOverlay();
     }));
   }
