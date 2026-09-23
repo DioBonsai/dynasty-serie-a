@@ -345,6 +345,17 @@ if ($action === 'ready') {
     // porta con sé la carriera (dopo la dirigenza), da qui la validazione diversa per fase.
     $inSessionStage = in_array($prevPhase, ['session', 'readyForSim'], true);
     if ($ready && $inSessionStage && !$stateValid) { flock($fp, LOCK_UN); fclose($fp); fail('Carriera mancante o non valida.'); }
+    // `state` è tutta la carriera del giocatore: ogni altro campo testuale che entra in una
+    // stanza (nome stanza, chat, nome/club in create/join) passa da clean_name — club/owner
+    // dentro `state` no, perché arrivano da un salvataggio già esistente e non da un form. Ma
+    // restano comunque testo scelto dal giocatore stesso (può rinominare club/proprietario in
+    // Dirigenza) e finiscono via innerHTML nella lobby/classifica di TUTTI: stessa igiene degli
+    // altri campi, non fidarsi mai di una stringa solo perché non arriva da un `<input>`.
+    if ($ready && $inSessionStage && $stateValid) {
+        $state['club'] = clean_name($state['club'], 24);
+        $state['owner'] = clean_name($state['owner'] ?? '', 18);
+        if ($state['club'] === '') { flock($fp, LOCK_UN); fclose($fp); fail('Nome del club non valido.'); }
+    }
     $found = false;
     foreach ($room['players'] as &$p) {
         if ($p['id'] === $playerId) {

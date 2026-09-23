@@ -584,16 +584,22 @@
 
   const scoutUpgradeCost = (lvl) => Math.round(divOf().spin * [0, 2.0, 4.2, 8.0][lvl] * diffOf().scoutCostMult / 1000) * 1000;
 
-  // Un prospetto giovane (16-19 anni) gratuito, generato al più una volta a stagione se il
-  // dado lo concede: non entra subito in squadra, va ingaggiato dal presidente come uno
-  // svincolato.
+  // Una piccola "cerimonia" del vivaio, generata al più una volta a stagione se il dado lo
+  // concede: invece di un solo prospetto anonimo, il settore giovanile presenta più candidati
+  // (3 al livello massimo di scouting, altrimenti 2) fra cui scegliere UNO solo da aggregare
+  // gratis alla rosa — gli altri restano altrove. Nessuno dei due entra subito in squadra,
+  // va comunque ingaggiato dal presidente come uno svincolato.
   function maybeScoutProspect() {
     if (!S.scoutLevel || S.scoutProspectSeason === S.season) return;
     S.scoutProspectSeason = S.season;
     if (Math.random() < scoutTier().prospectChance * diffOf().prospectMult) {
-      const d = divOf(), nat = pickNationality(S.div);
-      const ovr = clamp(gaussInt(d.avg - 2, 5), 40, 92);
-      S.scoutProspect = { n: genName(nat), nat, ovr, age: 16 + rnd(5), wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 };
+      const d = divOf();
+      const count = S.scoutLevel >= 3 ? 3 : 2;
+      S.scoutProspects = Array.from({ length: count }, () => {
+        const nat = pickNationality(S.div);
+        const ovr = clamp(gaussInt(d.avg - 2, 5), 40, 92);
+        return { n: genName(nat), nat, ovr, age: 16 + rnd(5), wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 };
+      });
     }
   }
 
@@ -759,7 +765,12 @@
     if (!S.crestColors) S.crestColors = randCrestColors();
     if (!S.crestShape) S.crestShape = CREST_DEFAULT.shape;
     if (S.scoutLevel == null) S.scoutLevel = 0;
+    if (S.autoInvestor == null) S.autoInvestor = false;
+    if (!S.derbyRecord) S.derbyRecord = {};
     if (S.scoutProspectSeason == null) S.scoutProspectSeason = 0;
+    // Migrazione da un salvataggio pre-"cerimonia del vivaio": un prospetto singolo diventa
+    // una lista con un solo candidato, così non sparisce per chi ce l'aveva già in sospeso.
+    if (!S.scoutProspects) S.scoutProspects = S.scoutProspect ? [S.scoutProspect] : [];
     if (S.marketSeenB == null) S.marketSeenB = S.div >= 4;
     if (S.marketSeenA == null) S.marketSeenA = S.div >= 5;
     if (S.market === undefined) S.market = null;
@@ -925,6 +936,16 @@
   const ACTIVE_SAVE_KEY = 'dsa_active_save';
   const saveSlotKey = (id) => 'dsa_save_' + id;
   const savePoolsKey = (id) => 'dsa_save_' + id + '_pools';
+  // Versione del FORMATO di salvataggio (non della build del gioco): finora ogni cambio di
+  // forma di `S` è stato gestito "a fiuto" da normSquad (valori mancanti riempiti di default),
+  // il che va bene per campi aggiunti ma si romperebbe silenziosamente su un campo RINOMINATO
+  // o RISTRUTTURATO. Da qui in poi ogni salvataggio porta `_v`: un futuro cambio di forma può
+  // controllarlo e migrare/avvisare invece di produrre uno stato parzialmente `undefined`.
+  const SAVE_FORMAT_VERSION = 1;
+  // Un solo avviso per sessione se il salvataggio fallisce (storage pieno/bloccato, es.
+  // navigazione privata): senza, il giocatore crede che il progresso sia al sicuro e lo scopre
+  // solo alla riapertura, quando ormai l'ha perso.
+  let saveFailWarned = false;
 
   function readSavesIndex() { try { return JSON.parse(localStorage.getItem(SAVES_INDEX_KEY)) || []; } catch (e) { return []; } }
   function writeSavesIndex(list) { try { localStorage.setItem(SAVES_INDEX_KEY, JSON.stringify(list)); } catch (e) {} }
@@ -933,6 +954,7 @@
     try {
       if (!S || S.over) return;
       if (!S._saveId) S._saveId = 'sv_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+      S._v = SAVE_FORMAT_VERSION;
       localStorage.setItem(saveSlotKey(S._saveId), JSON.stringify(S));
       localStorage.setItem(savePoolsKey(S._saveId), JSON.stringify(POOLS));
       const idx = readSavesIndex();
@@ -941,7 +963,13 @@
       if (i >= 0) idx[i] = meta; else idx.push(meta);
       writeSavesIndex(idx);
       localStorage.setItem(ACTIVE_SAVE_KEY, S._saveId);
-    } catch (e) {}
+      saveFailWarned = false;
+    } catch (e) {
+      if (!saveFailWarned && typeof toast === 'function') {
+        toast('⚠️ Impossibile salvare la partita (memoria del browser piena o bloccata, es. navigazione privata): il progresso di questa sessione rischia di andare perso.', 'error');
+        saveFailWarned = true;
+      }
+    }
   }
 
   // Carica uno slot specifico (per id) SENZA attivarlo come corrente — usato dalla
@@ -1053,7 +1081,7 @@
       history: [], over: false, peakWorth: 0,
       pidNext: 1, offers: [], alumni: [],
       crestShape: crestShape, crestColors: crestColors.slice(),
-      scoutLevel: 0, scoutProspect: null, scoutProspectSeason: 0,
+      scoutLevel: 0, scoutProspects: [], scoutProspectSeason: 0,
       market: null, marketSeenB: div >= 4, marketSeenA: div >= 5,
       formation: '433',
     };
@@ -1195,6 +1223,11 @@
     let key, label;
     if (d.promoted && exp <= d.promoted) { key = 'vertice'; label = d.playoff ? 'lottare per la vittoria del campionato' : 'vincere il campionato'; }
     else if (d.playoff && exp <= d.promoted + d.playoff) { key = 'playoff'; label = 'giocarsi la promozione nei playoff'; }
+    // Vertice della piramide (Serie A, `d.promoted` è 0): niente promozione da inseguire, ma
+    // una rosa da primi posti ha comunque un traguardo vero da centrare o mancare — altrimenti
+    // la stagione perfetta di fine carriera degrada sempre a "un campionato tranquillo", lo
+    // stesso obiettivo neutro di chiunque altro, e il tardo gioco perde ogni posta in palio.
+    else if (!d.promoted && exp <= 4) { key = 'vertice'; label = exp <= 1 ? 'vincere lo scudetto' : 'lottare per un posto in Europa'; }
     else if (d.releg && exp > d.teams - d.releg - cushion) { key = 'salvezza'; label = 'salvarsi, evitando la retrocessione'; }
     else { key = 'meta'; label = 'un campionato tranquillo, a metà classifica'; }
     return { key, label, exp };
@@ -1239,10 +1272,20 @@
     registerAppearances(lineup, ctx);
     const goalsFor = genGoals(gf, true, null, lineup, ctx), goalsAgainst = genGoals(ga, false, opp.name, null, ctx);
     registerCleanSheet(ga, lineup, ctx);
-    // Derby/rivalità storica: un filo di umore in più in palio, oltre ai 3 punti.
+    // Derby/rivalità storica: un filo di umore in più in palio, oltre ai 3 punti — e un
+    // bilancio testa a testa che cresce stagione dopo stagione (ctx.derbyRecord), invece di
+    // restare un semplice bollino "DERBY" identico ogni volta senza memoria di chi comanda
+    // la rivalità nell'arco della carriera.
     const derby = isDerby(ctx.club, opp.name);
-    if (derby) { if (res === 'W') ctx.sent = clamp(ctx.sent + 3, 0, 100); else if (res === 'L') ctx.sent = clamp(ctx.sent - 3, 0, 100); }
-    const row = { mw: fx.mw, opp: opp.name, home: fx.home, gf, ga, res, goalsFor, goalsAgainst, events: lineup.events, derby };
+    let derbyRecord = null;
+    if (derby) {
+      if (res === 'W') ctx.sent = clamp(ctx.sent + 3, 0, 100); else if (res === 'L') ctx.sent = clamp(ctx.sent - 3, 0, 100);
+      if (!ctx.derbyRecord) ctx.derbyRecord = {};
+      const rec = ctx.derbyRecord[opp.name] || (ctx.derbyRecord[opp.name] = { w: 0, d: 0, l: 0 });
+      if (res === 'W') rec.w++; else if (res === 'D') rec.d++; else rec.l++;
+      derbyRecord = Object.assign({}, rec);
+    }
+    const row = { mw: fx.mw, opp: opp.name, home: fx.home, gf, ga, res, goalsFor, goalsAgainst, events: lineup.events, derby, derbyRecord };
     ctx.results.push(row);
     // Durante "Simula fino a fine stagione" (BULK_SIM) saltiamo la scrittura DOM partita per
     // partita (fino a 46 volte in un colpo solo): computeTable() aggiorna comunque lo stato
@@ -1821,7 +1864,11 @@
     const mgrDelta = clamp(Math.round((exp - pos) * 0.35 + (promoted ? 2 : 0) + (title ? 3 : 0) + (relegated ? -3 : 0) + gaussInt(0, 1)), -4, 4);
     ctx.manager.rating = clamp(ctx.manager.rating + mgrDelta, 40, 97);
     ctx.manager._ovrDelta = ctx.manager.rating - mgrBefore;
-    ctx.history.push({ season: ctx.season, div: d.name, pos, promoted, relegated, trophies, net, worth, budget: ctx.budget });
+    // Media punti e allenatore DI QUELLA stagione (non quello attuale, che può essere già
+    // cambiato): la classifica in-stagione non mostra più questo dato riga per riga per tutte
+    // le squadre (fuorviante per gli avversari), resta solo qui, per la propria squadra, stagione
+    // per stagione, nel resoconto di fine carriera.
+    ctx.history.push({ season: ctx.season, div: d.name, pos, promoted, relegated, trophies, net, worth, budget: ctx.budget, ppg: Math.round((ctx.pts / Math.max(1, ctx.played)) * 100) / 100, mgr: ctx.manager ? ctx.manager.n : null });
     const statement = [
       ['Incasso stadio (' + att.toLocaleString('it-IT') + ' medi)', matchday],
       ['Merchandising (tifoseria ' + ctx.fanbase.toFixed(2) + ')', merch],

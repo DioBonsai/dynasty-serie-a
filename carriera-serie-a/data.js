@@ -338,6 +338,104 @@
       ],
     },
     { icon: '🌟', title: 'Elogio dall\'estero', text: 'Una rivista sportiva straniera dedica un elogio al progetto tecnico del club.', prestige: 1e6, sent: 3 },
+    // ---- altri venticinque imprevisti, per allargare il pool su una carriera di 20 stagioni
+    // (con la stessa probabilità di innesco, un pool più ampio significa vederli ripetere
+    // molto meno spesso) — stesso mix di sempre, nessuno con `apply` su misura oltre ai due
+    // già esistenti, per restare tutti sicuri da auto-risolvere in multiplayer.
+    { icon: '🎊', title: 'Festa promozione improvvisata', text: 'Un gruppo di tifosi organizza una festa spontanea sotto la sede del club dopo l\'ultimo risultato positivo.', sent: 5 },
+    { icon: '🥶', title: 'Partita rinviata per neve', text: 'Il maltempo costringe a rinviare l\'ultima gara: qualche malumore fra gli abbonati per la trasferta sprecata.', sent: -2 },
+    { icon: '📻', title: 'Intervista radiofonica riuscita', text: 'Un\'intervista del presidente a una radio locale viene accolta con favore dai tifosi.', sent: 3, ownerRating: 1 },
+    {
+      icon: '🧑‍🏫', title: 'Corso per giovani allenatori',
+      text: 'Il club propone di ospitare un corso federale per giovani allenatori nel proprio centro sportivo.',
+      choices: [
+        { label: 'Ospitalo, ottima immagine per il club', prestige: 0.8e6, budgetPct: -0.002 },
+        { label: 'Declina, servono gli spazi per la prima squadra', sent: -1 },
+      ],
+    },
+    { icon: '🚏', title: 'Nuova linea bus per lo stadio', text: 'Il comune attiva una linea bus dedicata alle giornate di partita: più pubblico atteso.', fanbaseDelta: 0.015, sent: 2 },
+    {
+      icon: '🧤', title: 'Il portiere titolare in dubbio',
+      requires: (S) => S.squad && S.squad.some((p) => !p.loan && p.pos === 'POR'),
+      build: (S) => ({ player: S.squad.filter((p) => !p.loan && p.pos === 'POR').sort((a, b) => b.ovr - a.ovr)[0] }),
+      text: (S, ctx) => (ctx && ctx.player ? ctx.player.n : 'Il portiere titolare') + ' lamenta un fastidio alla mano dopo l\'ultimo allenamento.',
+      sent: -2,
+    },
+    {
+      icon: '🏆', title: 'Sorteggio di coppa avvincente',
+      text: 'Il sorteggio del turno successivo regala un accoppiamento che fa sognare la piazza.',
+      choices: [
+        { label: 'Cavalca l\'entusiasmo in conferenza', sent: 4, ownerRating: 1 },
+        { label: 'Abbassa le aspettative, testa bassa', ownerRating: 2 },
+      ],
+    },
+    { icon: '🖼️', title: 'Murale in onore del club', text: 'Un artista di strada dipinge un murale dedicato al club nel quartiere dello stadio.', sent: 4, prestige: 0.4e6 },
+    { icon: '📉', title: 'Calo di abbonamenti', text: 'I rinnovi degli abbonamenti procedono più a rilento del previsto quest\'anno.', sent: -3, fanbaseDelta: -0.01 },
+    { icon: '📈', title: 'Boom di abbonamenti', text: 'La campagna abbonamenti va oltre ogni aspettativa: la tifoseria cresce.', sent: 3, fanbaseDelta: 0.015 },
+    {
+      icon: '🎮', title: 'Il club sbarca nell\'eSport',
+      text: 'Una software house propone di inserire il club in un videogioco di calcio ufficiale.',
+      choices: [
+        { label: 'Accetta, nuova visibilità per il brand', prestige: 1e6, budgetPct: 0.003 },
+        { label: 'Non è una priorità adesso', sent: -1 },
+      ],
+    },
+    {
+      icon: '🧳', title: 'Ritiro estivo in una nuova località',
+      text: 'Lo staff propone di cambiare sede per il ritiro pre-campionato, più costosa ma meglio attrezzata.',
+      choices: [
+        { label: 'Approva la spesa extra', budgetPct: -0.006, sent: 3 },
+        { label: 'Resta nella sede di sempre', sent: -1 },
+      ],
+    },
+    { icon: '🎙️', title: 'Podcast dedicato ai tifosi', text: 'Alcuni tifosi lanciano un podcast settimanale sul club: la community si stringe attorno alla squadra.', sent: 3, fanbaseDelta: 0.01 },
+    {
+      icon: '🥊', title: 'Battibecco fra compagni',
+      requires: (S) => S.squad && S.squad.filter((p) => !p.loan).length >= 2,
+      build: (S) => { const pool = S.squad.filter((p) => !p.loan); return { a: pick(pool), b: pick(pool) }; },
+      text: (S, ctx) => 'Un battibecco in allenamento fra ' + (ctx && ctx.a ? ctx.a.n : 'due compagni') + ' e un altro titolare tiene banco per un giorno prima di rientrare.',
+      sent: -2,
+    },
+    { icon: '🏥', title: 'Donazione all\'ospedale cittadino', text: 'Il club dona parte degli incassi di una partita all\'ospedale cittadino: gesto molto apprezzato.', sent: 5, ownerRating: 2, budgetPct: -0.004 },
+    {
+      icon: '🎯', title: 'Il mister chiede rinforzi',
+      text: 'L\'allenatore chiede pubblicamente rinforzi sul mercato per puntare più in alto.',
+      choices: [
+        { label: 'Promettigli supporto a gennaio', sent: 2 },
+        { label: 'Ricordagli i conti del club', sent: -2, ownerRating: 1 },
+      ],
+    },
+    { icon: '🌦️', title: 'Rinvio last minute', text: 'Un temporale improvviso rinvia la partita a pochi minuti dal fischio d\'inizio: caos organizzativo ma nessun danno.', sent: -1 },
+    {
+      icon: '🧵', title: 'Nuova maglia acclamata',
+      text: 'La nuova maglia da trasferta conquista subito i tifosi sui social.',
+      choices: [
+        { label: 'Rifornisci lo store, richiesta alta', budgetPct: 0.006, sent: 2 },
+        { label: 'Produzione limitata, meglio non rischiare', sent: -1 },
+      ],
+    },
+    { icon: '🚨', title: 'Allarme meteo per la trasferta', text: 'Un\'allerta meteo complica i viaggi dei tifosi al seguito per l\'ultima trasferta.', sent: -1 },
+    {
+      icon: '🏫', title: 'Progetto scuole del club',
+      text: 'Il settore giovanile propone un progetto di avviamento allo sport nelle scuole cittadine.',
+      choices: [
+        { label: 'Finanzia il progetto', budgetPct: -0.005, sent: 4, prestige: 0.5e6 },
+        { label: 'Rimanda a stagione migliore', sent: -1 },
+      ],
+    },
+    { icon: '🎤', title: 'Conferenza stampa tesa', text: 'Una domanda scomoda in conferenza stampa mette in difficoltà lo spogliatoio per qualche giorno.', sent: -2, ownerRating: -1 },
+    { icon: '🤳', title: 'Sfida social fra tifoserie', text: 'Una simpatica sfida social con i tifosi di un\'altra piazza fa il giro del web.', sent: 3, fanbaseDelta: 0.01 },
+    {
+      icon: '💼', title: 'Offerta di co-sponsorizzazione',
+      requires: (S) => !!S.sponsor,
+      text: (S) => 'Un\'azienda propone un accordo di co-sponsorizzazione da affiancare a ' + S.sponsor.name + '.',
+      choices: [
+        { label: 'Accetta, entrate extra subito', budgetPct: 0.007, sent: -1 },
+        { label: 'Rifiuta, meglio un solo main sponsor', sent: 2 },
+      ],
+    },
+    { icon: '🧓', title: 'Ex bandiera in tribuna', text: 'Una vecchia bandiera del club, ora ritirata, assiste alla partita dalla tribuna d\'onore: standing ovation per lui.', sent: 4, prestige: 0.5e6 },
+    { icon: '🛑', title: 'Sciopero dei tifosi organizzati', text: 'La curva organizzata annuncia una protesta silenziosa per la prossima partita.', sent: -4, ownerRating: -1 },
   ];
 
   // Ogni allenatore (generato o candidato) ha una specializzazione, oltre al rating: un
@@ -1165,12 +1263,14 @@
   // poche gare avute può crescere anche più di un titolare che ha deluso.
   const POS_PROD_BASELINE = { POR: 0, DIF: 2.5, CEN: 6, ATT: 12 };
 
+  // Un pool più ampio per fascia (era 6-7 nomi, ora 12-13): su 20 stagioni di negoziazioni
+  // sponsor, il pool piccolo era il più a rischio ripetizione di tutto il gioco.
   const SPONSOR_BRANDS = {
-    community: ['Panetteria del Borgo', 'Assicurazioni del Porto', 'Latteria Locale', 'Birrificio Vecchio Mulino', 'Autofficina Collina', 'Pasticceria Reale', 'Ferramenta Centrale'],
-    regional: ['Gruppo Adriatica', 'Edilizia del Nord', 'Distretto Energia', 'Cantine Riunite Sud', 'Trasporti Peninsulare', 'Confidi Regionale'],
-    standard: ['NordGate Energia', 'Corona Telecom', 'Vetro Vertice', 'Redline Logistica', 'Ancora Finanza', 'Orizzonte Assicurazioni'],
-    betting: ['ScommettiBene', 'FortunaKick', 'GoalRush Casinò', 'BetNazione', 'SpinWin', 'JackpotArena'],
-    global: ['Atlas Global', 'Vantage Air', 'Nimbus Tech', 'Meridian Bank', 'Solaris Motori', 'Zenith Capital'],
+    community: ['Panetteria del Borgo', 'Assicurazioni del Porto', 'Latteria Locale', 'Birrificio Vecchio Mulino', 'Autofficina Collina', 'Pasticceria Reale', 'Ferramenta Centrale', 'Macelleria San Rocco', 'Farmacia Comunale', 'Vivaio Fioranova', 'Cartoleria Progresso', 'Gelateria Artigiana', 'Tabaccheria Stazione'],
+    regional: ['Gruppo Adriatica', 'Edilizia del Nord', 'Distretto Energia', 'Cantine Riunite Sud', 'Trasporti Peninsulare', 'Confidi Regionale', 'Agroalimentare Vallata', 'Consorzio Termale', 'Metalmeccanica Valdarno', 'Ceramiche Colline', 'Ittica Tirrenica', 'Cooperativa Lattiero-Casearia'],
+    standard: ['NordGate Energia', 'Corona Telecom', 'Vetro Vertice', 'Redline Logistica', 'Ancora Finanza', 'Orizzonte Assicurazioni', 'Ampere Utilities', 'Portale Immobiliare', 'Cargo Adriatico', 'Rete Sanitaria Plus', 'Fibra Nazionale', 'Mercurio Leasing'],
+    betting: ['ScommettiBene', 'FortunaKick', 'GoalRush Casinò', 'BetNazione', 'SpinWin', 'JackpotArena', 'PuntaFacile', 'RedDice Bet', 'AllInSport', 'VittoriaLive', 'BetOlimpo', 'CashGoal'],
+    global: ['Atlas Global', 'Vantage Air', 'Nimbus Tech', 'Meridian Bank', 'Solaris Motori', 'Zenith Capital', 'Orbit Dynamics', 'Helios Group', 'Titan Aerospace', 'Quantum Financial', 'Continental Shipping', 'Apex Semiconductors'],
   };
 
   // Allenatori reali: si aggiungono ai candidati generati (non li sostituiscono), pescati

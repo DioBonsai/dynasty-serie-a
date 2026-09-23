@@ -1102,6 +1102,12 @@
     } catch (e2) { finish(); }
   }
 
+  // Versione del formato del file di backup esportato (diversa da SAVE_FORMAT_VERSION in
+  // sim.js, che riguarda lo slot in localStorage): finora mai controllata in import, quindi un
+  // futuro cambio di forma del bundle avrebbe rotto in silenzio l'importazione di file vecchi
+  // (o prodotto uno stato incompleto con quelli nuovi). Da qui in poi almeno un avviso.
+  const EXPORT_BUNDLE_VERSION = 1;
+
   // Backup di uno slot: un unico file .json con salvataggio + piramide, scaricabile e
   // ri-importabile (anche su un altro dispositivo/browser).
   function exportSaveSlot(id) {
@@ -1109,7 +1115,7 @@
       const raw = localStorage.getItem(saveSlotKey(id)); if (!raw) return;
       const save = JSON.parse(raw);
       const poolsRaw = localStorage.getItem(savePoolsKey(id));
-      const bundle = JSON.stringify({ v: 1, exportedAt: Date.now(), save, pools: poolsRaw ? JSON.parse(poolsRaw) : null });
+      const bundle = JSON.stringify({ v: EXPORT_BUNDLE_VERSION, exportedAt: Date.now(), save, pools: poolsRaw ? JSON.parse(poolsRaw) : null });
       const blob = new Blob([bundle], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -1126,7 +1132,8 @@
       try {
         const bundle = JSON.parse(reader.result);
         const save = bundle && bundle.save ? bundle.save : bundle;   // tollerante a un vecchio export "nudo"
-        if (!save || !save.squad || !save.club) { toast('File non riconosciuto.'); return; }
+        if (!save || !save.squad || !save.club) { toast('File non riconosciuto.', 'error'); return; }
+        if (bundle && bundle.v && bundle.v > EXPORT_BUNDLE_VERSION) { toast('⚠️ Questo file è stato esportato da una versione più recente del gioco: l\'importazione prosegue, ma alcuni dati potrebbero non essere compatibili.', 'error'); }
         const id = 'sv_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
         save._saveId = id;
         localStorage.setItem(saveSlotKey(id), JSON.stringify(save));
@@ -1170,8 +1177,11 @@
 
   function renderDiffPicker() {
     const grid = $('diffPicker'); if (!grid) return;
+    // Il testo di sapore da solo non dice quanto pesa davvero ogni livello: il tooltip mette
+    // i numeri concreti dietro "più margine economico"/"meno imprevisti" ecc.
+    const diffTip = (d) => 'Budget ' + Math.round(d.budgetMult * 100) + '% · Forza propria ' + (d.teamEffDelta >= 0 ? '+' : '') + d.teamEffDelta + ' · Stipendi ' + Math.round(d.wageMult * 100) + '% · Infortuni ' + Math.round(d.injuryMult * 100) + '% · Eventi ' + Math.round(d.eventMult * 100) + '% · Pazienza proprietà ' + Math.round(d.patienceMult * 100) + '%';
     grid.innerHTML = DIFFICULTIES.map((d) => `
-      <button type="button" class="ow-diff-pick ${startDifficulty === d.key ? 'on' : ''}" data-diff="${d.key}">
+      <button type="button" class="ow-diff-pick ${startDifficulty === d.key ? 'on' : ''}" data-diff="${d.key}" title="${diffTip(d)}">
         <b>${d.label}</b><small>${d.blurb}</small>
       </button>`).join('');
     grid.querySelectorAll('.ow-diff-pick').forEach((el) => el.addEventListener('click', () => {
@@ -1446,6 +1456,15 @@
     normSquad();
     previewFormation = S.formation;   // il modulo mostrato riflette quello persistito (ora pesa in partita)
     maybeScoutProspect();
+    // QoL: chi lo desidera può evitare di ripremere manualmente "Bonus investitore" ogni
+    // singola stagione (l'esito ottimale — prenderlo — non cambia mai in 20 stagioni): un
+    // interruttore per carriera, non imposto a chi preferisce comunque decidere volta per volta.
+    if (S.autoInvestor && !S.investorUsed) {
+      const amount = Math.round(divOf().investor * diffOf().sponsorMult / 1e4) * 1e4;
+      S.investorUsed = true; S.budget += amount;
+      toast('Bonus investitore automatico: +' + fmtMoney(amount), 'money');
+      saveGame();
+    }
     const fyCount = S.squad.filter(finalYear).length;
     if (!S.sponsorOpts && !S.sponsor) S.sponsorOpts = sponsorOffers();
     if (!S.mgrOpts) S.mgrOpts = [genManager(0), genManager(3), genManager(6)];
@@ -1490,6 +1509,7 @@
         <div class="ow-fin-row"><span>Ricavi di stagione (stima)</span><b>${fmtMoney(estRevenue)}</b></div>
         ${broke ? '<div class="ow-warn">⚠️ Ti mancano <b>' + fmtMoney(bill - S.budget) + '</b> per coprire il costo d\'avvio. Ricorda: gli spin spendono cassa anche se rifiuti il giocatore. Vendi giocatori (💷), prendi il bonus investitore o assumi un allenatore più economico prima dell\'inizio.</div>' : ''}
         ${!S.investorUsed ? `<button class="dyn-btn ow-investor" id="investorBtn">💼 Bonus investitore · +${fmtMoney(Math.round(d.investor * diffOf().sponsorMult / 1e4) * 1e4)}</button>` : ''}
+        <label class="ow-sub" style="display:flex;align-items:center;gap:6px;margin-top:4px;cursor:pointer"><input type="checkbox" id="autoInvestorChk" ${S.autoInvestor ? 'checked' : ''} /> Prendilo sempre in automatico a inizio stagione, da qui in poi</label>
       </div>
       ${S.offers && S.offers.length ? `
       <div class="ow-sec">
@@ -1517,19 +1537,21 @@
       </div>
       <div class="ow-sec">
         <div class="ow-sec-title">🔭 Settore giovanile</div>
-        <div class="ow-scout-tier">
+        <div class="ow-scout-tier" title="${'+' + scout.bonus + ' OVR medio sugli spin · ' + Math.round(scout.prospectChance * 100) + '% di chance a stagione di un prospetto del vivaio · ' + Math.round(scout.gem * 100) + '% di chance di un vero colpo'}${nextScoutCost != null ? ' · il livello successivo (' + SCOUT_TIERS[scoutLv + 1].name + '): +' + SCOUT_TIERS[scoutLv + 1].bonus + ' OVR, ' + Math.round(SCOUT_TIERS[scoutLv + 1].prospectChance * 100) + '% prospetto, ' + Math.round(SCOUT_TIERS[scoutLv + 1].gem * 100) + '% colpo' : ''}">
           <div><div class="lv">${scout.name}</div><div class="ds">Spin migliori in media (+${scout.bonus} OVR) e più affidabili${scoutLv ? ', più chance di un prospetto gratis a inizio stagione' : ''}</div></div>
           ${nextScoutCost != null ? `<button class="dyn-mini" id="scoutUpgBtn" ${S.budget < nextScoutCost ? 'disabled' : ''}>⬆️ ${fmtMoney(nextScoutCost)}</button>` : '<span class="tag">Max</span>'}
         </div>
-        ${S.scoutProspect ? `
+        ${S.scoutProspects && S.scoutProspects.length ? `
+        <div class="ow-sub" style="margin:8px 0 4px">Il vivaio presenta ${S.scoutProspects.length} promesse: scegline una da aggregare alla rosa, le altre restano altrove.</div>
+        ${S.scoutProspects.map((p, i) => `
         <div class="ow-jan-card">
           <div class="ow-jan-head">
-            <span class="ovr" style="${ovrBadge(S.scoutProspect.ovr)}">${S.scoutProspect.ovr}</span>
-            <span class="postag postag-${S.scoutProspect.pos}">${S.scoutProspect.pos}</span>
-            <span class="nm">${flagOf(S.scoutProspect)}${S.scoutProspect.n}<small>${POS_LABEL[S.scoutProspect.pos]} · età ${S.scoutProspect.age} · promessa del vivaio</small></span>
+            <span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span>
+            <span class="postag postag-${p.pos}">${p.pos}</span>
+            <span class="nm">${flagOf(p)}${p.n}<small>${POS_LABEL[p.pos]} · età ${p.age} · promessa del vivaio</small></span>
           </div>
-          <button class="dyn-btn dyn-btn-primary" id="scoutSignBtn">Aggrega alla rosa · Gratis</button>
-        </div>` : ''}
+          <button class="dyn-btn dyn-btn-primary" data-scoutsign="${i}">Aggrega alla rosa · Gratis</button>
+        </div>`).join('')}` : ''}
       </div>
       <div class="ow-sec">
         <div class="ow-sec-title">🎰 Rosa + spin</div>
@@ -1580,7 +1602,7 @@
 
     const TABS = [
       { key: 'finanze', label: '💰 Finanze', html: financeHTML, warn: broke || S.ownerRating < 35 || !!S.debtSeasons || !!(S.offers && S.offers.length) },
-      { key: 'rosa', label: '👥 Rosa', html: rosaHTML, warn: S.squad.length < MIN_SQUAD || fyCount > 0 || !!S.scoutProspect },
+      { key: 'rosa', label: '👥 Rosa', html: rosaHTML, warn: S.squad.length < MIN_SQUAD || fyCount > 0 || !!(S.scoutProspects && S.scoutProspects.length) },
       { key: 'stadio', label: '🏟️ Stadio', html: stadioHTML, warn: false },
       { key: 'sponsor', label: '🤝 Sponsor', html: sponsorHTML, warn: !S.sponsor },
     ];
@@ -1707,6 +1729,8 @@
       S.investorUsed = true; S.budget += amount;
       toast('Un investitore stacca un assegno: +' + fmtMoney(amount), 'money'); renderBoard(); saveGame();
     });
+    const autoInvestorChk = $('autoInvestorChk');
+    if (autoInvestorChk) autoInvestorChk.addEventListener('change', () => { S.autoInvestor = autoInvestorChk.checked; saveGame(); });
     const scoutUpg = $('scoutUpgBtn');
     if (scoutUpg) scoutUpg.addEventListener('click', () => {
       const lvl = (S.scoutLevel || 0) + 1, cost = scoutUpgradeCost(lvl); if (S.budget < cost) return;
@@ -1715,13 +1739,13 @@
         toast('Settore giovanile potenziato: ' + SCOUT_TIERS[lvl].name + '.'); renderBoard(); saveGame();
       });
     });
-    const scoutSign = $('scoutSignBtn');
-    if (scoutSign) scoutSign.addEventListener('click', () => {
-      if (!S.scoutProspect) return;
-      S.squad.push(S.scoutProspect);
-      toast(S.scoutProspect.n + ' entra in prima squadra dal settore giovanile.');
-      S.scoutProspect = null; renderBoard(); saveGame();
-    });
+    body.querySelectorAll('[data-scoutsign]').forEach((el) => el.addEventListener('click', () => {
+      const i = +el.dataset.scoutsign;
+      const p = S.scoutProspects && S.scoutProspects[i]; if (!p) return;
+      S.squad.push(p);
+      toast(p.n + ' entra in prima squadra dal settore giovanile.', 'success');
+      S.scoutProspects = []; renderBoard(); saveGame();
+    }));
     body.querySelectorAll('[data-role]').forEach((el) => el.addEventListener('click', () => { squadRoleFilter = el.dataset.role; renderBoard(); }));
     const sortBtn = $('squadSortBtn');
     if (sortBtn) sortBtn.addEventListener('click', () => { squadSortDesc = !squadSortDesc; renderBoard(); });
@@ -2346,8 +2370,8 @@
       <div class="pl-card" style="padding:14px 12px">
         <div class="dyn-top-sub" style="text-align:left;margin-bottom:8px">La storia, stagione per stagione</div>
         <div style="overflow-x:auto">
-          <table class="dyn-table"><thead><tr><th>S</th><th>Categoria</th><th class="num">Pos</th><th class="num">Saldo</th><th class="num">Valore</th><th>Trofei</th></tr></thead>
-          <tbody>${S.history.map((hh) => `<tr><td>${hh.season}${hh.promoted ? ' ⬆️' : hh.relegated ? ' ⬇️' : ''}</td><td>${hh.div}</td><td class="num">${hh.pos}</td><td class="num">${hh.net < 0 ? '-' : ''}${fmtMoney(Math.abs(hh.net))}</td><td class="num">${fmtMoney(hh.worth)}</td><td style="font-size:11px">${hh.trophies.length ? hh.trophies.join(', ') : '-'}</td></tr>`).join('')}</tbody></table>
+          <table class="dyn-table"><thead><tr><th>S</th><th>Categoria</th><th class="num">Pos</th><th class="num">Media</th><th>Allenatore</th><th class="num">Saldo</th><th class="num">Valore</th><th>Trofei</th></tr></thead>
+          <tbody>${S.history.map((hh) => `<tr><td>${hh.season}${hh.promoted ? ' ⬆️' : hh.relegated ? ' ⬇️' : ''}</td><td>${hh.div}</td><td class="num">${hh.pos}</td><td class="num">${hh.ppg != null ? hh.ppg.toFixed(2) : '-'}</td><td style="font-size:11px">${hh.mgr || '-'}</td><td class="num">${hh.net < 0 ? '-' : ''}${fmtMoney(Math.abs(hh.net))}</td><td class="num">${fmtMoney(hh.worth)}</td><td style="font-size:11px">${hh.trophies.length ? hh.trophies.join(', ') : '-'}</td></tr>`).join('')}</tbody></table>
         </div>
       </div>
       <button class="dyn-btn" id="owShareCareerBtn">📤 Condividi la carriera</button>
@@ -2479,7 +2503,7 @@
       </div>` : '';
     const eventsHTML = (m.events && m.events.length) ? `<div class="mrow-scorers">${m.events.map((ev) => `<div class="sc them">${ev.kind === 'inj' ? '🚑' : '🟥'} ${flagOf(ev)}${ev.n} ${ev.kind === 'inj' ? 'ko, fuori ' + ev.weeks + ' partit' + (ev.weeks === 1 ? 'a' : 'e') : 'squalificato per la prossima'}</div>`).join('')}</div>` : '';
     row.innerHTML = `<div class="mrow-mw">G${m.mw}</div>
-      <div class="mrow-main"><div class="mrow-fix"><span class="ha ${m.home ? 'home' : 'away'}">${m.home ? 'C' : 'T'}</span> vs ${m.opp}${m.derby ? ' <span class="mrow-derby">🔥 DERBY</span>' : ''}</div>${scorersHTML}${eventsHTML}</div>
+      <div class="mrow-main"><div class="mrow-fix"><span class="ha ${m.home ? 'home' : 'away'}">${m.home ? 'C' : 'T'}</span> vs ${m.opp}${m.derby ? ` <span class="mrow-derby" title="Bilancio testa a testa in questa rivalità, da quando la segui">🔥 DERBY${m.derbyRecord ? ' (' + m.derbyRecord.w + 'V ' + m.derbyRecord.d + 'N ' + m.derbyRecord.l + 'P)' : ''}</span>` : ''}</div>${scorersHTML}${eventsHTML}</div>
       <div class="mrow-res ${m.res}">${m.gf}-${m.ga}</div>`;
     $('owLog').prepend(row);
   }
@@ -2539,13 +2563,16 @@
     $('owLog').prepend(row);
   }
 
+  // Niente più "Media" (punti a partita) riga per riga: con un solo divisore condiviso
+  // (le partite giocate DA TE) applicato al punteggio di squadre che magari non hanno nemmeno
+  // giocato lo stesso numero di gare in quel preciso istante, il numero era più fuorviante che
+  // utile per gli avversari. La propria media, quella vera, si trova ora nel resoconto di fine
+  // carriera (renderEnd, stagione per stagione) insieme all'allenatore di quella stagione.
   function tableHTML() {
     const d = divOf();
-    const played = Math.max(1, S.played || 0);
-    return `<table class="dyn-table"><thead><tr><th>Squadra</th><th>Mister</th><th class="num">Pt</th><th class="num">Media</th><th class="num">DR</th></tr></thead><tbody>${S.table.map((t, i) => {
+    return `<table class="dyn-table"><thead><tr><th>Squadra</th><th>Mister</th><th class="num">Pt</th><th class="num">DR</th></tr></thead><tbody>${S.table.map((t, i) => {
       const zone = (d.euroSpots && i < d.euroSpots) ? 'ucl' : (d.uelPos && i === d.uelPos - 1) ? 'uel' : (d.confPos && i === d.confPos - 1) ? 'conf' : (d.promoted && i < d.promoted) ? 'ucl' : (d.playoff && i >= d.promoted && i < d.promoted + d.playoff) ? 'po' : (d.releg && i >= d.teams - d.releg) ? 'rel' : '';
-      const ppg = S.played > 0 ? (t.pts / played).toFixed(2) : '-';
-      return `<tr class="${t.me ? 'me' : ''} ${zone}"><td>${i + 1}. ${t.name}</td><td style="font-size:11px;color:var(--muted)">${t.mgr ? t.mgr.n : '-'}</td><td class="num">${t.pts}</td><td class="num">${ppg}</td><td class="num">${t.gd > 0 ? '+' : ''}${t.gd}</td></tr>`;
+      return `<tr class="${t.me ? 'me' : ''} ${zone}"><td>${i + 1}. ${t.name}</td><td style="font-size:11px;color:var(--muted)">${t.mgr ? t.mgr.n : '-'}</td><td class="num">${t.pts}</td><td class="num">${t.gd > 0 ? '+' : ''}${t.gd}</td></tr>`;
     }).join('')}</tbody></table>`;
   }
 
