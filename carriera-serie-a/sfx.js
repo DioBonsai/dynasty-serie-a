@@ -128,8 +128,48 @@
     [392, 349.23, 311.13, 261.63].forEach(function (f, i) { tone(f, 0.3, 'sawtooth', 0.15, i * 0.15); });
   };
 
-  // Un piccolo "pop" per conferme/click leggeri.
+  // Un piccolo "pop" per conferme/click leggeri (toggle, cambio biglietto, ecc).
   DynSound.tap = function () { tone(700, 0.05, 'sine', 0.1); };
+
+  // Incasso: un "cha-ching" luminoso per vendite, sponsor, bonus investitore.
+  DynSound.coin = function () {
+    tone(1046.5, 0.09, 'triangle', 0.22, 0);
+    tone(1568, 0.15, 'triangle', 0.2, 0.07);
+  };
+
+  // Spesa: un tonfo morbido e discendente per acquisti/pagamenti (niente di negativo,
+  // solo "i soldi sono usciti dalla cassa").
+  DynSound.cashOut = function () {
+    tone(392, 0.12, 'sine', 0.16, 0);
+    tone(261.63, 0.18, 'sine', 0.13, 0.06);
+  };
+
+  // Conferma positiva generica: rinnovi, accordi sponsor, trofei minori dell'interfaccia.
+  DynSound.chime = function () {
+    tone(783.99, 0.1, 'triangle', 0.2, 0);
+    tone(1046.5, 0.18, 'triangle', 0.18, 0.09);
+  };
+
+  // Errore/azione non valida: due note basse e secche, mai fastidiose.
+  DynSound.error = function () {
+    tone(220, 0.09, 'square', 0.15, 0);
+    tone(174.61, 0.15, 'square', 0.15, 0.1);
+  };
+
+  // Notifica neutra e discreta: cambi di stato altrui (lobby multiplayer, poll, ecc).
+  DynSound.notify = function () { tone(880, 0.08, 'sine', 0.13, 0); };
+
+  // Fine stagione "tranquilla": né trofeo né retrocessione, un accordo pacato che chiude
+  // comunque il capitolo invece di lasciare tutto in silenzio.
+  DynSound.calmEnd = function () {
+    [523.25, 659.25, 523.25].forEach(function (f, i) { tone(f, 0.22, 'triangle', 0.16, i * 0.14); });
+  };
+
+  // Calcio d'inizio: uno sweep ascendente breve + un piccolo tick, per "Inizia Stagione".
+  DynSound.kickoff = function () {
+    sweep(500, 1000, 0.12, 'square', 0.16, 0);
+    tone(1200, 0.05, 'square', 0.13, 0.13);
+  };
 
   DynSound.isMuted = isMuted;
   DynSound.setMuted = setMuted;

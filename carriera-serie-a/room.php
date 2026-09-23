@@ -12,15 +12,25 @@
  *   aggiunge come host+primo giocatore
  * POST room.php {action:'join', code, name, club}                   -> entra in una stanza esistente
  * POST room.php {action:'ready', code, playerId, ready, state?}     -> imposta il tuo stato
- *   "pronto"; quando ready=true, `state` è il JSON della carriera che sottometti alla stanza
- * POST room.php {action:'submitResult', code, playerId, results}    -> solo l'host: pubblica
- *   il risultato della stagione simulata (una voce per playerId), chiude la stanza (`done`)
+ *   "pronto" per la fase in cui si trova la stanza. In lobby (fase 'lobby'/'allReadyLobby') è
+ *   solo un flag, nessuno stato richiesto. In sessione (fase 'session'/'readyForSim') quando
+ *   ready=true, `state` è il JSON della carriera (dopo la dirigenza) che sottometti alla stanza
+ * POST room.php {action:'startSession', code, playerId, force?}     -> solo l'host: chiude la
+ *   lobby e apre la fase di dirigenza per tutti (fase 'session'); richiede che tutti abbiano
+ *   premuto pronto in lobby, a meno di force=true
+ * POST room.php {action:'submitResult', code, playerId, results, force?} -> solo l'host:
+ *   pubblica il risultato della stagione simulata (una voce per playerId), chiude la stanza
+ *   (`done`); richiede che tutti abbiano premuto pronto in sessione, a meno di force=true
  * POST room.php {action:'leave', code, playerId}                    -> esci dalla stanza
  * GET  room.php?action=state&code=XXXX                               -> stato attuale (poll)
  *
- * Fase 2b (sim.js: runHostSeason) fa girare la simulazione multi-club lato client, nel
- * browser dell'host — questo endpoint è solo il tramite: raccoglie le carriere sottomesse,
- * pubblica il risultato che l'host ha calcolato. Nessuna logica di gioco qui dentro.
+ * Struttura a due fasi: (1) lobby — tutti premono pronto, poi l'host avvia la sessione; (2)
+ * sessione — ognuno gestisce la propria dirigenza per conto suo e ripreme pronto quando ha
+ * finito, poi l'host avvia la simulazione (o forza con chi è pronto). Fase 2b (sim.js:
+ * runHostSeason) fa girare la simulazione multi-club lato client, nel browser dell'host —
+ * questo endpoint è solo il tramite: raccoglie le carriere sottomesse, pubblica il risultato
+ * che l'host ha calcolato. Da lì ciascuno scarica e avvia la propria simulazione quando vuole,
+ * senza dover aspettare gli altri. Nessuna logica di gioco qui dentro.
  */
 
 header('Content-Type: application/json; charset=utf-8');
@@ -208,7 +218,6 @@ if ($action === 'ready') {
     $state = $body['state'] ?? null;
     $stateValid = is_array($state) && isset($state['squad']) && is_array($state['squad']) && !empty($state['club']);
     if ($code === '' || $playerId === '') fail('Richiesta non valida.');
-    if ($ready && !$stateValid) fail('Carriera mancante o non valida.');
 
     $path = room_path($DIR, $code);
     $fp = fopen($path, 'c+');
@@ -217,12 +226,17 @@ if ($action === 'ready') {
     $raw = stream_get_contents($fp);
     $room = $raw ? json_decode($raw, true) : null;
     if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
-    if (($room['phase'] ?? 'lobby') === 'done') { flock($fp, LOCK_UN); fclose($fp); fail('La stanza ha già una stagione pronta.', 409); }
+    $prevPhase = $room['phase'] ?? 'lobby';
+    if ($prevPhase === 'done') { flock($fp, LOCK_UN); fclose($fp); fail('La stanza ha già una stagione pronta.', 409); }
+    // In lobby "pronto" è solo un flag (si aspetta di poter avviare la sessione); in sessione
+    // porta con sé la carriera (dopo la dirigenza), da qui la validazione diversa per fase.
+    $inSessionStage = in_array($prevPhase, ['session', 'readyForSim'], true);
+    if ($ready && $inSessionStage && !$stateValid) { flock($fp, LOCK_UN); fclose($fp); fail('Carriera mancante o non valida.'); }
     $found = false;
     foreach ($room['players'] as &$p) {
         if ($p['id'] === $playerId) {
             $p['ready'] = $ready;
-            if ($ready) $p['state'] = $state;
+            if ($ready && $inSessionStage) $p['state'] = $state;
             $found = true;
             break;
         }
@@ -231,7 +245,39 @@ if ($action === 'ready') {
     if (!$found) { flock($fp, LOCK_UN); fclose($fp); fail('Non fai parte di questa stanza.', 404); }
     $allReady = count($room['players']) > 1;
     foreach ($room['players'] as $p) { if (!$p['ready']) { $allReady = false; break; } }
-    $room['phase'] = $allReady ? 'allReady' : 'lobby';
+    if ($inSessionStage) {
+        $room['phase'] = $allReady ? 'readyForSim' : 'session';
+    } else {
+        $room['phase'] = $allReady ? 'allReadyLobby' : 'lobby';
+    }
+    $room['updatedAt'] = time();
+    ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($room)); fflush($fp);
+    flock($fp, LOCK_UN); fclose($fp);
+    echo json_encode(['ok' => true, 'room' => public_room($room)]);
+    exit;
+}
+
+if ($action === 'startSession') {
+    $code = strtoupper(trim($body['code'] ?? ''));
+    $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    $force = !empty($body['force']);
+    if ($code === '' || $playerId === '') fail('Richiesta non valida.');
+
+    $path = room_path($DIR, $code);
+    $fp = fopen($path, 'c+');
+    if (!$fp) fail('Stanza non trovata.', 404);
+    flock($fp, LOCK_EX);
+    $raw = stream_get_contents($fp);
+    $room = $raw ? json_decode($raw, true) : null;
+    if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
+    if ($room['hostId'] !== $playerId) { flock($fp, LOCK_UN); fclose($fp); fail('Solo l\'host può avviare la sessione.', 403); }
+    $phase = $room['phase'] ?? 'lobby';
+    if (!in_array($phase, ['lobby', 'allReadyLobby'], true)) { flock($fp, LOCK_UN); fclose($fp); fail('La sessione è già stata avviata.', 409); }
+    if (count($room['players']) < 2) { flock($fp, LOCK_UN); fclose($fp); fail('Serve almeno un altro giocatore nella stanza.', 409); }
+    if ($phase !== 'allReadyLobby' && !$force) { flock($fp, LOCK_UN); fclose($fp); fail('Non tutti i giocatori sono pronti.', 409); }
+    $room['phase'] = 'session';
+    foreach ($room['players'] as &$p) { $p['ready'] = false; unset($p['state']); }
+    unset($p);
     $room['updatedAt'] = time();
     ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($room)); fflush($fp);
     flock($fp, LOCK_UN); fclose($fp);
@@ -253,7 +299,10 @@ if ($action === 'submitResult') {
     $room = $raw ? json_decode($raw, true) : null;
     if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
     if ($room['hostId'] !== $playerId) { flock($fp, LOCK_UN); fclose($fp); fail('Solo l\'host può pubblicare il risultato.', 403); }
-    if (($room['phase'] ?? 'lobby') === 'done') { flock($fp, LOCK_UN); fclose($fp); fail('La stanza ha già una stagione pronta.', 409); }
+    $phase = $room['phase'] ?? 'lobby';
+    if ($phase === 'done') { flock($fp, LOCK_UN); fclose($fp); fail('La stanza ha già una stagione pronta.', 409); }
+    if (!in_array($phase, ['session', 'readyForSim'], true)) { flock($fp, LOCK_UN); fclose($fp); fail('La sessione non è ancora stata avviata.', 409); }
+    if ($phase !== 'readyForSim' && empty($body['force'])) { flock($fp, LOCK_UN); fclose($fp); fail('Non tutti i giocatori sono pronti a simulare.', 409); }
     $room['results'] = $results;
     $room['phase'] = 'done';
     $room['updatedAt'] = time();
@@ -284,8 +333,11 @@ if ($action === 'leave') {
         exit;
     }
     if ($room['hostId'] === $playerId) $room['hostId'] = $room['players'][0]['id'];   // l'host passa a chi resta da più tempo
-    $room['phase'] = 'lobby';
-    foreach ($room['players'] as &$p) { $p['ready'] = false; }   // chi resta rifà "pronto" con la lobby cambiata
+    // Chi esce durante la sessione (dirigenza) non riporta gli altri in lobby: restano nella
+    // stessa fase, solo rifanno "pronto" perché la composizione della stanza è cambiata.
+    $prevPhase = $room['phase'] ?? 'lobby';
+    $room['phase'] = in_array($prevPhase, ['session', 'readyForSim'], true) ? 'session' : 'lobby';
+    foreach ($room['players'] as &$p) { $p['ready'] = false; }   // chi resta rifà "pronto" con la stanza cambiata
     unset($p);
     $room['updatedAt'] = time();
     ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($room)); fflush($fp);

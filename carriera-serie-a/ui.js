@@ -238,17 +238,24 @@
   }
 
   /* ---------------- multiplayer: stanze condivise ----------------
-     Identità (nome/club) e stato "pronto" per persona sincronizzati via room.php (stesso
-     pattern minimale di leaderboard.php — un file JSON per stanza, niente account). "Pronto"
-     ora porta con sé una carriera vera, già gestita con gli strumenti single-player normali
-     (Sala del Consiglio) e non ancora a stagione avviata — nessuna UI di creazione club
-     separata per il multiplayer, si riusa il sistema di salvataggio multi-slot esistente
-     (readSavesIndex/loadSaveSlot). Quando tutti sono pronti, l'host esegue runHostSeason
-     (sim.js, Fase 2b) nel proprio browser e pubblica il risultato; ciascuno lo scarica e lo
-     applica al proprio salvataggio.
+     Identità (nome/club) e stato per persona sincronizzati via room.php (stesso pattern
+     minimale di leaderboard.php — un file JSON per stanza, niente account), a due fasi:
+
+     1) Lobby: ognuno preme "Pronto" (solo un flag). Quando lo sono tutti l'host preme "Avvia
+        sessione" (fase -> 'session'), oppure forza l'avvio anche se qualcuno manca.
+     2) Sessione: ognuno gestisce la propria dirigenza per conto suo (con gli strumenti
+        single-player normali, Sala del Consiglio — nessuna UI di creazione club separata, si
+        riusa il sistema di salvataggio multi-slot esistente: readSavesIndex/loadSaveSlot), poi
+        ripreme "Pronto" sottomettendo la carriera. Quando lo sono tutti l'host preme "Inizia
+        simulazione" (o forza con chi è pronto): esegue runHostSeason (sim.js, Fase 2b) nel
+        proprio browser e pubblica il risultato. Da lì ciascuno scarica e avvia la propria
+        simulazione quando vuole, in autonomia, senza aspettare gli altri.
   */
   const MP_SESSION_KEY = 'dsa_mp_session';
   let mpPollTimer = null;
+  // Fase vista nell'ultimo render, per suonare una notifica solo quando la stanza CAMBIA
+  // fase (non ad ogni poll che ridisegna la stessa fase).
+  let mpLastPhase = null;
 
   function readMpSession() { try { return JSON.parse(localStorage.getItem(MP_SESSION_KEY)); } catch (e) { return null; } }
   function writeMpSession(s) { try { localStorage.setItem(MP_SESSION_KEY, JSON.stringify(s)); } catch (e) {} }
@@ -273,7 +280,7 @@
     const sess = readMpSession();
     if (sess && sess.code && sess.playerId) { resumeLobby(sess.code, sess.playerId); return; }
     overlay(`<h2>👥 Gioca con gli amici</h2>
-      <p class="ow-sub">Una stanza condivisa "a turno sincrono": ognuno gestisce il proprio club per conto suo (con gli strumenti soliti, una carriera normale non ancora a stagione avviata), poi tocca Pronto scegliendo quale carriera sottomettere. Appena lo sono tutti, l'host avvia la stagione e il risultato arriva a tutti insieme.</p>
+      <p class="ow-sub">Una stanza condivisa in due passi: prima tutti premono Pronto e l'host avvia la sessione; poi ognuno gestisce il proprio club per conto suo (con gli strumenti soliti) e ripreme Pronto quando ha finito. Appena lo sono tutti, l'host avvia la simulazione e ciascuno scarica il proprio risultato quando vuole.</p>
       <div class="dyn-modal-actions">
         <button class="dyn-btn dyn-btn-primary" id="mpCreateBtn">🆕 Crea una stanza</button>
         <button class="dyn-btn" id="mpJoinBtn">🔑 Entra con un codice</button>
@@ -318,8 +325,9 @@
         const data = await mpApi('create', { name, club, div, difficulty });
         const saveId = createRoomCareer(name, club, div, difficulty);
         writeMpSession({ code: data.room.code, playerId: data.playerId, saveId });
+        mpLastPhase = null;
         renderLobby(data.room, data.playerId);
-      } catch (e) { toast(e.message || 'Impossibile creare la stanza.'); }
+      } catch (e) { toast(e.message || 'Impossibile creare la stanza.', 'error'); }
     };
     $('mpBack').onclick = openMultiplayerHub;
   }
@@ -337,13 +345,14 @@
     $('mpJoinGo').onclick = async () => {
       const code = ($('mpCode').value || '').trim().toUpperCase();
       const name = ($('mpName').value || '').trim(), club = ($('mpClub').value || '').trim();
-      if (!code || !name || !club) { toast('Compila tutti i campi.'); return; }
+      if (!code || !name || !club) { toast('Compila tutti i campi.', 'error'); return; }
       try {
         const data = await mpApi('join', { code, name, club });
         const saveId = createRoomCareer(name, club, data.room.div, data.room.difficulty);
         writeMpSession({ code, playerId: data.playerId, saveId });
+        mpLastPhase = null;
         renderLobby(data.room, data.playerId);
-      } catch (e) { toast(e.message || 'Impossibile entrare nella stanza.'); }
+      } catch (e) { toast(e.message || 'Impossibile entrare nella stanza.', 'error'); }
     };
     $('mpBack').onclick = openMultiplayerHub;
   }
@@ -361,23 +370,43 @@
     const me = room.players.find((p) => p.id === playerId);
     const isHost = room.hostId === playerId;
     const done = room.phase === 'done';
+    const inLobbyStage = room.phase === 'lobby' || room.phase === 'allReadyLobby';
+    const inSessionStage = room.phase === 'session' || room.phase === 'readyForSim';
+    const allLobbyReady = room.phase === 'allReadyLobby';
+    const allSessionReady = room.phase === 'readyForSim';
     const readyCount = room.players.filter((p) => p.ready).length;
-    // L'host decide lui quando partire: il bottone "Avvia" è sempre suo, non serve aspettare
-    // che sia pronto anche l'ultimo — chi non ha ancora premuto Pronto resta fuori da quella
-    // stagione (può unirsi alla prossima). Aspettare tutti sempre, come da richiesta iniziale,
-    // avrebbe bloccato la stanza se anche un solo amico fosse rimasto indeciso.
+    const total = room.players.length;
+
+    let stageLabel = '';
+    if (inLobbyStage) stageLabel = '⏳ In attesa che tutti siano pronti, poi l\'host avvia la sessione.';
+    else if (inSessionStage) stageLabel = '🏟️ Sessione avviata: gestisci il tuo club, poi ripremi Pronto quando hai finito.';
+    else if (done) stageLabel = '🏁 Stagione pronta! Scarica il tuo risultato quando vuoi.';
+
+    // Un suono solo quando la fase è appena cambiata rispetto all'ultimo render (non ad
+    // ogni poll che ridisegna la stessa fase) — così anche chi non ha appena cliccato un
+    // bottone si accorge che la stanza è passata avanti.
+    if (DynSound && mpLastPhase !== null && mpLastPhase !== room.phase) {
+      if (room.phase === 'session') DynSound.chime();
+      else if (room.phase === 'done') DynSound.chime();
+      else if (room.phase === 'allReadyLobby' || room.phase === 'readyForSim') DynSound.notify();
+    }
+    mpLastPhase = room.phase;
+
     overlay(`
       <h2>👥 Stanza ${room.code}</h2>
       <p class="ow-sub">${(DIVS[room.div] || {}).name || ''} · condividi il codice <b>${room.code}</b> con chi manca.</p>
+      <p class="ow-sub" style="text-align:center">${stageLabel}</p>
       <div class="dyn-modal-actions" style="gap:6px">
         ${room.players.map((p) => `<div class="ow-fin-row"><span>${p.club}${p.id === room.hostId ? ' 👑' : ''}<small style="display:block;color:var(--muted)">${p.name}</small></span><b class="${p.ready ? 'good' : ''}">${p.ready ? '✅ Pronto' : '⏳ In attesa'}</b></div>`).join('')}
       </div>
-      ${done ? '<p class="ow-sub" style="text-align:center">🏁 Stagione pronta! Scarica il tuo risultato quando vuoi.</p>' : ''}
       <div class="dyn-modal-actions">
         ${done ? `<button class="dyn-btn dyn-btn-primary" id="mpDownloadBtn">📥 Scarica il tuo risultato</button>` : `
-          ${!(me && me.ready) ? `<button class="dyn-btn" id="mpManageBtn">🏟️ Gestisci la tua squadra</button>` : ''}
+          ${inSessionStage && !(me && me.ready) ? `<button class="dyn-btn" id="mpManageBtn">🏟️ Gestisci la tua squadra</button>` : ''}
           <button class="dyn-btn ${me && me.ready ? '' : 'dyn-btn-primary'}" id="mpReadyBtn">${me && me.ready ? 'Non sono più pronto' : '✅ Sono pronto'}</button>
-          ${isHost ? `<button class="dyn-btn dyn-btn-primary" id="mpStartBtn" ${readyCount ? '' : 'disabled'}>▶️ Avvia la stagione${readyCount ? ' (' + readyCount + ' pront' + (readyCount === 1 ? 'o' : 'i') + ')' : ''}</button>` : ''}
+          ${isHost && inLobbyStage ? `<button class="dyn-btn dyn-btn-primary" id="mpStartSessionBtn" ${allLobbyReady ? '' : 'disabled'}>▶️ Avvia sessione${allLobbyReady ? '' : ' (' + readyCount + '/' + total + ' pronti)'}</button>` : ''}
+          ${isHost && inLobbyStage && !allLobbyReady && total > 1 ? `<button class="dyn-btn" id="mpForceSessionBtn">⏭️ Forza avvio senza aspettare tutti</button>` : ''}
+          ${isHost && inSessionStage ? `<button class="dyn-btn dyn-btn-primary" id="mpStartSimBtn" ${allSessionReady ? '' : 'disabled'}>▶️ Inizia simulazione${allSessionReady ? '' : ' (' + readyCount + '/' + total + ' pronti)'}</button>` : ''}
+          ${isHost && inSessionStage && !allSessionReady && readyCount > 0 ? `<button class="dyn-btn" id="mpForceSimBtn">⏭️ Forza simulazione senza aspettare tutti</button>` : ''}
         `}
         <button class="dyn-btn ow-danger" id="mpLeaveBtn">Esci dalla stanza</button>
       </div>`);
@@ -392,27 +421,46 @@
     const readyBtn = $('mpReadyBtn');
     if (readyBtn) readyBtn.onclick = async () => {
       if (me && me.ready) {
-        try { const data = await mpApi('ready', { code: room.code, playerId, ready: false }); renderLobby(data.room, playerId); }
-        catch (e) { toast(e.message || 'Errore di rete.'); }
+        try { const data = await mpApi('ready', { code: room.code, playerId, ready: false }); if (DynSound) DynSound.tap(); renderLobby(data.room, playerId); }
+        catch (e) { toast(e.message || 'Errore di rete.', 'error'); }
+        return;
+      }
+      if (inLobbyStage) {
+        try { const data = await mpApi('ready', { code: room.code, playerId, ready: true }); if (DynSound) DynSound.tap(); renderLobby(data.room, playerId); }
+        catch (e) { toast(e.message || 'Errore di rete.', 'error'); }
         return;
       }
       const sess = readMpSession();
       const state = sess && sess.saveId ? loadSaveSlot(sess.saveId) : null;
-      if (!state) { toast('Nessuna carriera associata a questa stanza: esci e rientra per ricrearne una.'); return; }
-      if (state.seasonActive) { toast('La tua carriera per questa stanza ha già iniziato la stagione: torna in Dirigenza, non premere ancora "Inizia Stagione".'); return; }
+      if (!state) { toast('Nessuna carriera associata a questa stanza: esci e rientra per ricrearne una.', 'error'); return; }
+      if (state.seasonActive) { toast('La tua carriera per questa stanza ha già iniziato la stagione: torna in Dirigenza, non premere ancora "Inizia Stagione".', 'error'); return; }
       try {
         const data = await mpApi('ready', { code: room.code, playerId, ready: true, state });
+        if (DynSound) DynSound.tap();
         renderLobby(data.room, playerId);
-      } catch (e) { toast(e.message || 'Impossibile sottomettere la carriera.'); }
+      } catch (e) { toast(e.message || 'Impossibile sottomettere la carriera.', 'error'); }
     };
-    const startBtn = $('mpStartBtn');
-    if (startBtn) startBtn.onclick = () => hostStartMultiplayerSeason(room, playerId);
+    const startSessionBtn = $('mpStartSessionBtn');
+    if (startSessionBtn) startSessionBtn.onclick = async () => {
+      try { const data = await mpApi('startSession', { code: room.code, playerId }); renderLobby(data.room, playerId); }
+      catch (e) { toast(e.message || 'Impossibile avviare la sessione.', 'error'); }
+    };
+    const forceSessionBtn = $('mpForceSessionBtn');
+    if (forceSessionBtn) forceSessionBtn.onclick = async () => {
+      try { const data = await mpApi('startSession', { code: room.code, playerId, force: true }); renderLobby(data.room, playerId); }
+      catch (e) { toast(e.message || 'Impossibile avviare la sessione.', 'error'); }
+    };
+    const startSimBtn = $('mpStartSimBtn');
+    if (startSimBtn) startSimBtn.onclick = () => hostRunSimulation(room, playerId, false);
+    const forceSimBtn = $('mpForceSimBtn');
+    if (forceSimBtn) forceSimBtn.onclick = () => hostRunSimulation(room, playerId, true);
     const downloadBtn = $('mpDownloadBtn');
     if (downloadBtn) downloadBtn.onclick = () => downloadMyResult(room, playerId);
     $('mpLeaveBtn').onclick = async () => {
       stopMpPolling();
       try { await mpApi('leave', { code: room.code, playerId }); } catch (e) {}
       clearMpSession();
+      mpLastPhase = null;
       closeOverlay();
     };
     // Niente polling una volta pubblicato il risultato: ognuno lo scarica quando vuole,
@@ -428,23 +476,26 @@
   }
 
   // L'host: esegue l'intera stagione condivisa nel proprio browser (runHostSeason, sim.js —
-  // Fase 2b, stesso motore del singolo giocatore) e pubblica un risultato per ciascuno.
-  async function hostStartMultiplayerSeason(room, playerId) {
-    // Chi non ha ancora premuto Pronto resta fuori da questa stagione — l'host non aspetta
-    // tutta la stanza, solo chi ha davvero sottomesso una carriera.
+  // Fase 2b, stesso motore del singolo giocatore) e pubblica un risultato per ciascuno. Da qui
+  // ciascuno scarica e avvia la propria simulazione quando vuole (downloadMyResult), senza
+  // dover aspettare che gli altri lo facciano nello stesso momento.
+  async function hostRunSimulation(room, playerId, force) {
+    // Chi non ha ancora ripremuto Pronto in sessione resta fuori da questa stagione — se
+    // l'host forza l'avvio, si procede solo con chi ha davvero sottomesso una carriera.
     const readyPlayers = room.players.filter((p) => p.ready && p.state);
-    if (readyPlayers.length < 1) { toast('Nessuno è ancora pronto.'); return; }
-    const btn = $('mpStartBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Simulazione in corso…'; }
+    if (readyPlayers.length < 1) { toast('Nessuno è ancora pronto.', 'error'); return; }
+    const btn = $('mpStartSimBtn') || $('mpForceSimBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Simulazione in corso…'; }
     try {
       const ctxs = readyPlayers.map((p) => JSON.parse(JSON.stringify(p.state)));
       runHostSeason(ctxs, room.div, room.difficulty);
       const results = {};
       readyPlayers.forEach((p, i) => { results[p.id] = ctxs[i]; });
-      const data = await mpApi('submitResult', { code: room.code, playerId, results });
+      const data = await mpApi('submitResult', { code: room.code, playerId, results, force: !!force });
       renderLobby(data.room, playerId);
     } catch (e) {
-      toast(e.message || 'Impossibile avviare la stagione.');
-      if (btn) { btn.disabled = false; btn.textContent = '▶️ Avvia la stagione'; }
+      toast(e.message || 'Impossibile avviare la simulazione.', 'error');
+      if (btn) { btn.disabled = false; btn.textContent = '▶️ Inizia simulazione'; }
     }
   }
 
@@ -453,10 +504,12 @@
   // multiplayer: la stanza resta per chi non ha ancora scaricato.
   function downloadMyResult(room, playerId) {
     const result = room.results && room.results[playerId];
-    if (!result) { toast('Risultato non trovato.'); return; }
+    if (!result) { toast('Risultato non trovato.', 'error'); return; }
     stopMpPolling();
     clearMpSession();
+    mpLastPhase = null;
     closeOverlay();
+    if (DynSound) DynSound.kickoff();
     S = result;
     normSquad();
     saveGame();
@@ -979,6 +1032,11 @@
 
   function renderBoard() {
     const d = divOf(), body = $('boardBody');
+    // Carriera legata a una stanza multiplayer ancora aperta: niente "Inizia Stagione" qui
+    // (la stagione la avvia l'host per tutti insieme), solo "Sono pronto" che torna alla
+    // lobby con la carriera sottomessa.
+    const mpSess = readMpSession();
+    const mpBoard = !!(mpSess && mpSess.saveId === S._saveId);
     normSquad();
     previewFormation = S.formation;   // il modulo mostrato riflette quello persistito (ora pesa in partita)
     maybeScoutProspect();
@@ -1134,7 +1192,10 @@
       ${ladderHTML()}
       <div class="ow-tabs">${TABS.map((t) => `<button class="ow-tab ${boardTab === t.key ? 'on' : ''}" data-tab="${t.key}">${t.label}${t.warn ? '<span class="dot"></span>' : ''}</button>`).join('')}</div>
       <div id="boardTabBody">${activeTab.html}</div>
-      <button class="dyn-btn dyn-btn-primary" id="startSeasonBtn">Inizia Stagione ${S.season} · ${d.name}</button>
+      ${mpBoard ? `
+        <button class="dyn-btn dyn-btn-primary" id="mpBoardReadyBtn">✅ Sono pronto</button>
+        <button class="dyn-btn" id="mpBoardBackBtn">🔙 Torna alla stanza</button>
+      ` : `<button class="dyn-btn dyn-btn-primary" id="startSeasonBtn">Inizia Stagione ${S.season} · ${d.name}</button>`}
       <div class="ow-exit-row">
         <button class="dyn-btn" id="sellBtn">💷 Vendi il club · ${fmtMoney(worth)}</button>
         <button class="dyn-btn" id="resignBtn">Dimettiti</button>
@@ -1168,7 +1229,7 @@
         closeOverlay();
         const i = S.squad.findIndex((x) => x.pid === p.pid); if (i < 0) return;
         pushAlumnus(p); S.squad.splice(i, 1); S.offers = (S.offers || []).filter((o) => o.pid !== p.pid); S.budget += fee;
-        toast('Ceduto ' + p.n + ' per ' + fmtMoney(fee) + '.'); renderBoard(); saveGame();
+        toast('Ceduto ' + p.n + ' per ' + fmtMoney(fee) + '.', 'money'); renderBoard(); saveGame();
       };
       $('ovCancelRel').onclick = closeOverlay;
     }));
@@ -1186,9 +1247,9 @@
     body.querySelectorAll('[data-buyback]').forEach((el) => el.addEventListener('click', () => {
       const p = S.squad.find((x) => x.pid === +el.dataset.buyback); if (!p) return;
       const fee = loanBuybackFee(p);
-      if (S.budget < fee) { toast('Non hai abbastanza per riscattarlo.'); return; }
+      if (S.budget < fee) { toast('Non hai abbastanza per riscattarlo.', 'error'); return; }
       S.budget -= fee; p.loan = false; p.yrs = 3 + rnd(2);
-      toast(p.n + ' riscattato a titolo definitivo per ' + fmtMoney(fee) + '.');
+      toast(p.n + ' riscattato a titolo definitivo per ' + fmtMoney(fee) + '.', 'spend');
       renderBoard(); saveGame();
     }));
     // Accetta un'offerta: incassi la cifra, il giocatore parte. Vendere un vero big infastidisce l'ambiente.
@@ -1198,7 +1259,7 @@
       const p = S.squad[i];
       pushAlumnus(p); S.budget += o.fee; S.squad.splice(i, 1); S.offers = S.offers.filter((x) => x.pid !== pid);
       if (p.ovr >= divOf().avg + 6) S.sent = clamp(S.sent - 3, 0, 100);
-      toast('Venduto ' + p.n + ' al ' + o.club + ' per ' + fmtMoney(o.fee) + '.'); renderBoard(); saveGame();
+      toast('Venduto ' + p.n + ' al ' + o.club + ' per ' + fmtMoney(o.fee) + '.', 'money'); renderBoard(); saveGame();
     }));
     body.querySelectorAll('.ow-reject').forEach((el) => el.addEventListener('click', () => {
       const pid = +el.dataset.rej; const o = (S.offers || []).find((x) => x.pid === pid); if (!o) return;
@@ -1209,24 +1270,24 @@
     body.querySelectorAll('.ow-hire').forEach((el) => el.addEventListener('click', () => {
       const m = S.mgrOpts[+el.dataset.hire]; if (!m) return;
       const sev = Math.round(S.manager.salary * 0.3);
-      if (S.budget < sev) { toast('Non puoi permetterti la buonuscita.'); return; }
+      if (S.budget < sev) { toast('Non puoi permetterti la buonuscita.', 'error'); return; }
       S.budget -= sev; S.manager = m; S.mgrOpts = null;
-      toast(m.n + ' prende in carico la squadra. Buonuscita pagata: ' + fmtMoney(sev)); renderBoard(); saveGame();
+      toast(m.n + ' prende in carico la squadra. Buonuscita pagata: ' + fmtMoney(sev), 'spend'); renderBoard(); saveGame();
     }));
     body.querySelectorAll('.ow-offer').forEach((el) => el.addEventListener('click', () => {
       const o = S.sponsorOpts[+el.dataset.sp]; if (!o) return;
       S.sponsor = o; S.sponsorOpts = null;
-      toast('Firmato con ' + o.name + ' per ' + fmtMoney(o.perYear) + ' all\'anno.'); renderBoard(); saveGame();
+      toast('Firmato con ' + o.name + ' per ' + fmtMoney(o.perYear) + ' all\'anno.', 'success'); renderBoard(); saveGame();
     }));
     const upg = $('upgradeBtn');
     if (upg) upg.addEventListener('click', () => {
       const nx = STADIUM[S.stadiumTier + 1]; if (!nx || S.budget < nx.cost) return;
       spendGuard(nx.cost, 'L\'ampliamento', '', () => {
         S.budget -= nx.cost; S.stadiumTier++; S.stadiumSpent += nx.cost; S.sent = clamp(S.sent + 3, 0, 100);
-        toast('Le ruspe entrano in azione. Nuova capienza: ' + nx.cap.toLocaleString('it-IT')); renderBoard(); saveGame();
+        toast('Le ruspe entrano in azione. Nuova capienza: ' + nx.cap.toLocaleString('it-IT'), 'spend'); renderBoard(); saveGame();
       });
     });
-    body.querySelectorAll('.ow-ticket').forEach((el) => el.addEventListener('click', () => { S.ticket = +el.dataset.tk; renderBoard(); saveGame(); }));
+    body.querySelectorAll('.ow-ticket').forEach((el) => el.addEventListener('click', () => { S.ticket = +el.dataset.tk; renderBoard(); saveGame(); if (DynSound) DynSound.tap(); }));
     const std = $('spinStdBtn'), prem = $('spinPremBtn'), premRole = $('spinPremRoleBtn'), stdRole = $('spinStdRoleBtn');
     if (std) std.addEventListener('click', () => doSpin(false));
     if (prem) prem.addEventListener('click', () => doSpin(true));
@@ -1238,7 +1299,7 @@
     if (inv) inv.addEventListener('click', () => {
       const amount = Math.round(divOf().investor * diffOf().sponsorMult / 1e4) * 1e4;
       S.investorUsed = true; S.budget += amount;
-      toast('Un investitore stacca un assegno: +' + fmtMoney(amount)); renderBoard(); saveGame();
+      toast('Un investitore stacca un assegno: +' + fmtMoney(amount), 'money'); renderBoard(); saveGame();
     });
     const scoutUpg = $('scoutUpgBtn');
     if (scoutUpg) scoutUpg.addEventListener('click', () => {
@@ -1276,7 +1337,26 @@
     }));
     const resetXI = $('resetXIBtn');
     if (resetXI) resetXI.addEventListener('click', () => { S.previewXI = null; selectedPreviewPid = null; renderBoard(); saveGame(); });
-    $('startSeasonBtn').addEventListener('click', () => startSeason());
+    if (mpBoard) {
+      $('mpBoardReadyBtn').onclick = async () => {
+        saveGame();
+        try {
+          const data = await mpApi('ready', { code: mpSess.code, playerId: mpSess.playerId, ready: true, state: S });
+          if (DynSound) DynSound.tap();
+          stopMpPolling();
+          renderLobby(data.room, mpSess.playerId);
+        } catch (e) { toast(e.message || 'Impossibile sottomettere la carriera.', 'error'); }
+      };
+      $('mpBoardBackBtn').onclick = async () => {
+        try {
+          const room = await mpFetchState(mpSess.code);
+          stopMpPolling();
+          renderLobby(room, mpSess.playerId);
+        } catch (e) { toast('Impossibile aggiornare lo stato della stanza.', 'error'); }
+      };
+    } else {
+      $('startSeasonBtn').addEventListener('click', () => { if (DynSound) DynSound.kickoff(); startSeason(); });
+    }
     $('sellBtn').addEventListener('click', confirmSell);
     $('resignBtn').addEventListener('click', confirmResign);
     show('owBoardScreen'); saveGame();
@@ -1367,7 +1447,7 @@
     $('ovFaOk').onclick = () => {
       S.squad.push(p);
       closeOverlay();
-      toast('Lo svincolato ' + p.n + ' si aggrega alla rosa.');
+      toast('Lo svincolato ' + p.n + ' si aggrega alla rosa.', 'success');
       renderBoard(); saveGame();
     };
   }
@@ -1400,13 +1480,13 @@
     $('ovSign').onclick = () => {
       S.squad.push(p);
       if (p.ovr >= d.avg + 7) S.sent = clamp(S.sent + 2, 0, 100);
-      S._spin = null; closeOverlay(); toast(p.n + ' firma.'); renderBoard(); saveGame();
+      S._spin = null; closeOverlay(); toast(p.n + ' firma.', 'success'); renderBoard(); saveGame();
     };
     $('ovPass').onclick = () => {
       const refund = Math.round(cost * 0.4);
       S.budget += refund;
       S._spin = null; closeOverlay();
-      toast('Passi. Lo scout ti restituisce ' + fmtMoney(refund) + ' (40% dello spin).');
+      toast('Passi. Lo scout ti restituisce ' + fmtMoney(refund) + ' (40% dello spin).', 'money');
       renderBoard(); saveGame();
     };
   }
@@ -1428,7 +1508,7 @@
         <button class="dyn-btn dyn-btn-primary" id="ovRenew">Accetta l'accordo</button>
         <button class="dyn-btn" id="ovNoRenew">Non ora</button>
       </div>`);
-    $('ovRenew').onclick = () => { p.wage = nw; p.yrs = ny; closeOverlay(); toast(p.n + ' firma un nuovo contratto di ' + ny + ' anni.'); renderBoard(); saveGame(); };
+    $('ovRenew').onclick = () => { p.wage = nw; p.yrs = ny; closeOverlay(); toast(p.n + ' firma un nuovo contratto di ' + ny + ' anni.', 'success'); renderBoard(); saveGame(); };
     $('ovNoRenew').onclick = closeOverlay;
   }
 
@@ -1604,19 +1684,19 @@
     document.querySelectorAll('#owOverlayModal [data-jan-loan]').forEach((el) => el.addEventListener('click', () => {
       const i = +el.dataset.janLoan, p = S._janCands[i]; if (!p) return;
       const cost = janLoanCost(p);
-      if (S.budget < cost) { toast('Non puoi coprire il suo stipendio.'); return; }
+      if (S.budget < cost) { toast('Non puoi coprire il suo stipendio.', 'error'); return; }
       S.budget -= cost; p.loan = true; S.squad.push(p);
       S._janCands.splice(i, 1);
-      toast(p.n + ' arriva in prestito fino a fine stagione.');
+      toast(p.n + ' arriva in prestito fino a fine stagione.', 'spend');
       saveGame(); renderWinterOverlay();
     }));
     document.querySelectorAll('#owOverlayModal [data-jan-buy]').forEach((el) => el.addEventListener('click', () => {
       const i = +el.dataset.janBuy, p = S._janCands[i]; if (!p) return;
       const cost = janLoanCost(p) + janTransferFee(p);
-      if (S.budget < cost) { toast('Non hai abbastanza per acquistarlo a titolo definitivo.'); return; }
+      if (S.budget < cost) { toast('Non hai abbastanza per acquistarlo a titolo definitivo.', 'error'); return; }
       S.budget -= cost; S.squad.push(p);
       S._janCands.splice(i, 1);
-      toast(p.n + ' firma a titolo definitivo.');
+      toast(p.n + ' firma a titolo definitivo.', 'spend');
       saveGame(); renderWinterOverlay();
     }));
     document.querySelectorAll('#owOverlayModal [data-jan-switch]').forEach((el) => el.addEventListener('click', () => {
@@ -1625,14 +1705,15 @@
       const old = S._janCands[i];
       S._janCands[i] = spinPlayer(false, undefined, 3);
       S._janSwitchUsed = true;
+      if (DynSound) DynSound.tap();
       toast('Cambi ' + old.n + ' con un altro candidato.');
       saveGame(); renderWinterOverlay();
     }));
     document.querySelectorAll('#owOverlayModal [data-wh]').forEach((el) => el.addEventListener('click', () => {
       const m = S._janMgrCands[+el.dataset.wh]; if (!m) return;
       const cost = Math.round(S.manager.salary * 0.3) + Math.round(m.salary * 0.5);
-      if (S.budget < cost) { toast('Non puoi permetterti il cambio (buonuscita + metà stipendio).'); return; }
-      S.budget -= cost; S.manager = m; toast(m.n + ' prende il timone a stagione in corso.');
+      if (S.budget < cost) { toast('Non puoi permetterti il cambio (buonuscita + metà stipendio).', 'error'); return; }
+      S.budget -= cost; S.manager = m; toast(m.n + ' prende il timone a stagione in corso.', 'spend');
       saveGame(); renderWinterOverlay();
     }));
   }
@@ -1777,8 +1858,9 @@
     if (e.promoted || e.title || e.trophies.length) celebrate(body.querySelector('.dyn-panel'));
     body.querySelectorAll('.ow-trophy-moment').forEach((bm) => { fireConfetti(bm); setTimeout(() => fireConfetti(bm), 550); });
     if (DynSound) {
-      if (bigMoments.length) DynSound.trophy();
-      else if (e.relegated || e.fate) DynSound.sadDown();
+      if (bigMoments.length || e.promoted) DynSound.trophy();
+      else if (e.relegated || e.fate || (e.playoff && !e.playoff.won)) DynSound.sadDown();
+      else DynSound.calmEnd();
     }
     $('owEndBtn').onclick = () => {
       if (e.fate === 'forced') { endDynasty('forced', 0); return; }
@@ -2135,7 +2217,7 @@
     $('editCrestColor1').addEventListener('input', (e) => { colors[0] = e.target.value; syncPreview(); });
     $('editCrestColor2').addEventListener('input', (e) => { colors[1] = e.target.value; syncPreview(); });
     $('editCrestReroll').addEventListener('click', () => { colors = randCrestColors(); $('editCrestColor1').value = colors[0]; $('editCrestColor2').value = colors[1]; syncPreview(); });
-    $('ovCrestSave').onclick = () => { S.crestShape = shape; S.crestColors = colors; closeOverlay(); syncHomeCrest(); renderBoard(); saveGame(); toast('Nuovo stemma salvato.'); };
+    $('ovCrestSave').onclick = () => { S.crestShape = shape; S.crestColors = colors; closeOverlay(); syncHomeCrest(); renderBoard(); saveGame(); toast('Nuovo stemma salvato.', 'success'); };
     $('ovCrestCancel').onclick = showClub;
   }
 
@@ -2148,12 +2230,21 @@
   // coda che rallenta): resta comunque a schermo abbastanza a lungo da poterlo leggere.
   let toastT = null;
 
-  function toast(msg) {
+  // `kind` è opzionale e sceglie un suono coerente col messaggio: 'money' (incasso),
+  // 'spend' (pagamento), 'success' (conferma), 'error' (azione non valida/rete). Senza
+  // `kind` il toast resta silenzioso come prima, per non riempire di suoni ogni messaggio.
+  function toast(msg, kind) {
     const t = $('owToast');
     t.innerHTML = msg;
     t.classList.remove('hidden');
     clearTimeout(toastT);
     toastT = setTimeout(() => t.classList.add('hidden'), 3800);
+    if (DynSound && kind) {
+      if (kind === 'money') DynSound.coin();
+      else if (kind === 'spend') DynSound.cashOut();
+      else if (kind === 'success') DynSound.chime();
+      else if (kind === 'error') DynSound.error();
+    }
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
