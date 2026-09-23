@@ -542,6 +542,14 @@
 
   let S = null;
 
+  // Guardia di sicurezza sui punti di contatto fra motore e UI (simMatch/simToEnd/
+  // startSeason/endSeason/advance/computeTable/currentPos): un domani un bottone agganciato
+  // per sbaglio "nudo" a una di queste (es. addEventListener('click', startSeason) invece di
+  // () => startSeason()) passerebbe l'evento click al posto di ctx — è già successo una volta
+  // (vedi cronologia). Invece di esplodere in silenzio su un oggetto che non è affatto un
+  // club (o peggio, mutarlo), si ricade su S: stesso comportamento di quando ctx è omesso.
+  const isClubCtx = (x) => !!(x && Array.isArray(x.squad));
+
   // Durante "Simula fino a fine stagione" le singole partite si susseguono in un unico ciclo
   // sincrono: il browser non ridisegna nulla finché il ciclo non finisce, quindi salvare su
   // localStorage (JSON.stringify dell'intero stato) ad ogni giornata è lavoro sprecato — lo
@@ -1104,6 +1112,7 @@
   // startSeason li usa al posto di generarseli da solo con rivals()/simRivalRoundRobin. Tutto
   // il resto (reset statistiche, budget, coppe, obiettivo di stagione) resta identico.
   function startSeason(ctx = S, sharedOpps = null, sharedFixtures = null) {
+    if (!isClubCtx(ctx)) ctx = S;
     const local = ctx === S;
     // Se si arriva a inizio stagione già in rosso (budget negativo, prima ancora di pagare
     // stipendi/allenatore), la banca/gli investitori del club coprono il 40% del debito: una
@@ -1209,6 +1218,7 @@
   // risultato — l'host multiplayer lo passa per le partite umano-contro-umano, calcolato una
   // volta sola con rollMatchScore e imposto a entrambi i lati (vedi runHostSeason).
   function simMatch(ctx = S, forcedScore = null) {
+    if (!isClubCtx(ctx)) ctx = S;
     if (!ctx.seasonActive || ctx.played >= gp(ctx)) return;
     const local = ctx === S;
     const fx = ctx.fixtures[ctx.played], opp = ctx.opps[fx.opp];
@@ -1260,6 +1270,7 @@
   }
 
   function simToEnd(ctx = S) {
+    if (!isClubCtx(ctx)) ctx = S;
     BULK_SIM = true;
     while (ctx.seasonActive && ctx.played < gp(ctx) && !ctx._pause) { const b = ctx.played; simMatch(ctx); if (ctx._pause) break; if (ctx.played === b) break; }
     BULK_SIM = false;
@@ -1537,9 +1548,10 @@
   const janTransferFee = (p) => Math.round(playerValue(p) * 0.6);
 
   /* ---------------- fine stagione ---------------- */
-  function currentPos(ctx = S) { computeTable(ctx); return ctx.table.findIndex((t) => t.me) + 1; }
+  function currentPos(ctx = S) { if (!isClubCtx(ctx)) ctx = S; computeTable(ctx); return ctx.table.findIndex((t) => t.me) + 1; }
 
   function endSeason(ctx = S) {
+    if (!isClubCtx(ctx)) ctx = S;
     const local = ctx === S;
     ctx.seasonActive = false;
     const d = divOf(ctx), G = gp(ctx);
@@ -1853,6 +1865,7 @@
   }
 
   function advance(ctx = S) {
+    if (!isClubCtx(ctx)) ctx = S;
     const local = ctx === S;
     const e = ctx._end;
     evolveRivalStrengths(ctx);
@@ -2014,6 +2027,7 @@
   }
 
   function computeTable(ctx = S) {
+    if (!isClubCtx(ctx)) ctx = S;
     // Il girone fra rivali (rrPts/rrGF/rrGA) è deciso per intero all'avvio stagione, quindi
     // si mostra scalato sulla frazione di campionato giocata (per non far vedere la
     // classifica finale dal giorno 1); i punti contro il presidente (vsPts/vsGF/vsGA) sono
