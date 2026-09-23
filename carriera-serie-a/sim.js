@@ -1960,11 +1960,11 @@
     return { opps, fixtures: days };
   }
 
-  // L'host: simula un'intera stagione per tutti i club umani di una stanza in un colpo solo,
-  // con lo stesso dettaglio (marcatori, infortuni, rinnovi) che il motore applica oggi solo al
-  // giocatore attivo — una partita fra due umani viene calcolata UNA volta sola e applicata a
-  // entrambi (mai due tiri indipendenti che potrebbero divergere).
-  function runHostSeason(humanCtxs, div, difficulty) {
+  // L'host: prepara la stagione condivisa per tutti i club umani di una stanza (bot,
+  // calendario incrociato) senza ancora simulare nulla — Fase 2c (UI) avanza poi una
+  // giornata alla volta con stepHostMatchday, per poter mostrare all'host la classifica
+  // generale che si aggiorna man mano invece di calcolare tutto in un colpo solo.
+  function setupHostSeason(humanCtxs, div, difficulty) {
     humanCtxs.forEach((ctx) => { ctx.div = div; ctx.difficulty = difficulty; });
     const teams = DIVS[div].teams;
     const N = humanCtxs.length;
@@ -1975,27 +1975,42 @@
     simRivalRoundRobin(bots);
     const { opps, fixtures } = buildMultiplayerFixtures(humanCtxs, bots);
     humanCtxs.forEach((ctx, i) => startSeason(ctx, opps[i], fixtures[i]));
-    const G = gp(humanCtxs[0]);
-    for (let d = 0; d < G; d++) {
-      const done = new Set();
-      humanCtxs.forEach((ctx, i) => {
-        const fx = fixtures[i][d];
-        if (!fx) return;
-        if (fx.human) {
-          const key = i < fx.humanIdx ? i + '-' + fx.humanIdx : fx.humanIdx + '-' + i;
-          if (done.has(key)) return;
-          done.add(key);
-          const ctxA = ctx, ctxB = humanCtxs[fx.humanIdx];
-          const [homeCtx, awayCtx] = fx.home ? [ctxA, ctxB] : [ctxB, ctxA];
-          const dVal = teamEff(homeCtx) - teamEff(awayCtx) + 2.4;
-          const { gf, ga } = rollMatchScore(dVal, homeCtx);
-          simMatch(homeCtx, { gf, ga });
-          simMatch(awayCtx, { gf: ga, ga: gf });
-        } else {
-          simMatch(ctx);
-        }
-      });
-    }
+    return { ctxs: humanCtxs, bots, fixtures, matchday: 0, total: gp(humanCtxs[0]) };
+  }
+
+  // Una singola giornata di calendario per tutti i club umani della `run` (una partita fra
+  // due umani è calcolata UNA volta sola e applicata a entrambi, mai due tiri indipendenti
+  // che potrebbero divergere). Muta `run.ctxs` sul posto e avanza `run.matchday`.
+  function stepHostMatchday(run) {
+    const d = run.matchday;
+    if (d >= run.total) return run;
+    const done = new Set();
+    run.ctxs.forEach((ctx, i) => {
+      const fx = run.fixtures[i][d];
+      if (!fx) return;
+      if (fx.human) {
+        const key = i < fx.humanIdx ? i + '-' + fx.humanIdx : fx.humanIdx + '-' + i;
+        if (done.has(key)) return;
+        done.add(key);
+        const ctxA = ctx, ctxB = run.ctxs[fx.humanIdx];
+        const [homeCtx, awayCtx] = fx.home ? [ctxA, ctxB] : [ctxB, ctxA];
+        const dVal = teamEff(homeCtx) - teamEff(awayCtx) + 2.4;
+        const { gf, ga } = rollMatchScore(dVal, homeCtx);
+        simMatch(homeCtx, { gf, ga });
+        simMatch(awayCtx, { gf: ga, ga: gf });
+      } else {
+        simMatch(ctx);
+      }
+    });
+    run.matchday++;
+    return run;
+  }
+
+  // Una volta esaurite tutte le giornate: rifinisce le classifiche individuali e chiude la
+  // stagione (endSeason/advance) per ciascun club umano — lo stesso epilogo che runHostSeason
+  // faceva tutto insieme, ora richiamato dall'host quando preme "Vedi resoconto".
+  function finishHostSeason(run) {
+    const humanCtxs = run.ctxs, bots = run.bots;
     // Rifinitura: ctx.table è uno scatto fatto all'ULTIMA chiamata a simMatch di QUEL club
     // (dentro computeTable) — per le righe umane sottostimerebbe chiunque abbia giocato
     // anche contro un terzo umano (il vero totale vive nel loro ctx.pts, sempre aggiornato).
@@ -2014,9 +2029,21 @@
       });
       ctx.table.sort((a, b) => b.pts - a.pts || b.gd - a.gd);
     });
+    // NON si chiama advance(ctx) qui: farlo cancellerebbe subito ctx._end (advance lo azzera
+    // per preparare la stagione successiva), e ogni giocatore deve poter ancora VEDERE il
+    // proprio resoconto di fine stagione una volta scaricato il risultato — esattamente come
+    // in singolo, dove advance() scatta solo quando si preme "Torna in sala del consiglio"
+    // dopo aver letto il resoconto (renderSeasonEnd, ui.js), non subito dopo endSeason.
     humanCtxs.forEach((ctx) => { if (ctx.seasonActive && ctx.played >= gp(ctx)) endSeason(ctx); });
-    humanCtxs.forEach((ctx) => { if (ctx._end) advance(ctx); });
     return humanCtxs;
+  }
+
+  // Compatibilità/uso non interattivo: prepara e gioca l'intera stagione in un colpo solo,
+  // componendo le tre funzioni sopra.
+  function runHostSeason(humanCtxs, div, difficulty) {
+    const run = setupHostSeason(humanCtxs, div, difficulty);
+    while (run.matchday < run.total) stepHostMatchday(run);
+    return finishHostSeason(run);
   }
 
   /* ---------------- fine carriera ---------------- */

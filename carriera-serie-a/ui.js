@@ -256,6 +256,10 @@
   // Fase vista nell'ultimo render, per suonare una notifica solo quando la stanza CAMBIA
   // fase (non ad ogni poll che ridisegna la stessa fase).
   let mpLastPhase = null;
+  // La simulazione giornata-per-giornata in corso, SOLO nella scheda dell'host (setupHostSeason
+  // + stepHostMatchday, sim.js): non è persistita da nessuna parte, vive finché questa pagina
+  // resta aperta.
+  let mpHostRun = null;
 
   function readMpSession() { try { return JSON.parse(localStorage.getItem(MP_SESSION_KEY)); } catch (e) { return null; } }
   function writeMpSession(s) { try { localStorage.setItem(MP_SESSION_KEY, JSON.stringify(s)); } catch (e) {} }
@@ -372,35 +376,50 @@
     const done = room.phase === 'done';
     const inLobbyStage = room.phase === 'lobby' || room.phase === 'allReadyLobby';
     const inSessionStage = room.phase === 'session' || room.phase === 'readyForSim';
+    const inSimStage = room.phase === 'simulating';
     const allLobbyReady = room.phase === 'allReadyLobby';
     const allSessionReady = room.phase === 'readyForSim';
     const readyCount = room.players.filter((p) => p.ready).length;
     const total = room.players.length;
+    const live = room.live || null;
+    const simDone = !!(live && live.matchday >= live.total);
 
     let stageLabel = '';
     if (inLobbyStage) stageLabel = '⏳ In attesa che tutti siano pronti, poi l\'host avvia la sessione.';
     else if (inSessionStage) stageLabel = '🏟️ Sessione avviata: gestisci il tuo club, poi ripremi Pronto quando hai finito.';
+    else if (inSimStage) stageLabel = simDone ? '🏁 Stagione simulata: in attesa che l\'host pubblichi il resoconto.' : ('⚽ Simulazione in corso — giornata ' + (live ? live.matchday : 0) + '/' + (live ? live.total : '?') + '.');
     else if (done) stageLabel = '🏁 Stagione pronta! Scarica il tuo risultato quando vuoi.';
 
     // Un suono solo quando la fase è appena cambiata rispetto all'ultimo render (non ad
     // ogni poll che ridisegna la stessa fase) — così anche chi non ha appena cliccato un
     // bottone si accorge che la stanza è passata avanti.
     if (DynSound && mpLastPhase !== null && mpLastPhase !== room.phase) {
-      if (room.phase === 'session') DynSound.chime();
-      else if (room.phase === 'done') DynSound.chime();
+      if (room.phase === 'session' || room.phase === 'simulating' || room.phase === 'done') DynSound.chime();
       else if (room.phase === 'allReadyLobby' || room.phase === 'readyForSim') DynSound.notify();
     }
     mpLastPhase = room.phase;
+
+    // Durante la simulazione niente più elenco "chi è pronto": al suo posto la classifica
+    // generale condivisa, che si aggiorna ad ogni giornata che l'host manda avanti.
+    const playersListHTML = `<div class="dyn-modal-actions" style="gap:6px">
+        ${room.players.map((p) => `<div class="ow-fin-row"><span>${p.club}${p.id === room.hostId ? ' 👑' : ''}<small style="display:block;color:var(--muted)">${p.name}</small></span><b class="${p.ready ? 'good' : ''}">${p.ready ? '✅ Pronto' : '⏳ In attesa'}</b></div>`).join('')}
+      </div>`;
+    const liveTableHTML = `<div class="dyn-modal-actions" style="gap:6px;flex-direction:column;align-items:stretch">
+        ${live ? live.table.map((r, i) => `<div class="ow-fin-row"><span>${i + 1}. ${r.club}</span><b>${r.pts} pt <small style="color:var(--muted)">(${r.played}g · ${r.w}V ${r.d}N ${r.l}P · ${r.gf}-${r.ga})</small></b></div>`).join('') : '<div class="ow-sub">In attesa che l\'host avvii la simulazione…</div>'}
+      </div>`;
 
     overlay(`
       <h2>👥 Stanza ${room.code}</h2>
       <p class="ow-sub">${(DIVS[room.div] || {}).name || ''} · condividi il codice <b>${room.code}</b> con chi manca.</p>
       <p class="ow-sub" style="text-align:center">${stageLabel}</p>
-      <div class="dyn-modal-actions" style="gap:6px">
-        ${room.players.map((p) => `<div class="ow-fin-row"><span>${p.club}${p.id === room.hostId ? ' 👑' : ''}<small style="display:block;color:var(--muted)">${p.name}</small></span><b class="${p.ready ? 'good' : ''}">${p.ready ? '✅ Pronto' : '⏳ In attesa'}</b></div>`).join('')}
-      </div>
+      ${inSimStage ? liveTableHTML : playersListHTML}
       <div class="dyn-modal-actions">
-        ${done ? `<button class="dyn-btn dyn-btn-primary" id="mpDownloadBtn">📥 Scarica il tuo risultato</button>` : `
+        ${done ? `<button class="dyn-btn dyn-btn-primary" id="mpDownloadBtn">📥 Scarica il tuo risultato</button>` : inSimStage ? `
+          ${isHost ? (simDone
+            ? `<button class="dyn-btn dyn-btn-primary" id="mpFinishBtn">🏁 Vedi resoconto</button>`
+            : `<button class="dyn-btn dyn-btn-primary" id="mpNextDayBtn">▶️ Prossima giornata${live ? ' (' + live.matchday + '/' + live.total + ')' : ''}</button>`)
+            : `<div class="ow-sub">⏳ L'host sta simulando le giornate, aggiornamento automatico.</div>`}
+        ` : `
           ${inSessionStage && !(me && me.ready) ? `<button class="dyn-btn" id="mpManageBtn">🏟️ Gestisci la tua squadra</button>` : ''}
           <button class="dyn-btn ${me && me.ready ? '' : 'dyn-btn-primary'}" id="mpReadyBtn">${me && me.ready ? 'Non sono più pronto' : '✅ Sono pronto'}</button>
           ${isHost && inLobbyStage ? `<button class="dyn-btn dyn-btn-primary" id="mpStartSessionBtn" ${allLobbyReady ? '' : 'disabled'}>▶️ Avvia sessione${allLobbyReady ? '' : ' (' + readyCount + '/' + total + ' pronti)'}</button>` : ''}
@@ -451,9 +470,33 @@
       catch (e) { toast(e.message || 'Impossibile avviare la sessione.', 'error'); }
     };
     const startSimBtn = $('mpStartSimBtn');
-    if (startSimBtn) startSimBtn.onclick = () => hostRunSimulation(room, playerId, false);
+    if (startSimBtn) startSimBtn.onclick = () => hostBeginMatchdaySim(room, playerId, false);
     const forceSimBtn = $('mpForceSimBtn');
-    if (forceSimBtn) forceSimBtn.onclick = () => hostRunSimulation(room, playerId, true);
+    if (forceSimBtn) forceSimBtn.onclick = () => hostBeginMatchdaySim(room, playerId, true);
+    const nextDayBtn = $('mpNextDayBtn');
+    if (nextDayBtn) nextDayBtn.onclick = async () => {
+      if (!mpHostRun) { toast('Simulazione non trovata in questa scheda: riaprila dalla scheda con cui l\'hai avviata.', 'error'); return; }
+      nextDayBtn.disabled = true;
+      try {
+        stepHostMatchday(mpHostRun);
+        if (DynSound) DynSound.tap();
+        await pushMatchdaySnapshot(room, playerId, mpHostRun, true);
+      } catch (e) { toast(e.message || 'Errore di rete.', 'error'); nextDayBtn.disabled = false; }
+    };
+    const finishBtn = $('mpFinishBtn');
+    if (finishBtn) finishBtn.onclick = async () => {
+      if (!mpHostRun) { toast('Simulazione non trovata in questa scheda: riaprila dalla scheda con cui l\'hai avviata.', 'error'); return; }
+      finishBtn.disabled = true;
+      try {
+        finishHostSeason(mpHostRun);
+        const results = {};
+        mpHostRun.playerIds.forEach((pid, i) => { results[pid] = mpHostRun.ctxs[i]; });
+        const data = await mpApi('submitResult', { code: room.code, playerId, results, force: true });
+        mpHostRun = null;
+        if (DynSound) DynSound.whistle();
+        renderLobby(data.room, playerId);
+      } catch (e) { toast(e.message || 'Impossibile pubblicare il resoconto.', 'error'); finishBtn.disabled = false; }
+    };
     const downloadBtn = $('mpDownloadBtn');
     if (downloadBtn) downloadBtn.onclick = () => downloadMyResult(room, playerId);
     $('mpLeaveBtn').onclick = async () => {
@@ -461,6 +504,7 @@
       try { await mpApi('leave', { code: room.code, playerId }); } catch (e) {}
       clearMpSession();
       mpLastPhase = null;
+      mpHostRun = null;
       closeOverlay();
     };
     // Niente polling una volta pubblicato il risultato: ognuno lo scarica quando vuole,
@@ -475,24 +519,43 @@
     }, 3000);
   }
 
-  // L'host: esegue l'intera stagione condivisa nel proprio browser (runHostSeason, sim.js —
-  // Fase 2b, stesso motore del singolo giocatore) e pubblica un risultato per ciascuno. Da qui
-  // ciascuno scarica e avvia la propria simulazione quando vuole (downloadMyResult), senza
-  // dover aspettare che gli altri lo facciano nello stesso momento.
-  async function hostRunSimulation(room, playerId, force) {
+  // Classifica generale condivisa: solo i club umani della `run` (non le 20 squadre della
+  // categoria), quello che conta per chi sta giocando insieme in questa stanza.
+  function buildLiveTable(run) {
+    return run.ctxs.map((ctx) => {
+      const results = ctx.results || [];
+      const w = results.filter((r) => r.res === 'W').length;
+      const d = results.filter((r) => r.res === 'D').length;
+      const l = results.filter((r) => r.res === 'L').length;
+      return { club: ctx.club, played: ctx.played, w, d, l, gf: ctx.gf, ga: ctx.ga, pts: ctx.pts };
+    }).sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga));
+  }
+
+  async function pushMatchdaySnapshot(room, playerId, run, force) {
+    const table = buildLiveTable(run);
+    const data = await mpApi('pushMatchday', { code: room.code, playerId, matchday: run.matchday, total: run.total, table, force: !!force });
+    renderLobby(data.room, playerId);
+  }
+
+  // L'host: prepara la stagione condivisa (setupHostSeason, sim.js — Fase 2b) e simula subito
+  // la prima giornata, poi mostra il pannello di controllo (renderLobby, fase 'simulating')
+  // con cui avanzare una giornata alla volta vedendo la classifica generale aggiornarsi. La
+  // "run" vive solo nella scheda dell'host: se la ricarica, deve riaprire la stanza da lì per
+  // continuare (limite noto, accettabile per un gioco hobby senza backend con stato persistente).
+  async function hostBeginMatchdaySim(room, playerId, force) {
     // Chi non ha ancora ripremuto Pronto in sessione resta fuori da questa stagione — se
     // l'host forza l'avvio, si procede solo con chi ha davvero sottomesso una carriera.
     const readyPlayers = room.players.filter((p) => p.ready && p.state);
     if (readyPlayers.length < 1) { toast('Nessuno è ancora pronto.', 'error'); return; }
     const btn = $('mpStartSimBtn') || $('mpForceSimBtn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Simulazione in corso…'; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Avvio in corso…'; }
     try {
       const ctxs = readyPlayers.map((p) => JSON.parse(JSON.stringify(p.state)));
-      runHostSeason(ctxs, room.div, room.difficulty);
-      const results = {};
-      readyPlayers.forEach((p, i) => { results[p.id] = ctxs[i]; });
-      const data = await mpApi('submitResult', { code: room.code, playerId, results, force: !!force });
-      renderLobby(data.room, playerId);
+      const run = setupHostSeason(ctxs, room.div, room.difficulty);
+      run.playerIds = readyPlayers.map((p) => p.id);
+      stepHostMatchday(run);
+      mpHostRun = run;
+      await pushMatchdaySnapshot(room, playerId, run, !!force);
     } catch (e) {
       toast(e.message || 'Impossibile avviare la simulazione.', 'error');
       if (btn) { btn.disabled = false; btn.textContent = '▶️ Inizia simulazione'; }
