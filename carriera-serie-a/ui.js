@@ -782,7 +782,7 @@
     const tutBtn = $('owTutorialBtn');
     if (tutBtn) tutBtn.addEventListener('click', openTutorial);
     $('owNextBtn').addEventListener('click', () => simMatch());
-    $('owSimBtn').addEventListener('click', simToEnd);
+    $('owSimBtn').addEventListener('click', () => simToEnd());
     $('owTableBtn').addEventListener('click', showTable);
     $('owClubBtn').addEventListener('click', showClub);
   }
@@ -1276,7 +1276,7 @@
     }));
     const resetXI = $('resetXIBtn');
     if (resetXI) resetXI.addEventListener('click', () => { S.previewXI = null; selectedPreviewPid = null; renderBoard(); saveGame(); });
-    $('startSeasonBtn').addEventListener('click', startSeason);
+    $('startSeasonBtn').addEventListener('click', () => startSeason());
     $('sellBtn').addEventListener('click', confirmSell);
     $('resignBtn').addEventListener('click', confirmResign);
     show('owBoardScreen'); saveGame();
