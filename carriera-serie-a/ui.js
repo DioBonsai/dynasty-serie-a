@@ -262,7 +262,10 @@
         avanzate di un anno. La dynasty dura come in singolo, fino a MAX_SEASONS (20): quando
         chi ha giocato l'ultimo round era già alla stagione 20, "Avvia la prossima stagione"
         sparisce e la stanza finisce lì (room.php: TTL lungo apposta, 180 giorni, per
-        sopravvivere a settimane/mesi fra una stagione e l'altra).
+        sopravvivere a settimane/mesi fra una stagione e l'altra). L'host può anche terminarla
+        prima, in qualunque fase (terminate, con conferma, confirmTerminateDynasty): la stanza
+        passa a 'terminated' per sempre e ciascuno vende il proprio club (mpSellAndEnd) per
+        conto suo, esattamente come "Vendi il club" in singolo.
   */
   const MP_SESSION_KEY = 'dsa_mp_session';
   let mpPollTimer = null;
@@ -414,9 +417,13 @@
     // stanza si chiude qui, ognuno scarica il proprio resoconto finale.
     const participants = room.players.filter((p) => p.state);
     const dynastyOver = done && participants.length > 0 && participants.every((p) => p.state.season >= MAX_SEASONS);
+    // L'host può terminare la dynasty in anticipo (prima delle 20 stagioni): fase finale, da
+    // cui non si torna indietro — ognuno vende il proprio club per conto suo.
+    const terminated = room.phase === 'terminated';
 
     let stageLabel = '';
-    if (inLobbyStage) stageLabel = '⏳ In attesa che tutti siano pronti, poi l\'host avvia la sessione.';
+    if (terminated) stageLabel = '🛑 L\'host ha concluso la dynasty di questa stanza in anticipo: vendi il tuo club quando vuoi per chiudere la tua carriera.';
+    else if (inLobbyStage) stageLabel = '⏳ In attesa che tutti siano pronti, poi l\'host avvia la sessione.';
     else if (inSessionStage) stageLabel = '🏟️ Sessione avviata: gestisci il tuo club, poi ripremi Pronto quando hai finito.';
     else if (inSimStage) {
       if (!myGroup) stageLabel = '⚽ Simulazione in corso — non fai parte di questo turno.';
@@ -430,6 +437,7 @@
     if (DynSound && mpLastPhase !== null && mpLastPhase !== room.phase) {
       if (room.phase === 'session' || room.phase === 'simulating' || room.phase === 'done') DynSound.chime();
       else if (room.phase === 'allReadyLobby' || room.phase === 'readyForSim') DynSound.notify();
+      else if (room.phase === 'terminated') DynSound.sadDown();
     }
     mpLastPhase = room.phase;
 
@@ -455,7 +463,9 @@
       <p class="ow-sub" style="text-align:center">${stageLabel}</p>
       ${inSimStage ? liveTableHTML : playersListHTML}
       <div class="dyn-modal-actions">
-        ${done ? `
+        ${terminated ? `
+          <button class="dyn-btn dyn-btn-primary" id="mpSellEndBtn">💷 Vendi il club e concludi la carriera</button>
+        ` : done ? `
           <div class="ow-sub" style="text-align:center">${ackedCount}/${total} hanno scaricato il resoconto</div>
           <button class="dyn-btn dyn-btn-primary" id="mpDownloadBtn">📥 Scarica il tuo risultato</button>
           ${dynastyOver ? `<div class="ow-sub" style="text-align:center">🏆 Nessuna stagione successiva: la dynasty di questa stanza finisce qui.</div>` : `
@@ -475,6 +485,7 @@
           ${isHost && inSessionStage ? `<button class="dyn-btn dyn-btn-primary" id="mpStartSimBtn" ${allSessionReady ? '' : 'disabled'}>▶️ Inizia simulazione${allSessionReady ? '' : ' (' + readyCount + '/' + total + ' pronti)'}</button>` : ''}
           ${isHost && inSessionStage && !allSessionReady && readyCount > 0 ? `<button class="dyn-btn" id="mpForceSimBtn">⏭️ Forza simulazione senza aspettare tutti</button>` : ''}
         `}
+        ${isHost && !terminated ? `<button class="dyn-btn ow-danger" id="mpTerminateBtn">🛑 Termina la dynasty per tutti</button>` : ''}
         <button class="dyn-btn ow-danger" id="mpLeaveBtn">Esci dalla stanza</button>
       </div>`);
     const manageBtn = $('mpManageBtn');
@@ -566,6 +577,10 @@
       try { const data = await mpApi('nextRound', { code: room.code, playerId, force: true }); renderLobby(data.room, playerId); }
       catch (e) { toast(e.message || 'Impossibile avviare la prossima stagione.', 'error'); }
     };
+    const terminateBtn = $('mpTerminateBtn');
+    if (terminateBtn) terminateBtn.onclick = () => confirmTerminateDynasty(room, playerId);
+    const sellEndBtn = $('mpSellEndBtn');
+    if (sellEndBtn) sellEndBtn.onclick = () => mpSellAndEnd(room, playerId);
     $('mpLeaveBtn').onclick = async () => {
       stopMpPolling();
       try { await mpApi('leave', { code: room.code, playerId }); } catch (e) {}
@@ -583,6 +598,54 @@
         renderLobby(fresh, playerId);
       } catch (e) { /* stanza sparita o rete assente per un giro: si riprova al prossimo poll */ }
     }, 3000);
+  }
+
+  // Conferma per l'host: chiude la dynasty di questa stanza per sempre, prima delle 20
+  // stagioni (MAX_SEASONS) — stesso stile di conferma di confirmSell/confirmResign, ma qui
+  // vale per tutta la stanza, non solo per chi la preme.
+  function confirmTerminateDynasty(room, playerId) {
+    overlay(`
+      <h2>🛑 Termina la dynasty per tutti</h2>
+      <p>Chiude la stanza <b>${room.code}</b> per sempre, prima delle ${MAX_SEASONS} stagioni: ogni giocatore dovrà vendere il proprio club per chiudere la carriera. Non si può annullare.</p>
+      <div class="dyn-modal-actions">
+        <button class="dyn-btn ow-danger" id="ovTerminateGo">Termina per tutti</button>
+        <button class="dyn-btn" id="ovTerminateNo">Annulla</button>
+      </div>`);
+    $('ovTerminateGo').onclick = async () => {
+      try {
+        const data = await mpApi('terminate', { code: room.code, playerId });
+        mpHostRuns = null;
+        renderLobby(data.room, playerId);
+      } catch (e) { toast(e.message || 'Impossibile terminare la dynasty.', 'error'); renderLobby(room, playerId); }
+    };
+    $('ovTerminateNo').onclick = () => renderLobby(room, playerId);
+  }
+
+  // Quando l'host ha terminato la dynasty in anticipo: ognuno vende il PROPRIO club (dalla
+  // propria carriera salvata, l'ultima gestita in locale) per chiudere la carriera — stesso
+  // esito/schermata finale (renderEnd, sim.js: endDynasty) di "Vendi il club" in singolo,
+  // semplice riusata qui invece di duplicarla.
+  function mpSellAndEnd(room, playerId) {
+    const sess = readMpSession();
+    const state = sess && sess.saveId ? loadSaveSlot(sess.saveId) : null;
+    if (!state) { toast('Nessuna carriera associata a questa stanza.', 'error'); return; }
+    S = state;
+    normSquad();
+    const worth = computeWorth();
+    overlay(`
+      <h2>💷 Vendi il club</h2>
+      <p>L'host ha concluso la dynasty di questa stanza. Una cordata offre <b>${fmtMoney(worth)}</b> per ${S.club}: vendere chiude qui la tua carriera, con lo storico di tutte le stagioni giocate.</p>
+      <div class="dyn-modal-actions">
+        <button class="dyn-btn dyn-btn-primary" id="ovMpSell">Vendi per ${fmtMoney(worth)}</button>
+        <button class="dyn-btn" id="ovMpBack">Torna alla stanza</button>
+      </div>`);
+    $('ovMpSell').onclick = () => {
+      closeOverlay();
+      stopMpPolling();
+      clearMpSession();
+      endDynasty('sold', worth);
+    };
+    $('ovMpBack').onclick = () => renderLobby(room, playerId);
   }
 
   // Classifica di UNA categoria: la stagione intera (tutti i club, bot compresi — gli stessi

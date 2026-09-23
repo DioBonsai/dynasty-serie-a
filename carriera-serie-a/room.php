@@ -30,6 +30,10 @@
  * POST room.php {action:'nextRound', code, playerId, force?}         -> solo l'host: apre la
  *   stagione successiva nella stessa stanza (fase 'done' -> 'session'), richiede che tutti
  *   abbiano scaricato (ackResult), a meno di force=true
+ * POST room.php {action:'terminate', code, playerId}                 -> solo l'host: chiude la
+ *   dynasty per tutti prima delle 20 stagioni (fase -> 'terminated', per sempre); ciascuno
+ *   vende il proprio club per conto suo (in locale, endDynasty in sim.js — non è mai stato
+ *   compito di questo endpoint calcolare quanto vale un club)
  * POST room.php {action:'leave', code, playerId}                    -> esci dalla stanza
  * GET  room.php?action=state&code=XXXX                               -> stato attuale (poll)
  *
@@ -44,8 +48,10 @@
  * propria; (4) round chiuso — quando tutte le categorie hanno finito, l'host preme "Vedi
  * resoconto" (finishHostSeason + submitResult, fase `done`) e ciascuno scarica il proprio
  * risultato quando vuole (ackResult); una volta che l'hanno scaricato tutti (o l'host forza),
- * l'host apre la stagione successiva (nextRound) e si torna al punto 2. Nessuna logica di
- * gioco qui dentro: questo endpoint è solo il tramite fra i browser.
+ * l'host apre la stagione successiva (nextRound) e si torna al punto 2 — a meno che, in
+ * qualunque momento di queste quattro fasi, l'host non termini la dynasty in anticipo
+ * (terminate), fase finale da cui non si torna indietro. Nessuna logica di gioco qui dentro:
+ * questo endpoint è solo il tramite fra i browser.
  */
 
 header('Content-Type: application/json; charset=utf-8');
@@ -212,6 +218,7 @@ if ($action === 'join') {
     $room = $raw ? json_decode($raw, true) : null;
     if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
     if (($room['phase'] ?? 'lobby') === 'done') { flock($fp, LOCK_UN); fclose($fp); fail('La stanza ha già una stagione pronta, non si può più entrare.', 409); }
+    if (($room['phase'] ?? 'lobby') === 'terminated') { flock($fp, LOCK_UN); fclose($fp); fail('La dynasty di questa stanza è stata conclusa, non si può più entrare.', 409); }
     if (count($room['players']) >= $MAX_PLAYERS) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza piena (massimo ' . $MAX_PLAYERS . ' giocatori).', 409); }
     foreach ($room['players'] as $p) {
         if (mb_strtolower($p['club']) === mb_strtolower($club)) { flock($fp, LOCK_UN); fclose($fp); fail('C\'è già un club con questo nome nella stanza.'); }
@@ -246,6 +253,7 @@ if ($action === 'ready') {
     if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
     $prevPhase = $room['phase'] ?? 'lobby';
     if ($prevPhase === 'done') { flock($fp, LOCK_UN); fclose($fp); fail('La stanza ha già una stagione pronta.', 409); }
+    if ($prevPhase === 'terminated') { flock($fp, LOCK_UN); fclose($fp); fail('La dynasty di questa stanza è stata conclusa dall\'host.', 409); }
     // In lobby "pronto" è solo un flag (si aspetta di poter avviare la sessione); in sessione
     // porta con sé la carriera (dopo la dirigenza), da qui la validazione diversa per fase.
     $inSessionStage = in_array($prevPhase, ['session', 'readyForSim'], true);
@@ -414,6 +422,33 @@ if ($action === 'nextRound') {
     exit;
 }
 
+if ($action === 'terminate') {
+    $code = strtoupper(trim($body['code'] ?? ''));
+    $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    if ($code === '' || $playerId === '') fail('Richiesta non valida.');
+
+    $path = room_path($DIR, $code);
+    $fp = fopen($path, 'c+');
+    if (!$fp) fail('Stanza non trovata.', 404);
+    flock($fp, LOCK_EX);
+    $raw = stream_get_contents($fp);
+    $room = $raw ? json_decode($raw, true) : null;
+    if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
+    if ($room['hostId'] !== $playerId) { flock($fp, LOCK_UN); fclose($fp); fail('Solo l\'host può terminare la dynasty.', 403); }
+    if (($room['phase'] ?? 'lobby') === 'terminated') { flock($fp, LOCK_UN); fclose($fp); fail('La dynasty è già stata conclusa.', 409); }
+    // Fase finale, senza ritorno: nessun'altra azione di gioco cambia più questa stanza da
+    // qui in poi (join/ready/startSession/pushMatchday/submitResult/nextRound la rifiutano
+    // tutte controllando la fase). Ognuno vende il proprio club per conto suo, in locale.
+    $room['phase'] = 'terminated';
+    unset($room['results']);
+    unset($room['live']);
+    $room['updatedAt'] = time();
+    ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($room)); fflush($fp);
+    flock($fp, LOCK_UN); fclose($fp);
+    echo json_encode(['ok' => true, 'room' => public_room($room)]);
+    exit;
+}
+
 if ($action === 'leave') {
     $code = strtoupper(trim($body['code'] ?? ''));
     $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
@@ -439,9 +474,10 @@ if ($action === 'leave') {
     // stessa fase, solo rifanno "pronto" perché la composizione della stanza è cambiata. Chi
     // esce a simulazione già avviata non la interrompe (l'host la porta avanti comunque nel
     // proprio browser): la fase resta 'simulating' com'è. Chi esce a round chiuso ('done') non
-    // tocca il resoconto già pubblicato né lo stato di chi deve ancora scaricarlo.
+    // tocca il resoconto già pubblicato né lo stato di chi deve ancora scaricarlo. Una dynasty
+    // già terminata ('terminated') resta tale per sempre, chi esce non cambia nulla.
     $prevPhase = $room['phase'] ?? 'lobby';
-    if ($prevPhase === 'simulating' || $prevPhase === 'done') {
+    if ($prevPhase === 'simulating' || $prevPhase === 'done' || $prevPhase === 'terminated') {
         // fase invariata
     } elseif (in_array($prevPhase, ['session', 'readyForSim'], true)) {
         $room['phase'] = 'session';
