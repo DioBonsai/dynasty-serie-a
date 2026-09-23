@@ -183,7 +183,7 @@ if ($action === 'join') {
     $raw = stream_get_contents($fp);
     $room = $raw ? json_decode($raw, true) : null;
     if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
-    if ($room['phase'] !== 'lobby') { flock($fp, LOCK_UN); fclose($fp); fail('La stanza ha già iniziato, non si può più entrare.', 409); }
+    if (($room['phase'] ?? 'lobby') === 'done') { flock($fp, LOCK_UN); fclose($fp); fail('La stanza ha già una stagione pronta, non si può più entrare.', 409); }
     if (count($room['players']) >= $MAX_PLAYERS) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza piena (massimo ' . $MAX_PLAYERS . ' giocatori).', 409); }
     foreach ($room['players'] as $p) {
         if (mb_strtolower($p['club']) === mb_strtolower($club)) { flock($fp, LOCK_UN); fclose($fp); fail('C\'è già un club con questo nome nella stanza.'); }
@@ -253,7 +253,7 @@ if ($action === 'submitResult') {
     $room = $raw ? json_decode($raw, true) : null;
     if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
     if ($room['hostId'] !== $playerId) { flock($fp, LOCK_UN); fclose($fp); fail('Solo l\'host può pubblicare il risultato.', 403); }
-    if (($room['phase'] ?? 'lobby') !== 'allReady') { flock($fp, LOCK_UN); fclose($fp); fail('La stanza non è pronta per la simulazione.', 409); }
+    if (($room['phase'] ?? 'lobby') === 'done') { flock($fp, LOCK_UN); fclose($fp); fail('La stanza ha già una stagione pronta.', 409); }
     $room['results'] = $results;
     $room['phase'] = 'done';
     $room['updatedAt'] = time();

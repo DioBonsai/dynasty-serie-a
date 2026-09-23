@@ -258,23 +258,24 @@
     stopMpPolling();
     const me = room.players.find((p) => p.id === playerId);
     const isHost = room.hostId === playerId;
-    const allReady = room.phase === 'allReady';
     const done = room.phase === 'done';
+    const readyCount = room.players.filter((p) => p.ready).length;
+    // L'host decide lui quando partire: il bottone "Avvia" è sempre suo, non serve aspettare
+    // che sia pronto anche l'ultimo — chi non ha ancora premuto Pronto resta fuori da quella
+    // stagione (può unirsi alla prossima). Aspettare tutti sempre, come da richiesta iniziale,
+    // avrebbe bloccato la stanza se anche un solo amico fosse rimasto indeciso.
     overlay(`
       <h2>👥 Stanza ${room.code}</h2>
       <p class="ow-sub">${(DIVS[room.div] || {}).name || ''} · condividi il codice <b>${room.code}</b> con chi manca.</p>
       <div class="dyn-modal-actions" style="gap:6px">
         ${room.players.map((p) => `<div class="ow-fin-row"><span>${p.club}${p.id === room.hostId ? ' 👑' : ''}<small style="display:block;color:var(--muted)">${p.name}</small></span><b class="${p.ready ? 'good' : ''}">${p.ready ? '✅ Pronto' : '⏳ In attesa'}</b></div>`).join('')}
       </div>
-      ${done ? '<p class="ow-sub" style="text-align:center">🏁 Stagione pronta! Scarica il tuo risultato quando vuoi.</p>'
-        : allReady ? (isHost
-          ? '<p class="ow-sub" style="text-align:center">🎉 Tutti pronti! Quando vuoi, avvia la stagione condivisa.</p>'
-          : '<p class="ow-sub" style="text-align:center">🎉 Tutti pronti! In attesa che l\'host avvii la stagione…</p>')
-        : ''}
+      ${done ? '<p class="ow-sub" style="text-align:center">🏁 Stagione pronta! Scarica il tuo risultato quando vuoi.</p>' : ''}
       <div class="dyn-modal-actions">
-        ${done ? `<button class="dyn-btn dyn-btn-primary" id="mpDownloadBtn">📥 Scarica il tuo risultato</button>`
-          : allReady && isHost ? `<button class="dyn-btn dyn-btn-primary" id="mpStartBtn">▶️ Avvia la stagione</button>`
-          : `<button class="dyn-btn dyn-btn-primary" id="mpReadyBtn">${me && me.ready ? 'Non sono più pronto' : 'Sono pronto'}</button>`}
+        ${done ? `<button class="dyn-btn dyn-btn-primary" id="mpDownloadBtn">📥 Scarica il tuo risultato</button>` : `
+          <button class="dyn-btn" id="mpReadyBtn">${me && me.ready ? 'Non sono più pronto' : 'Sono pronto'}</button>
+          ${isHost ? `<button class="dyn-btn dyn-btn-primary" id="mpStartBtn" ${readyCount ? '' : 'disabled'}>▶️ Avvia la stagione${readyCount ? ' (' + readyCount + ' pront' + (readyCount === 1 ? 'o' : 'i') + ')' : ''}</button>` : ''}
+        `}
         <button class="dyn-btn ow-danger" id="mpLeaveBtn">Esci dalla stanza</button>
       </div>`);
     const readyBtn = $('mpReadyBtn');
@@ -340,12 +341,16 @@
   // L'host: esegue l'intera stagione condivisa nel proprio browser (runHostSeason, sim.js —
   // Fase 2b, stesso motore del singolo giocatore) e pubblica un risultato per ciascuno.
   async function hostStartMultiplayerSeason(room, playerId) {
+    // Chi non ha ancora premuto Pronto resta fuori da questa stagione — l'host non aspetta
+    // tutta la stanza, solo chi ha davvero sottomesso una carriera.
+    const readyPlayers = room.players.filter((p) => p.ready && p.state);
+    if (readyPlayers.length < 1) { toast('Nessuno è ancora pronto.'); return; }
     const btn = $('mpStartBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Simulazione in corso…'; }
     try {
-      const ctxs = room.players.map((p) => JSON.parse(JSON.stringify(p.state)));
+      const ctxs = readyPlayers.map((p) => JSON.parse(JSON.stringify(p.state)));
       runHostSeason(ctxs, room.div, room.difficulty);
       const results = {};
-      room.players.forEach((p, i) => { results[p.id] = ctxs[i]; });
+      readyPlayers.forEach((p, i) => { results[p.id] = ctxs[i]; });
       const data = await mpApi('submitResult', { code: room.code, playerId, results });
       renderLobby(data.room, playerId);
     } catch (e) {
