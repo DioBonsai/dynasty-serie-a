@@ -767,6 +767,7 @@
     if (S.scoutLevel == null) S.scoutLevel = 0;
     if (S.autoInvestor == null) S.autoInvestor = false;
     if (!S.derbyRecord) S.derbyRecord = {};
+    ensureCaptain(S);
     if (S.scoutProspectSeason == null) S.scoutProspectSeason = 0;
     // Migrazione da un salvataggio pre-"cerimonia del vivaio": un prospetto singolo diventa
     // una lista con un solo candidato, così non sparisce per chi ce l'aveva già in sospeso.
@@ -786,15 +787,20 @@
   const finalYear = (p) => (p.yrs || 0) <= 1;   // ultimo anno di contratto -> rinnova o lo perdi a zero
 
   // Cosa chiede per rinnovare: il suo stipendio di mercato per il suo rating (spesso
-  // migliorato) più un premio più alto per i giovani talenti. Mai un taglio; i giocatori
-  // più anziani chiedono di meno.
+  // migliorato) più un premio più alto per i giovani talenti. I giocatori più anziani
+  // chiedono di meno, e un veterano il cui valore di mercato è ormai sceso sotto lo
+  // stipendio attuale può accettare un taglio per restare — invece di bloccare per sempre
+  // uno stipendio ormai sproporzionato al suo rendimento reale, con nessuna via d'uscita se
+  // non svincolarlo.
   function renewWage(p) {
     const d = divOf();
     const star = p.ovr >= d.avg + 6 ? 0.16 : p.ovr >= d.avg + 2 ? 0.08 : 0;
     const youth = p.age <= 22 ? 0.14 : p.age <= 26 ? 0.05 : p.age >= 32 ? -0.02 : 0;
     // Allenatore "negoziatore": sa trattare, i rinnovi chiedono un po' meno.
     const mgrNegotiator = S.manager && S.manager.spec === 'negotiator' ? 0.95 : 1;
-    return roundWage(Math.max(p.wage, wageFor(p.ovr)) * (1.08 + star + youth) * mgrNegotiator);
+    const declining = p.age >= 30 && wageFor(p.ovr) < p.wage;
+    const base = declining ? wageFor(p.ovr) : Math.max(p.wage, wageFor(p.ovr));
+    return roundWage(base * (1.08 + star + youth) * mgrNegotiator);
   }
 
   const renewYears = (p) => (p.age >= 31 ? 1 + rnd(2) : 3 + rnd(2));
@@ -901,7 +907,40 @@
   // a chi ha avuto una stagione intera per consolidarsi: un piccolo malus, non un muro.
   const promoStreakMalus = (ctx = S) => (ctx.promoStreak > 0 ? 2.2 * diffOf(null, ctx).promoStreakMalusMult * (ctx.manager && ctx.manager.spec === 'motivator' ? 0.5 : 1) : 0);
 
-  const teamEff = (ctx = S) => squadStr(ctx) + mgrBonus(ctx) + (ctx.form || 0) - promoStreakMalus(ctx) + diffOf(null, ctx).teamEffDelta;
+  const teamEff = (ctx = S) => squadStr(ctx) + mgrBonus(ctx) + (ctx.form || 0) - promoStreakMalus(ctx) + diffOf(null, ctx).teamEffDelta + captainBonus(ctx);
+
+  // Un capitano disponibile (non infortunato, non squalificato) dà una piccola spinta in più
+  // alla squadra — un modo semplice per rendere "chi porta la fascia" qualcosa di più di
+  // un'etichetta sulla scheda giocatore.
+  function captainBonus(ctx) {
+    if (!ctx || !ctx.captainPid) return 0;
+    const cap = ctx.squad && ctx.squad.find((p) => p.pid === ctx.captainPid);
+    if (!cap || cap.outWeeks > 0 || cap.suspMatches > 0) return 0;
+    return 1;
+  }
+
+  // Se il capitano non c'è più in rosa (venduto, svincolato, ritirato) o non è mai stato
+  // assegnato, ne sceglie uno nuovo: il più forte della rosa, come farebbe lo spogliatoio in
+  // assenza di un'indicazione diversa dal presidente (che può sempre cambiarlo lui, dalla
+  // scheda del giocatore).
+  function ensureCaptain(ctx = S) {
+    if (!ctx || !ctx.squad || !ctx.squad.length) return;
+    if (ctx.captainPid && ctx.squad.some((p) => p.pid === ctx.captainPid)) return;
+    const hadCaptain = ctx.captainPid != null;
+    const best = ctx.squad.slice().sort((a, b) => b.ovr - a.ovr)[0];
+    ctx.captainPid = best ? best.pid : null;
+    if (hadCaptain && best && ctx === S && typeof toast === 'function') toast(best.n + ' è il nuovo capitano della squadra.', 'success');
+  }
+
+  // Il fattore campo non è più una costante fissa uguale per tutti: uno stadio grande e pieno,
+  // con una tifoseria calorosa, pesa di più del "+2.4" fisso di prima — non ogni "casa" è
+  // uguale. Scala solo il bonus di CHI gioca in casa (l'avversario bot non ha uno stadio
+  // modellato con cui fare lo stesso calcolo).
+  const homeAdvantage = (ctx = S) => {
+    const capFactor = clamp(capOf(ctx) / 30000, 0.65, 1.35);
+    const moodFactor = clamp(0.75 + (ctx.sent || 50) / 100 * 0.5, 0.75, 1.25);
+    return capFactor * moodFactor;
+  };
 
   function expectedPos(ctx = S) {
     const mine = squadStr(ctx) + mgrBonus(ctx);
@@ -922,7 +961,10 @@
   function computeWorth(ctx = S) {
     const squadVal = ctx.squad.reduce((a, p) => a + playerValue(p), 0);
     const brand = Math.round(Math.max(0, ctx.fanbase - 1) * WORTH_BASE[ctx.div] * 0.6);   // una tifoseria globale vale soldi veri
-    return Math.round(WORTH_BASE[ctx.div] + squadVal + ctx.stadiumSpent * 1.25 + ctx.prestige + brand + Math.max(0, ctx.budget));
+    // La cassa ferma vale un po' meno di un euro investito (stadio 1.25x, rosa e tifoseria
+    // valgono per quello che rendono, non per il loro costo): tesaurizzare senza mai investire
+    // non deve essere la strategia migliore per chi punta a vendere il club a fine carriera.
+    return Math.round(WORTH_BASE[ctx.div] + squadVal + ctx.stadiumSpent * 1.25 + ctx.prestige + brand + Math.max(0, ctx.budget) * 0.8);
   }
 
   /* ---------------- salva / riprendi (multi-slot) ----------------
@@ -1090,10 +1132,16 @@
     renderBoard();
   }
 
+  // Stima mostrata in Dirigenza PRIMA che la stagione inizi: allineata alla stessa formula di
+  // affluenza usata davvero a fine stagione (endSeason) — che include già l'umore dei tifosi
+  // (S.sent) — invece di una versione semplificata che ignorava l'effetto reale dell'umore
+  // sugli incassi e mostrava un numero che poi non trovava mai riscontro nel bilancio vero.
+  // Il risultato in campo (winPct) non è ancora noto qui, quindi non è nella stima.
   function estSeasonRevenue() {
     const d = divOf(), t = TICKETS[S.ticket], ec = S.euro ? EURO_COMPS[S.euroComp] : null;
-    const att = Math.min(capOf(), d.demand * S.fanbase * t.demand * (ec ? ec.attBoost : 1));
-    const merch = d.demand * S.fanbase * d.ticket * 5;
+    const sentFactor = 1 + (S.sent - 50) / 220;
+    const att = Math.min(capOf(), Math.max(600, d.demand * S.fanbase * sentFactor * t.demand * (ec ? ec.attBoost : 1)));
+    const merch = d.demand * S.fanbase * d.ticket * 5 * 0.8;
     return Math.round(att * d.ticket * t.mult * (gp() / 2) + merch + d.prize + (S.sponsor ? S.sponsor.perYear : 0) + (ec ? ec.entry : 0) - (d.admin + S.stadiumSpent * 0.03));
   }
 
@@ -1248,7 +1296,23 @@
     // Il modulo scelto in "Probabile formazione" pesa davvero: uno più offensivo segna un
     // filo di più e incassa un filo di più, uno più difensivo il contrario.
     const fb = FORMATION_TACTICS[ctx.formation] || FORMATION_TACTICS['433'];
-    return { gf: poisson(clamp(1.32 + fb.atk + d * coeff, 0.15, 4.4)), ga: poisson(clamp(1.32 + fb.def - d * coeff, 0.15, 4.4)) };
+    // Un modulo molto sbilanciato in avanti (343/424) lascia scoperture che un avversario
+    // attento sa sfruttare: oltre al calo difensivo già scontato nel modulo stesso (fb.def),
+    // un piccolo extra quando l'aggressività è estrema — una reazione tattica minima ma
+    // reale, non un'intelligenza artificiale vera che sceglie un contro-modulo.
+    const counterPenalty = fb.atk >= 0.14 ? (fb.atk - 0.10) * 0.6 : 0;
+    const gfMean = clamp(1.32 + fb.atk + d * coeff, 0.15, 4.4);
+    const gaMean = clamp(1.32 + fb.def + counterPenalty - d * coeff, 0.15, 4.4);
+    // Due tempi invece di un tiro secco unico: chi va sotto all'intervallo si getta in avanti
+    // (media più alta nella ripresa), chi è avanti gestisce un filo più guardingo — una vera
+    // dinamica di partita (rimonte possibili) invece di un solo numero deciso in un colpo.
+    // Ogni tempo parte dalla metà della media originale, così sulla lunga distanza la media
+    // gol complessiva di una stagione non si sposta rispetto a prima.
+    const gf1 = poisson(gfMean / 2), ga1 = poisson(gaMean / 2);
+    const behind = clamp((ga1 - gf1) * 0.10, -0.25, 0.25);   // positivo = sei sotto all'intervallo
+    const gf2 = poisson(clamp(gfMean / 2 + behind, 0.05, 4.4));
+    const ga2 = poisson(clamp(gaMean / 2 - behind * 0.6, 0.05, 4.4));
+    return { gf: gf1 + gf2, ga: ga1 + ga2 };
   }
 
   // `forcedScore` (opzionale, { gf, ga }): quando presente salta il tiro dei gol e usa questo
@@ -1262,7 +1326,7 @@
     let gf, ga;
     if (forcedScore) { gf = forcedScore.gf; ga = forcedScore.ga; }
     else {
-      const d = teamEff(ctx) - opp.effS + (fx.home ? 2.4 : -1.1);
+      const d = teamEff(ctx) - opp.effS + (fx.home ? 2.4 * homeAdvantage(ctx) : -1.1);
       ({ gf, ga } = rollMatchScore(d, ctx));
     }
     ctx.played++; ctx.gf += gf; ctx.ga += ga;
@@ -1976,12 +2040,16 @@
     // il contratto sponsor scende
     if (ctx.sponsor) { ctx.sponsor.left--; ctx.sent = clamp(ctx.sent + (ctx.sponsor.sent || 0), 0, 100); if (ctx.sponsor.left <= 0) { if (local) toast('L\'accordo con ' + ctx.sponsor.name + ' scade.'); ctx.sponsor = null; } }
     // Età e overall sono già stati aggiornati a fine stagione (endSeason), per poterli
-    // mostrare nelle statistiche; qui si applica solo il ritiro di chi ha superato i 35.
-    const retired = ctx.squad.filter((p) => p._retiring).map((p) => p.n);
-    ctx.squad.filter((p) => p._retiring).forEach((p) => pushAlumnus(p, ctx));
-    ctx.squad = ctx.squad.filter((p) => !p._retiring);
-    if (local && retired.length) toast(retired.join(', ') + ' si ritira' + (retired.length === 1 ? '' : 'no') + '.');
-    ctx.squad.forEach((p) => { delete p._ovrDelta; delete p._retiring; });
+    // mostrare nelle statistiche. Chi ha superato i 35 non se ne va più in automatico: per un
+    // ctx "remoto" (multiplayer, nessuna interazione possibile) si ritira comunque qui, ma per
+    // il giocatore in locale la scelta ("un'altra stagione" o partita d'addio) è sua — vedi
+    // openRetirementOverlay più sotto, aperta subito dopo questa funzione.
+    if (!local) {
+      const retired = ctx.squad.filter((p) => p._retiring).map((p) => p.n);
+      ctx.squad.filter((p) => p._retiring).forEach((p) => pushAlumnus(p, ctx));
+      ctx.squad = ctx.squad.filter((p) => !p._retiring);
+    }
+    ctx.squad.forEach((p) => { delete p._ovrDelta; if (!local) delete p._retiring; });
     // I prestiti restano in rosa (con l'etichetta "prestito" e il bottone 💰 Riscatta al
     // posto di quello di vendita, vedi renderBoard): il presidente decide con calma in
     // sala del consiglio. Chi non viene riscattato torna al suo club solo all'avvio della
@@ -1994,7 +2062,10 @@
     ctx.season++;
     ctx.mgrOpts = null; ctx.sponsorOpts = null; ctx.investorUsed = false; ctx.spinsBought = 0; ctx.premiumRoleUsed = false; ctx.stdRoleUsed = false; ctx._end = null;
     ctx.offers = genOffers(ctx);   // i club rivali fanno offerte per i tuoi giocatori migliori quest'estate
-    if (local) renderBoard();
+    if (local) {
+      const pendingRetirees = ctx.squad.filter((p) => p._retiring);
+      if (pendingRetirees.length) openRetirementOverlay(pendingRetirees); else renderBoard();
+    }
   }
 
   /* ---------------- multiplayer: motore multi-club (Fase 2b) ----------------
@@ -2054,7 +2125,7 @@
   // giornata alla volta con stepHostMatchday, per poter mostrare all'host la classifica
   // generale che si aggiorna man mano invece di calcolare tutto in un colpo solo.
   function setupHostSeason(humanCtxs, div, difficulty) {
-    humanCtxs.forEach((ctx) => { ctx.div = div; ctx.difficulty = difficulty; });
+    humanCtxs.forEach((ctx) => { ctx.div = div; ctx.difficulty = difficulty; ensureCaptain(ctx); });
     const teams = DIVS[div].teams;
     const N = humanCtxs.length;
     const botCount = Math.max(0, teams - N);
@@ -2083,7 +2154,7 @@
         done.add(key);
         const ctxA = ctx, ctxB = run.ctxs[fx.humanIdx];
         const [homeCtx, awayCtx] = fx.home ? [ctxA, ctxB] : [ctxB, ctxA];
-        const dVal = teamEff(homeCtx) - teamEff(awayCtx) + 2.4;
+        const dVal = teamEff(homeCtx) - teamEff(awayCtx) + 2.4 * homeAdvantage(homeCtx);
         const { gf, ga } = rollMatchScore(dVal, homeCtx);
         simMatch(homeCtx, { gf, ga });
         simMatch(awayCtx, { gf: ga, ga: gf });
