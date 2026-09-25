@@ -870,7 +870,7 @@
       .sort((a, b) => (b.ovr + (b.age <= 22 ? 4 : 0)) - (a.ovr + (a.age <= 22 ? 4 : 0)))
       .slice(0, scoutNetwork ? 4 : 3);
     const offers = [];
-    targets.forEach((p, i) => { if (Math.random() < (i === 0 ? 0.85 : i === 1 ? 0.6 : 0.4) + (scoutNetwork ? 0.15 : 0)) { const fee = offerFee(p, ctx); offers.push({ pid: p.pid, club: buyerClub(fee, ctx), fee }); } });
+    targets.forEach((p, i) => { if (Math.random() < (i === 0 ? 0.95 : i === 1 ? 0.75 : 0.55) + (scoutNetwork ? 0.15 : 0)) { const fee = offerFee(p, ctx); offers.push({ pid: p.pid, club: buyerClub(fee, ctx), fee }); } });
     return offers;
   }
 
@@ -1246,24 +1246,31 @@
   // (poisson sulla differenza di forza), poi 3/1/0 SOLO in base al risultato reale — mai una
   // cifra assegnata da una formula. È quello che tiene le classifiche vicine a una vera
   // Serie A (un campione sugli 85-95pt, un'ultima sui 20-30, non tutti fra 55 e 70).
-  function simRivalMatch(strHome, strAway) {
+  // `drawBoost`: un Poisson indipendente pareggia meno spesso del vero calcio (partite
+  // "chiuse", tattiche, un episodio che nega la vittoria proprio nel finale) — chi vince di
+  // un solo gol ha una chance in più di ritrovarsi sul pareggio. Calibrato sulle classifiche
+  // reali di Serie A/B (RIVAL_DRAW_BOOST, data.js): senza tocco per le categorie minori (nessun
+  // dato reale per confrontarle), un boost base per la A, uno più alto per la B — che nella
+  // realtà pareggia sensibilmente di più (più tattica, più equilibrio fra le squadre).
+  function simRivalMatch(strHome, strAway, drawBoost) {
     const d = (strHome + 2.2) - strAway;
     const coeff = 0.045;
-    const gf = poisson(clamp(1.32 + d * coeff, 0.15, 4.4));
-    const ga = poisson(clamp(1.32 - d * coeff, 0.15, 4.4));
+    let gf = poisson(clamp(1.32 + d * coeff, 0.15, 4.4));
+    let ga = poisson(clamp(1.32 - d * coeff, 0.15, 4.4));
+    if (drawBoost && Math.abs(gf - ga) === 1 && Math.random() < drawBoost) { if (gf > ga) gf = ga; else ga = gf; }
     return { gf, ga };
   }
 
   // Girone di andata/ritorno fra tutti i rivali fra loro (le loro partite contro il
   // presidente sono già simulate a parte via simMatch, vedi creditRivalResult): a fine
   // stagione ogni rivale ha giocato le stesse partite di chiunque altro, punti reali.
-  function simRivalRoundRobin(opps) {
+  function simRivalRoundRobin(opps, drawBoost) {
     for (let i = 0; i < opps.length; i++) {
       for (let j = i + 1; j < opps.length; j++) {
-        const m1 = simRivalMatch(opps[i].effS, opps[j].effS);
+        const m1 = simRivalMatch(opps[i].effS, opps[j].effS, drawBoost);
         opps[i].rrPts += m1.gf > m1.ga ? 3 : m1.gf === m1.ga ? 1 : 0; opps[i].rrGF += m1.gf; opps[i].rrGA += m1.ga;
         opps[j].rrPts += m1.ga > m1.gf ? 3 : m1.ga === m1.gf ? 1 : 0; opps[j].rrGF += m1.ga; opps[j].rrGA += m1.gf;
-        const m2 = simRivalMatch(opps[j].effS, opps[i].effS);
+        const m2 = simRivalMatch(opps[j].effS, opps[i].effS, drawBoost);
         opps[j].rrPts += m2.gf > m2.ga ? 3 : m2.gf === m2.ga ? 1 : 0; opps[j].rrGF += m2.gf; opps[j].rrGA += m2.ga;
         opps[i].rrPts += m2.ga > m2.gf ? 3 : m2.ga === m2.gf ? 1 : 0; opps[i].rrGF += m2.ga; opps[i].rrGA += m2.gf;
       }
@@ -1333,7 +1340,7 @@
       const usedMgrNames = new Set(ctx.manager && ctx.manager.n ? [ctx.manager.n] : []);
       const mgrRegistry = ctx._mgrByClub || (ctx._mgrByClub = {});
       ctx.opps = rivals(ctx).map((o) => ({ name: o.n, s: o.s, effS: clamp(o.s + gaussInt(0, 8), 30, 99), rrPts: 0, rrGF: 0, rrGA: 0, vsPts: 0, vsGF: 0, vsGA: 0, mgr: managerForClub(o.n, 0, ctx, usedMgrNames, mgrRegistry) }));
-      simRivalRoundRobin(ctx.opps);
+      simRivalRoundRobin(ctx.opps, RIVAL_DRAW_BOOST[ctx.div]);
       const fx = [];
       ctx.opps.forEach((o, i) => { fx.push({ opp: i, home: true }); fx.push({ opp: i, home: false }); });
       shuffle(fx); ctx.fixtures = fx.map((f, i) => ({ ...f, mw: i + 1 }));
@@ -2235,23 +2242,61 @@
   // media. Non è un intero campionato extra per le altre 5 categorie della piramide (troppo
   // pesante da calcolare/mantenere) ma un turnover leggero: negli anni le rose di ogni
   // categoria cambiano davvero, non restano fisse per tutta la carriera.
+  // Sorteggio pesato (mai deterministico): usato per lo spareggio promozione dei rivali in
+  // zona playoff, la stessa incertezza reale che vive il presidente nei SUOI playoff — il più
+  // forte del gruppo è favorito, non garantito.
+  function weightedPickIndex(items, weightFn) {
+    const weights = items.map(weightFn);
+    const total = weights.reduce((a, b) => a + b, 0);
+    let r = Math.random() * total;
+    for (let i = 0; i < items.length; i++) { r -= weights[i]; if (r <= 0) return i; }
+    return items.length - 1;
+  }
+
   function simulatePyramidMovement(ctx = S) {
     for (let div = 1; div < DIVS.length; div++) {
       const upper = POOLS[div], lower = POOLS[div - 1];
       const releg = DIVS[div].releg || 0;
-      const promo = (DIVS[div - 1].promoted || 0) + (DIVS[div - 1].playoff ? 1 : 0);
+      const directPromo = DIVS[div - 1].promoted || 0;
+      const hasPlayoff = !!DIVS[div - 1].playoff;
+      const promo = directPromo + (hasPlayoff ? 1 : 0);
       if (!releg || !promo) continue;
-      const upperSorted = upper.filter((c) => !(ctx.div === div && c.n === ctx.club)).sort((a, b) => a.s - b.s);
-      const lowerSorted = lower.filter((c) => !(ctx.div === div - 1 && c.n === ctx.club)).sort((a, b) => b.s - a.s);
-      const n = Math.min(releg, promo, upperSorted.length, lowerSorted.length);
+
+      // Se il presidente ha giocato PROPRIO in questa categoria quest'anno, il piazzamento
+      // reale (evolveRivalStrengths: club._seasonPos/_seasonAt) dice con certezza chi retrocede
+      // o promuove davvero — prima si indovinava dalla sola forza `s`, così un rivale poteva
+      // risultare promosso pur non avendo passato i playoff (o retrocesso pur salvo), un bug
+      // visibile proprio perché è la categoria che il presidente segue da vicino.
+      let relegated = ctx.div === div
+        ? upper.filter((c) => c.n !== ctx.club && c._seasonAt === ctx.season && c._seasonPos > DIVS[div].teams - releg)
+        : [];
+      if (relegated.length !== releg) {
+        const fallback = upper.filter((c) => !(ctx.div === div && c.n === ctx.club) && relegated.indexOf(c) === -1).sort((a, b) => a.s - b.s);
+        relegated = relegated.concat(fallback.slice(0, releg - relegated.length));
+      }
+
+      let promotedUp = [];
+      if (ctx.div === div - 1) {
+        promotedUp = lower.filter((c) => c.n !== ctx.club && c._seasonAt === ctx.season && c._seasonPos <= directPromo);
+        if (hasPlayoff) {
+          const zone = lower.filter((c) => c.n !== ctx.club && c._seasonAt === ctx.season && c._seasonPos > directPromo && c._seasonPos <= directPromo + DIVS[div - 1].playoff);
+          if (zone.length) promotedUp.push(zone[weightedPickIndex(zone, (c) => Math.pow(1.18, c.s))]);
+        }
+      }
+      if (promotedUp.length !== promo) {
+        const fallback = lower.filter((c) => !(ctx.div === div - 1 && c.n === ctx.club) && promotedUp.indexOf(c) === -1).sort((a, b) => b.s - a.s);
+        promotedUp = promotedUp.concat(fallback.slice(0, promo - promotedUp.length));
+      }
+
+      const n = Math.min(releg, promo, relegated.length, promotedUp.length);
       if (!n) continue;
-      upperSorted.slice(0, n).forEach((c) => {
+      relegated.slice(0, n).forEach((c) => {
         const i = upper.indexOf(c); if (i < 0) return;
         upper.splice(i, 1);
         c.s = clamp(Math.round(DIVS[div - 1].avg + (c.s - DIVS[div].avg) * 0.5), DIVS[div - 1].avg - 12, DIVS[div - 1].avg + 14);
         lower.push(c);
       });
-      lowerSorted.slice(0, n).forEach((c) => {
+      promotedUp.slice(0, n).forEach((c) => {
         const i = lower.indexOf(c); if (i < 0) return;
         lower.splice(i, 1);
         c.s = clamp(Math.round(DIVS[div].avg + (c.s - DIVS[div - 1].avg) * 0.5), DIVS[div].avg - 14, DIVS[div].avg + 10);
@@ -2272,6 +2317,14 @@
       if (row.me) return;
       const club = pool.find((c) => c.n === row.name); if (!club) return;
       const posN = i + 1;
+      // Piazzamento VERO di questa stagione, per la categoria in cui il presidente ha
+      // effettivamente giocato: simulatePyramidMovement lo usa per decidere promozioni/
+      // retrocessioni dei rivali su dati reali invece che sulla sola forza `s` (approssimata
+      // per le altre 5 categorie, dove un campionato vero non viene mai simulato). `_seasonAt`
+      // marca la stagione: se il presidente non rimette piede in questa categoria per un po',
+      // il dato non deve restare valido per sempre.
+      club._seasonPos = posN;
+      club._seasonAt = ctx.season;
       let drift = 0;
       if (posN === 1) drift = 0.8;
       else if (posN <= 3) drift = 0.4;
@@ -2411,7 +2464,7 @@
     humanCtxs.forEach((h) => { if (h._mgrByClub) Object.assign(mgrRegistry, h._mgrByClub); });
     const bots = POOLS[div].filter((c) => !humanNames.has(c.n)).slice(0, botCount)
       .map((o) => ({ name: o.n, s: o.s, effS: clamp(o.s + gaussInt(0, 8), 30, 99), rrPts: 0, rrGF: 0, rrGA: 0, vsPts: 0, vsGF: 0, vsGA: 0, mgr: managerForClub(o.n, 0, humanCtxs[0], usedMgrNames, mgrRegistry) }));
-    simRivalRoundRobin(bots);
+    simRivalRoundRobin(bots, RIVAL_DRAW_BOOST[div]);
     humanCtxs.forEach((h) => { h._mgrByClub = mgrRegistry; });
     const { opps, fixtures } = buildMultiplayerFixtures(humanCtxs, bots);
     humanCtxs.forEach((ctx, i) => startSeason(ctx, opps[i], fixtures[i]));

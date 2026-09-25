@@ -109,7 +109,7 @@ if (!in_array($difficulty, ['facile', 'medio', 'difficile', 'estremo'], true)) $
 // Punteggio semplice e difficile da "barare" gonfiando un solo numero: pesa soprattutto i
 // trofei (il vero traguardo di una carriera), poi la categoria raggiunta, poi il valore
 // del club come spareggio.
-$diffMult = ['facile' => 0.85, 'medio' => 1.0, 'difficile' => 1.2, 'estremo' => 1.4][$difficulty];
+$diffMult = ['facile' => 0.8, 'medio' => 1.0, 'difficile' => 1.35, 'estremo' => 1.7][$difficulty];
 $score = (int) round(($trophies * 5000 + $div * 800 + min($worth, 2e9) / 1e6) * $diffMult);
 
 $entry = [

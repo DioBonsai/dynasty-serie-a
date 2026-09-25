@@ -32,8 +32,15 @@
     { name: 'Serie D', teams: 24, avg: 62, demand: 7500, ticket: 17, prize: 1.0e6, perPlace: 15e3, promoted: 3, playoff: 4, releg: 2, promoBonus: 1.2e6, titleBonus: 0.5e6, spin: 200e3, premium: 600e3, cupBase: 70e3, admin: 250e3, mgrBase: 58, investor: 600e3 },
     { name: 'Serie C', teams: 24, avg: 68, demand: 13000, ticket: 21, prize: 1.6e6, perPlace: 25e3, promoted: 2, playoff: 4, releg: 4, promoBonus: 3e6, titleBonus: 1e6, spin: 500e3, premium: 2.5e6, cupBase: 140e3, admin: 450e3, mgrBase: 63, investor: 1.2e6 },
     { name: 'Serie B', teams: 20, avg: 74, demand: 24000, ticket: 28, prize: 9e6, perPlace: 120e3, promoted: 2, playoff: 6, releg: 3, promoBonus: 130e6, titleBonus: 3e6, spin: 1.5e6, premium: 8e6, cupBase: 500e3, admin: 1.5e6, mgrBase: 69, investor: 5e6 },
-    { name: 'Serie A', teams: 20, avg: 83, demand: 52000, ticket: 42, prize: 105e6, perPlace: 3.1e6, promoted: 0, playoff: 0, releg: 3, euroSpots: 4, uelPos: 5, confPos: 6, promoBonus: 0, titleBonus: 30e6, spin: 6e6, premium: 30e6, cupBase: 2e6, admin: 6e6, mgrBase: 76, investor: 15e6 },
+    { name: 'Serie A', teams: 20, avg: 83, demand: 52000, ticket: 42, prize: 105e6, perPlace: 3.1e6, promoted: 0, playoff: 0, releg: 3, euroSpots: 4, uelSpots: 2, confPos: 7, promoBonus: 0, titleBonus: 30e6, spin: 6e6, premium: 30e6, cupBase: 2e6, admin: 6e6, mgrBase: 76, investor: 15e6 },
   ];
+
+  // Calibrato sulle classifiche reali di Serie A e Serie B (medie 2023-24/2024-25): un Poisson
+  // indipendente pareggia meno del vero calcio, di più quando la partita è "chiusa" (vittoria
+  // di un solo gol). 0.12 avvicina il tasso di pareggio della A al ~28% reale; la B nella
+  // realtà pareggia molto di più (~34%, calcio più tattico/equilibrato), da cui il boost extra.
+  // Nessun dato reale per le categorie minori: restano al valore base della A.
+  const RIVAL_DRAW_BOOST = [0.17, 0.17, 0.17, 0.17, 0.23, 0.17]; // Promozione..Serie A, stesso ordine di DIVS/POOLS
 
   // La Coppa Italia è UNA sola coppa, non sei tornei separati: nella realtà il tabellone
   // dei "grandi" (44 squadre fra Serie A/B/C) è preceduto da un intero percorso di turni
@@ -543,51 +550,62 @@
   function euroTierFor(pos) { return pos <= 4 ? 'ucl' : pos === 5 ? 'uel' : pos === 6 ? 'conf' : null; }
 
   const POOLS = [
-    [ // Promozione (un gradino sotto l'Eccellenza)
-      { n: 'Torrenova', s: 55 }, { n: 'Palmarola', s: 54 }, { n: 'Casal Bernocchi', s: 54 }, { n: 'Ostia Antica', s: 53 },
-      { n: 'Bufalotta', s: 53 }, { n: 'Fiumicino', s: 52 }, { n: 'Ardea', s: 52 }, { n: 'Cerveteri', s: 51 },
+    [ // Promozione (un gradino sotto l'Eccellenza). Valori `s` allargati (~+15% di scarto
+      // dalla media, coda ulteriormente abbassata): anche le categorie minori vere sono
+      // polarizzate — la Serie D 2024-25 ha visto un'ultima classificata chiudere con appena
+      // 12 punti su 38 partite contro i ~76 di media dei campioni dei 9 gironi.
+      { n: 'Torrenova', s: 56 }, { n: 'Palmarola', s: 55 }, { n: 'Casal Bernocchi', s: 55 }, { n: 'Ostia Antica', s: 54 },
+      { n: 'Bufalotta', s: 54 }, { n: 'Fiumicino', s: 52 }, { n: 'Ardea', s: 52 }, { n: 'Cerveteri', s: 51 },
       { n: 'Nettuno', s: 51 }, { n: 'Velletri', s: 50 }, { n: 'Genzano', s: 50 }, { n: 'Marino', s: 50 },
       { n: 'Zagarolo', s: 49 }, { n: 'Palestrina', s: 49 }, { n: 'Frascati', s: 48 }, { n: 'Ciampino', s: 48 },
-      { n: 'Monterotondo Scalo', s: 48 }, { n: 'Fonte Nuova', s: 47 }, { n: 'Mentana', s: 47 }, { n: 'Palombara', s: 46 },
-      { n: 'Tivoli Terme', s: 46 }, { n: 'Vicovaro Alta', s: 45 }, { n: 'Subiaco', s: 45 }, { n: 'Cave', s: 44 },
+      { n: 'Monterotondo Scalo', s: 48 }, { n: 'Fonte Nuova', s: 47 }, { n: 'Mentana', s: 47 }, { n: 'Palombara', s: 45 },
+      { n: 'Tivoli Terme', s: 45 }, { n: 'Vicovaro Alta', s: 42 }, { n: 'Subiaco', s: 40 }, { n: 'Cave', s: 36 },
     ],
-    [ // Eccellenza
-      { n: 'Nuova Florida', s: 63 }, { n: 'Vis Artena', s: 62 }, { n: 'Aurelia Antica', s: 61 }, { n: 'Boreale', s: 60 },
+    [ // Eccellenza — stesso criterio di allargamento di Promozione.
+      { n: 'Nuova Florida', s: 64 }, { n: 'Vis Artena', s: 63 }, { n: 'Aurelia Antica', s: 62 }, { n: 'Boreale', s: 61 },
       { n: 'Grifone Gialloverde', s: 59 }, { n: 'Real Monterotondo', s: 59 }, { n: 'Palocco', s: 58 }, { n: 'Almas Roma', s: 58 },
       { n: 'Atletico Morena', s: 57 }, { n: 'San Basilio', s: 57 }, { n: 'Vicovaro', s: 56 }, { n: 'Guidonia Montecelio', s: 56 },
       { n: 'Colleferro', s: 55 }, { n: 'Anzio', s: 55 }, { n: 'Aprilia', s: 55 }, { n: 'Pomezia', s: 54 },
-      { n: 'Cynthialbalonga', s: 54 }, { n: 'Ladispoli', s: 53 }, { n: 'Boca Fiumicino', s: 53 }, { n: 'Tor Sapienza', s: 52 },
-      { n: 'Santa Marinella', s: 52 }, { n: 'Formia', s: 51 }, { n: 'Fondi', s: 51 }, { n: 'Gaeta', s: 51 },
+      { n: 'Cynthialbalonga', s: 54 }, { n: 'Ladispoli', s: 53 }, { n: 'Boca Fiumicino', s: 53 }, { n: 'Tor Sapienza', s: 51 },
+      { n: 'Santa Marinella', s: 51 }, { n: 'Formia', s: 48 }, { n: 'Fondi', s: 46 }, { n: 'Gaeta', s: 43 },
     ],
-    [ // Serie D
-      { n: 'Fiorenzuola', s: 69 }, { n: 'San Giuliano City', s: 68 }, { n: 'Chieri', s: 67 }, { n: 'Bra', s: 67 },
+    [ // Serie D — stesso criterio di allargamento.
+      { n: 'Fiorenzuola', s: 70 }, { n: 'San Giuliano City', s: 69 }, { n: 'Chieri', s: 68 }, { n: 'Bra', s: 68 },
       { n: 'Derthona', s: 66 }, { n: 'Lavagnese', s: 66 }, { n: 'Legnago Salus', s: 66 }, { n: 'Ostiamare', s: 65 },
       { n: 'Sarnese', s: 64 }, { n: 'Nardò', s: 64 }, { n: 'Gravina', s: 64 }, { n: 'Fasano', s: 63 },
       { n: 'Nocerina', s: 63 }, { n: 'Gelbison', s: 62 }, { n: 'Manfredonia', s: 62 }, { n: 'Sancataldese', s: 61 },
       { n: 'Vigor Senigallia', s: 61 }, { n: 'Castelfidardo', s: 61 }, { n: 'Recanatese', s: 60 }, { n: 'Termoli', s: 60 },
-      { n: 'Notaresco', s: 59 }, { n: 'Montevarchi', s: 59 }, { n: 'Poggibonsi', s: 59 }, { n: 'Trastevere', s: 58 },
+      { n: 'Notaresco', s: 58 }, { n: 'Montevarchi', s: 56 }, { n: 'Poggibonsi', s: 54 }, { n: 'Trastevere', s: 50 },
     ],
-    [ // Serie C
-      { n: 'Padova', s: 76 }, { n: 'Vicenza', s: 75 }, { n: 'Triestina', s: 74 }, { n: 'Pescara', s: 73 },
-      { n: 'Ternana', s: 73 }, { n: 'Perugia', s: 72 }, { n: 'Foggia', s: 72 }, { n: 'Avellino', s: 71 },
+    [ // Serie C — stesso criterio di allargamento.
+      { n: 'Padova', s: 77 }, { n: 'Vicenza', s: 76 }, { n: 'Triestina', s: 75 }, { n: 'Pescara', s: 74 },
+      { n: 'Ternana', s: 74 }, { n: 'Perugia', s: 72 }, { n: 'Foggia', s: 72 }, { n: 'Avellino', s: 71 },
       { n: 'Catania', s: 71 }, { n: 'Benevento', s: 70 }, { n: 'Casertana', s: 70 }, { n: 'Turris', s: 69 },
       { n: 'Monopoli', s: 69 }, { n: 'Picerno', s: 68 }, { n: 'Crotone', s: 68 }, { n: 'Taranto', s: 67 },
-      { n: 'Latina', s: 67 }, { n: 'Giugliano', s: 66 }, { n: 'Sorrento', s: 66 }, { n: 'Potenza', s: 65 },
-      { n: 'Cerignola', s: 65 }, { n: 'Messina', s: 64 }, { n: 'Trapani', s: 64 }, { n: 'Rimini', s: 63 },
+      { n: 'Latina', s: 67 }, { n: 'Giugliano', s: 66 }, { n: 'Sorrento', s: 66 }, { n: 'Potenza', s: 64 },
+      { n: 'Cerignola', s: 64 }, { n: 'Messina', s: 61 }, { n: 'Trapani', s: 59 }, { n: 'Rimini', s: 55 },
     ],
-    [ // Serie B (20 club reali stagione 2026/27, come il vero campionato)
-      { n: 'Verona', s: 83 }, { n: 'Empoli', s: 82 }, { n: 'Sampdoria', s: 80 }, { n: 'Palermo', s: 79 },
+    [ // Serie B (20 club reali stagione 2026/27, come il vero campionato). Valori `s` allargati
+      // (~+18% di scarto dalla media) rispetto all'originale: le classifiche vere di Serie B
+      // sono più larghe (dal 82 del primo al 30 dell'ultima nel 2024-25) di quanto un girone
+      // troppo compatto producesse, pur restando un campionato molto più equilibrato della A.
+      { n: 'Verona', s: 84 }, { n: 'Empoli', s: 83 }, { n: 'Sampdoria', s: 81 }, { n: 'Palermo', s: 80 },
       { n: 'Cremonese', s: 78 }, { n: 'Catanzaro', s: 77 }, { n: 'Modena', s: 77 }, { n: 'Pisa', s: 76 },
       { n: 'Cesena', s: 76 }, { n: 'Juve Stabia', s: 75 }, { n: 'Sudtirol', s: 75 }, { n: 'Carrarese', s: 73 },
-      { n: 'Mantova', s: 73 }, { n: 'Padova', s: 72 }, { n: 'Ascoli', s: 72 }, { n: 'Avellino', s: 71 },
-      { n: 'Benevento', s: 71 }, { n: 'Vicenza', s: 70 }, { n: 'Arezzo', s: 70 }, { n: 'Entella', s: 69 },
+      { n: 'Mantova', s: 73 }, { n: 'Padova', s: 71 }, { n: 'Ascoli', s: 71 }, { n: 'Avellino', s: 70 },
+      { n: 'Benevento', s: 70 }, { n: 'Vicenza', s: 69 }, { n: 'Arezzo', s: 69 }, { n: 'Entella', s: 68 },
     ],
-    [ // Serie A (massima serie)
-      { n: 'Napoli', s: 95 }, { n: 'Inter', s: 92 }, { n: 'Juventus', s: 92 }, { n: 'Milan', s: 89 },
-      { n: 'Atalanta', s: 89 }, { n: 'Roma', s: 88 }, { n: 'Fiorentina', s: 87 }, { n: 'Bologna', s: 85 },
-      { n: 'Lazio', s: 84 }, { n: 'Torino', s: 83 }, { n: 'Udinese', s: 82 }, { n: 'Genoa', s: 81 },
-      { n: 'Sassuolo', s: 81 }, { n: 'Frosinone', s: 80 }, { n: 'Cagliari', s: 79 }, { n: 'Monza', s: 79 },
-      { n: 'Parma', s: 78 }, { n: 'Lecce', s: 77 }, { n: 'Venezia', s: 76 }, { n: 'Como', s: 75 },
+    [ // Serie A (massima serie). Valori `s` allargati (stiramento ~1.3x dalla media, coda
+      // ulteriormente abbassata per le ultime 3): le classifiche vere di Serie A sono molto più
+      // polarizzate di un ventaglio lineare — un gruppo di testa/Europa nettamente staccato dal
+      // resto, e le ultime spesso crollano isolate (es. 2024-25: 82 punti il campione, 18 punti
+      // l'ultima, oltre 60 punti di scarto — la vecchia distribuzione ne produceva solo ~56 di
+      // media simulata contro i ~70 osservati sulle ultime due stagioni reali).
+      { n: 'Napoli', s: 98 }, { n: 'Inter', s: 95 }, { n: 'Juventus', s: 95 }, { n: 'Milan', s: 91 },
+      { n: 'Atalanta', s: 91 }, { n: 'Roma', s: 89 }, { n: 'Fiorentina', s: 88 }, { n: 'Bologna', s: 85 },
+      { n: 'Lazio', s: 84 }, { n: 'Torino', s: 83 }, { n: 'Udinese', s: 82 }, { n: 'Genoa', s: 80 },
+      { n: 'Sassuolo', s: 80 }, { n: 'Frosinone', s: 79 }, { n: 'Cagliari', s: 78 }, { n: 'Monza', s: 78 },
+      { n: 'Parma', s: 76 }, { n: 'Lecce', s: 73 }, { n: 'Venezia', s: 70 }, { n: 'Como', s: 65 },
     ],
   ];
 

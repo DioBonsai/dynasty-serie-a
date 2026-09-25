@@ -480,7 +480,7 @@
     const d = DIVS[myDiv] || {};
     const liveTableHTML = `${newsHTML}<div style="max-height:44vh;overflow:auto;margin:0 -6px">
       ${myGroup ? `<table class="dyn-table"><thead><tr><th>Squadra</th><th>Mister</th><th class="num">Pt</th><th class="num">DR</th></tr></thead><tbody>${myGroup.table.map((r, i) => {
-        const zone = (d.euroSpots && i < d.euroSpots) ? 'ucl' : (d.uelPos && i === d.uelPos - 1) ? 'uel' : (d.confPos && i === d.confPos - 1) ? 'conf' : (d.promoted && i < d.promoted) ? 'ucl' : (d.playoff && i >= d.promoted && i < d.promoted + d.playoff) ? 'po' : (d.releg && i >= d.teams - d.releg) ? 'rel' : '';
+        const zone = (d.euroSpots && i < d.euroSpots) ? 'ucl' : (d.uelSpots && i >= d.euroSpots && i < d.euroSpots + d.uelSpots) ? 'uel' : (d.confPos && i === d.confPos - 1) ? 'conf' : (d.promoted && i < d.promoted) ? 'ucl' : (d.playoff && i >= d.promoted && i < d.promoted + d.playoff) ? 'po' : (d.releg && i >= d.teams - d.releg) ? 'rel' : '';
         return `<tr class="${r.isHuman ? 'me' : ''} ${zone}"><td>${i + 1}. ${r.club}</td><td style="font-size:11px;color:var(--muted)">${r.mgr || '-'}</td><td class="num">${r.pts}</td><td class="num">${r.gd > 0 ? '+' : ''}${r.gd}</td></tr>`;
       }).join('')}</tbody></table>` : '<div class="ow-sub">In attesa che l\'host avvii la simulazione…</div>'}
       </div>`;
@@ -1623,7 +1623,7 @@
         ${S.offers.map((o) => {
           const p = S.squad.find((x) => x.pid === o.pid); if (!p) return '';
           return `<div class="ow-bid">
-            <div class="who"><span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span><span class="nm">${flagOf(p)}${p.n}<small>età ${p.age} · ${o.club} si fa avanti</small></span></div>
+            <div class="who"><span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span><span class="postag postag-${p.pos}">${p.pos}</span><span class="nm">${flagOf(p)}${p.n}<small>età ${p.age} · ${o.club} si fa avanti</small></span></div>
             <div class="act"><span class="fee">${fmtMoney(o.fee)}</span>
               <button class="dyn-mini ow-accept" data-acc="${o.pid}">Accetta</button>
               ${!o.countered ? `<button class="dyn-mini" data-counter="${o.pid}" title="Chiedi di più: potrebbero accettare o ritirarsi">🤝 Rilancia</button>` : ''}
@@ -1814,7 +1814,7 @@
       const pid = +el.dataset.counter; const o = (S.offers || []).find((x) => x.pid === pid); if (!o || o.countered) return;
       const p = S.squad.find((x) => x.pid === pid);
       o.countered = true;
-      if (Math.random() < 0.55) {
+      if (Math.random() < 0.65) {
         const higher = Math.round(o.fee * (1.15 + Math.random() * 0.15) / 1e4) * 1e4;
         o.fee = higher;
         toast(o.club + ' alza l\'offerta a ' + fmtMoney(higher) + (p ? ' per ' + p.n : '') + '.', 'money');
@@ -2243,7 +2243,7 @@
   // sul resto dell'elenco finché non ne resta nessuno, poi apre la Dirigenza normale.
   function openRetirementOverlay(players) {
     const p = players && players[0];
-    if (!p) { renderBoard(); return; }
+    if (!p) { closeOverlay(); renderBoard(); return; }
     overlay(`
       <h2>🎽 Fine carriera in vista</h2>
       <div class="ow-spin-card">
@@ -2633,6 +2633,11 @@
     }
   }
 
+  // Un colore per fascia di difficoltà (badge nella classifica globale): stessa idea delle
+  // zone colorate della classifica di campionato, qui applicata alla difficoltà con cui è
+  // stata giocata la carriera — un pareggio semplice ha meno merito di uno in Estremo.
+  const DIFF_COLOR = { facile: 'var(--good)', medio: 'var(--muted)', difficile: 'var(--gold)', estremo: 'var(--bad)' };
+
   async function showGlobalLeaderboard() {
     overlay(`<h2>🌍 Classifica presidenti</h2><div class="ow-sub" style="text-align:center">Caricamento…</div><div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovClose">Chiudi</button></div>`);
     $('ovClose').onclick = closeOverlay;
@@ -2641,11 +2646,33 @@
       const data = await res.json();
       if (!data || !data.ok) throw new Error('bad response');
       const top10 = (data.entries || []).slice(0, 10);
-      const diffLabel = (key) => (DIFFICULTIES.find((d) => d.key === key) || {}).label || 'Media';
-      const rows = top10.map((e, i) => `<div class="ow-fin-row"><span>${i + 1}. ${e.club}<small style="display:block;color:var(--muted)">${e.owner} · ${(DIVS[e.div] || {}).name || ''} · ${e.trophies} trofe${e.trophies === 1 ? 'o' : 'i'} · difficoltà ${diffLabel(e.difficulty)}</small></span><b class="good">${Math.round(e.score).toLocaleString('it-IT')}</b></div>`).join('');
+      const diffOfEntry = (key) => DIFFICULTIES.find((d) => d.key === key) || { label: 'Media', key: 'medio' };
+      const diffBadge = (key) => { const d = diffOfEntry(key); return `<span style="display:inline-block;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:800;border:1px solid ${DIFF_COLOR[d.key] || 'var(--line)'};color:${DIFF_COLOR[d.key] || 'var(--muted)'}">${d.label}</span>`; };
+      const medal = ['🥇', '🥈', '🥉'];
+      // Podio per i primi 3: il 1° al centro e più grande, come un vero podio, ordinato con
+      // CSS `order` (nel markup restano comunque nell'ordine di merito, screen reader inclusi).
+      const podium = top10.slice(0, 3).map((e, i) => `
+        <div style="order:${i === 0 ? 2 : i === 1 ? 1 : 3};flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:${i === 0 ? '14px 6px 10px' : '8px 6px'};border-radius:12px;background:${i === 0 ? 'rgba(255,210,74,.14)' : 'rgba(255,255,255,.04)'};border:1px solid ${i === 0 ? 'var(--gold)' : 'var(--line)'}">
+          <div style="font-size:${i === 0 ? '34px' : '24px'};line-height:1">${medal[i]}</div>
+          <div style="font-weight:900;font-size:${i === 0 ? '14px' : '12px'};text-align:center;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">${escapeHtml(e.club)}</div>
+          <div style="font-size:10px;color:var(--muted);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">${escapeHtml(e.owner)}</div>
+          ${diffBadge(e.difficulty)}
+          <div style="font-weight:900;color:var(--gold);font-size:${i === 0 ? '17px' : '14px'};font-variant-numeric:tabular-nums">${Math.round(e.score).toLocaleString('it-IT')}</div>
+        </div>`).join('');
+      const restRows = top10.slice(3).map((e, i) => `
+        <div class="ow-fin-row" style="align-items:center">
+          <span style="display:flex;align-items:center;gap:8px;min-width:0">
+            <span style="flex:0 0 auto;width:22px;text-align:center;color:var(--muted);font-weight:800">${i + 4}</span>
+            <span style="min-width:0"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(e.club)}</b>
+              <small style="display:flex;gap:6px;align-items:center;color:var(--muted);margin-top:2px">${escapeHtml(e.owner)} · ${(DIVS[e.div] || {}).name || ''} · 🏆 ${e.trophies} ${diffBadge(e.difficulty)}</small>
+            </span>
+          </span>
+          <b class="good" style="flex:0 0 auto;font-variant-numeric:tabular-nums">${Math.round(e.score).toLocaleString('it-IT')}</b>
+        </div>`).join('');
       overlay(`<h2>🌍 Classifica presidenti</h2>
         <div class="ow-sub" style="text-align:center">Le migliori 10 carriere condivise da chi gioca</div>
-        <div style="max-height:58vh;overflow:auto;margin:10px -6px 4px">${rows || '<div class="ow-sub" style="margin:14px 0">Ancora nessuna carriera condivisa: sii il primo a fine partita.</div>'}</div>
+        ${podium ? `<div style="display:flex;align-items:flex-end;gap:8px;margin:14px 0 6px">${podium}</div>` : ''}
+        <div style="max-height:44vh;overflow:auto;margin:10px -6px 4px;display:flex;flex-direction:column;gap:2px">${restRows || (podium ? '' : '<div class="ow-sub" style="margin:14px 0">Ancora nessuna carriera condivisa: sii il primo a fine partita.</div>')}</div>
         <div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovClose">Chiudi</button></div>`);
       $('ovClose').onclick = closeOverlay;
     } catch (err) {
@@ -2853,7 +2880,7 @@
   function tableHTML() {
     const d = divOf();
     return `<table class="dyn-table"><thead><tr><th>Squadra</th><th>Mister</th><th class="num">Pt</th><th class="num">DR</th></tr></thead><tbody>${S.table.map((t, i) => {
-      const zone = (d.euroSpots && i < d.euroSpots) ? 'ucl' : (d.uelPos && i === d.uelPos - 1) ? 'uel' : (d.confPos && i === d.confPos - 1) ? 'conf' : (d.promoted && i < d.promoted) ? 'ucl' : (d.playoff && i >= d.promoted && i < d.promoted + d.playoff) ? 'po' : (d.releg && i >= d.teams - d.releg) ? 'rel' : '';
+      const zone = (d.euroSpots && i < d.euroSpots) ? 'ucl' : (d.uelSpots && i >= d.euroSpots && i < d.euroSpots + d.uelSpots) ? 'uel' : (d.confPos && i === d.confPos - 1) ? 'conf' : (d.promoted && i < d.promoted) ? 'ucl' : (d.playoff && i >= d.promoted && i < d.promoted + d.playoff) ? 'po' : (d.releg && i >= d.teams - d.releg) ? 'rel' : '';
       return `<tr class="${t.me ? 'me' : ''} ${zone}"><td>${i + 1}. ${t.name}</td><td style="font-size:11px;color:var(--muted)">${t.mgr ? t.mgr.n : '-'}</td><td class="num">${t.pts}</td><td class="num">${t.gd > 0 ? '+' : ''}${t.gd}</td></tr>`;
     }).join('')}</tbody></table>`;
   }
@@ -2861,7 +2888,7 @@
   function showTable() {
     computeTable();
     const d = divOf();
-    const key = [d.euroSpots ? '<span style="color:var(--dyn)">▎Champions League</span>' : '', d.uelPos ? '<span style="color:var(--gold)">▎Europa League</span>' : '', d.confPos ? '<span style="color:var(--good)">▎Conference League</span>' : '', d.promoted ? '<span style="color:var(--dyn)">▎promozione</span>' : '', d.playoff ? '<span style="color:var(--gold)">▎playoff</span>' : '', d.releg ? '<span style="color:var(--bad)">▎retrocessione</span>' : ''].filter(Boolean).join(' &nbsp; ');
+    const key = [d.euroSpots ? '<span style="color:var(--dyn)">▎Champions League</span>' : '', d.uelSpots ? '<span style="color:var(--gold)">▎Europa League</span>' : '', d.confPos ? '<span style="color:var(--good)">▎Conference League</span>' : '', d.promoted ? '<span style="color:var(--dyn)">▎promozione</span>' : '', d.playoff ? '<span style="color:var(--gold)">▎playoff</span>' : '', d.releg ? '<span style="color:var(--bad)">▎retrocessione</span>' : ''].filter(Boolean).join(' &nbsp; ');
     overlay(`<h2>${d.name}</h2><div class="ow-sub" style="text-align:center">${key}</div><div style="max-height:62vh;overflow:auto;margin:-6px -6px 14px">${tableHTML()}</div><div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovClose">Chiudi</button></div>`);
     $('ovClose').onclick = closeOverlay;
   }
