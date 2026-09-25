@@ -65,6 +65,7 @@
 
   const ovrBadge = (ovr) => { const t = ovrTier(ovr); return `background:${t.bg};color:${t.c}`; };
   const specOf = (spec) => MANAGER_SPECS.find((s) => s.key === spec) || MANAGER_SPECS[0];
+  const dsSpecOf = (spec) => DS_SPECS.find((s) => s.key === spec) || DS_SPECS[0];
 
   /* ---------------- tutorial ----------------
      Un carosello di schermate (icona + titolo + testo), richiamabile dalla home prima di
@@ -579,7 +580,7 @@
       // Stesso controllo di startSeason() (sim.js): budget/rosa insufficienti altrimenti
       // farebbero fallire in silenzio la tua simulazione nel browser dell'host.
       if (state.squad.length < MIN_SQUAD) { toast('Ti servono almeno ' + MIN_SQUAD + ' giocatori per iniziare la prossima stagione. Ingaggia svincolati gratis se sei a corto.', 'error'); return; }
-      const billCheck = wageBill(state) + state.manager.salary;
+      const billCheck = kickoffBill(state);
       if (state.budget < billCheck) { toast('Ti mancano ' + fmtMoney(billCheck - state.budget) + ' per il monte ingaggi della prossima stagione: vendi giocatori o trova soldi prima di essere pronto.', 'error'); return; }
       try {
         const data = await mpApi('ready', { code: room.code, playerId, ready: true, state });
@@ -774,12 +775,23 @@
   // vista dalla stanza invece che dal solo salvataggio del singolo giocatore.
   function showHallOfFame(room, playerId) {
     const hof = room.hallOfFame || {};
+    const awards = (room.seasonAwards || []).slice().reverse();
     const rows = room.players.map((p) => ({ p, seasons: hof[p.id] || [] }))
       .concat(Object.keys(hof).filter((pid) => !room.players.some((p) => p.id === pid))
         .map((pid) => ({ p: { id: pid, name: '(uscito dalla stanza)', club: (hof[pid][0] && hof[pid][0].club) || '?' }, seasons: hof[pid] })));
+    const awardsHTML = awards.length ? `<div class="ow-sec" style="margin-bottom:12px">
+        <div class="ow-sec-title">🏅 Premi della stagione</div>
+        ${awards.map((a) => `<div class="ow-fin-row" style="align-items:flex-start"><span>Stagione ${a.season ?? '-'}</span>
+            <span style="text-align:right;font-size:12px;line-height:1.5">
+              ${a.topScorer ? `⚽ Capocannoniere: <b>${a.topScorer.player}</b> (${a.topScorer.club}) · ${a.topScorer.goals} gol<br>` : ''}
+              ${a.bestManager ? `🧠 Miglior mister: <b>${a.bestManager.mgr}</b> (${a.bestManager.club})<br>` : ''}
+              ${a.surprise ? `🎉 Sorpresa della stagione: <b>${a.surprise.club}</b> (${ord(a.surprise.pos)} posto)` : ''}
+            </span></div>`).join('')}
+      </div>` : '';
     overlay(`
       <h2>🏆 Albo d'oro della stanza</h2>
       <div style="max-height:62vh;overflow:auto;margin:0 -6px">
+        ${awardsHTML}
         ${rows.length ? rows.map(({ p, seasons }) => {
           const titles = seasons.filter((s) => s.title).length;
           const trophyCount = seasons.reduce((a, s) => a + (s.trophies ? s.trophies.length : 0), 0);
@@ -1020,6 +1032,14 @@
       ctx.fillText('⚽ Capocannoniere: ' + topScorer.n + ' (' + topScorer.seasonGoals + ')', W / 2, y);
       y += 50;
     }
+    if (e.newAchievements && e.newAchievements.length) {
+      y += 10;
+      ctx.fillStyle = '#ff9f43'; ctx.font = '700 26px Inter, Arial, sans-serif';
+      e.newAchievements.forEach((key) => {
+        const a = ACHIEVEMENTS.find((x) => x.key === key);
+        if (a) { ctx.fillText('🏅 ' + a.title, W / 2, y); y += 40; }
+      });
+    }
     y += 10;
     ctx.fillStyle = '#28d9a0'; ctx.font = '800 30px Inter, Arial, sans-serif';
     ctx.fillText('Valore del club: ' + fmtMoney(e.worth), W / 2, y);
@@ -1098,6 +1118,11 @@
     y += 20;
     ctx.fillStyle = '#28d9a0'; ctx.font = '800 30px Inter, Arial, sans-serif';
     ctx.fillText(S.history.filter((hh) => hh.promoted).length + ' promozioni conquistate', W / 2, y);
+    y += 44;
+    if (S.achievements && S.achievements.length) {
+      ctx.fillStyle = '#ff9f43'; ctx.font = '700 26px Inter, Arial, sans-serif';
+      ctx.fillText('🏅 ' + S.achievements.length + '/' + ACHIEVEMENTS.length + ' traguardi sbloccati', W / 2, y);
+    }
 
     const finish = () => {
       ctx.fillStyle = '#6b5a44'; ctx.font = '600 20px Inter, Arial, sans-serif';
@@ -1491,7 +1516,14 @@
     }
     const fyCount = S.squad.filter(finalYear).length;
     if (!S.sponsorOpts && !S.sponsor) S.sponsorOpts = sponsorOffers();
-    if (!S.mgrOpts) S.mgrOpts = [genManager(0), genManager(3), genManager(6)];
+    if (!S.mgrOpts) {
+      S.mgrOpts = [genManager(0), genManager(3), genManager(6)];
+      // Una tua ex leggenda può presentarsi fra i candidati (mai al posto di tutti e tre,
+      // giusto un'opzione in più): un piccolo momento di continuità con la storia del club.
+      const legend = legendManagerCandidate();
+      if (legend) S.mgrOpts[rnd(S.mgrOpts.length)] = legend;
+    }
+    if (!S.sportingDirector && !S.dsOpts) S.dsOpts = [genSportingDirector(0), genSportingDirector(4)];
     const bill = kickoffBill();
     const free = freeToSpend();
     const broke = S.budget < bill;
@@ -1535,6 +1567,7 @@
         <div class="ow-sec-title">📋 Bilancio di stagione</div>
         <div class="ow-fin-row"><span>Stipendi giocatori (${S.squad.length} giocatori, pagati all'avvio)</span><b>${fmtMoney(wageBill())}</b></div>
         <div class="ow-fin-row"><span>Stipendio allenatore (pagato all'avvio)</span><b>${fmtMoney(S.manager.salary)}</b></div>
+        ${S.sportingDirector ? `<div class="ow-fin-row"><span>Stipendio direttore sportivo (pagato all'avvio)</span><b>${fmtMoney(S.sportingDirector.salary)}</b></div>` : ''}
         <div class="ow-fin-row total ${broke ? 'bad' : ''}"><span>Costo d'avvio</span><b>${fmtMoney(bill)}</b></div>
         <div class="ow-fin-row"><span>Ricavi di stagione (stima)</span><b>${fmtMoney(estRevenue)}</b></div>
         ${broke ? '<div class="ow-warn">⚠️ Ti mancano <b>' + fmtMoney(bill - S.budget) + '</b> per coprire il costo d\'avvio. Ricorda: gli spin spendono cassa anche se rifiuti il giocatore. Vendi giocatori (💷), prendi il bonus investitore o assumi un allenatore più economico prima dell\'inizio.</div>' : ''}
@@ -1564,7 +1597,18 @@
         <div class="ow-mgr"><span class="ovr">${S.manager.rating}</span><span class="nm">${flagOf(S.manager)}${S.manager.n}<small>${fmtMoney(S.manager.salary)}/anno · ${specOf(S.manager.spec).icon} ${specOf(S.manager.spec).label}</small></span><span class="tag">In carica</span></div>
         <div class="ow-sub" title="${specOf(S.manager.spec).desc}">${specOf(S.manager.spec).icon} ${specOf(S.manager.spec).desc}</div>
         <div class="ow-sub">Candidati (l'esonero paga il 30% di buonuscita):</div>
-        ${S.mgrOpts.map((m, i) => `<div class="ow-mgr cand"><span class="ovr">${m.rating}</span><span class="nm">${flagOf(m)}${m.n}<small>${fmtMoney(m.salary)}/anno · ${specOf(m.spec).icon} ${specOf(m.spec).label}</small></span><button class="dyn-mini ow-hire" data-hire="${i}">Assumi</button></div>`).join('')}
+        ${S.mgrOpts.map((m, i) => `<div class="ow-mgr cand"><span class="ovr">${m.rating}</span><span class="nm">${flagOf(m)}${m.n}${m.exPlayer ? ' <small title="Una tua ex leggenda">🎓</small>' : ''}<small>${fmtMoney(m.salary)}/anno · ${specOf(m.spec).icon} ${specOf(m.spec).label}${m.exPlayer ? ' · Ex giocatore del club' : ''}</small></span><button class="dyn-mini ow-hire" data-hire="${i}">Assumi</button></div>`).join('')}
+      </div>
+      <div class="ow-sec">
+        <div class="ow-sec-title">📋 Direttore sportivo</div>
+        ${S.sportingDirector ? `
+          <div class="ow-mgr"><span class="ovr">${S.sportingDirector.rating}</span><span class="nm">${flagOf(S.sportingDirector)}${S.sportingDirector.n}<small>${fmtMoney(S.sportingDirector.salary)}/anno · ${dsSpecOf(S.sportingDirector.spec).icon} ${dsSpecOf(S.sportingDirector.spec).label}</small></span><span class="tag">In carica</span></div>
+          <div class="ow-sub" title="${dsSpecOf(S.sportingDirector.spec).desc}">${dsSpecOf(S.sportingDirector.spec).icon} ${dsSpecOf(S.sportingDirector.spec).desc}</div>
+          <button class="dyn-mini ow-danger" id="dsFireBtn">Licenzia (buonuscita 30%)</button>
+        ` : `
+          <div class="ow-sub">Ruolo opzionale: si occupa del mercato in uscita, non tocca la squadra in campo.</div>
+          ${(S.dsOpts || []).map((m, i) => `<div class="ow-mgr cand"><span class="ovr">${m.rating}</span><span class="nm">${flagOf(m)}${m.n}<small>${fmtMoney(m.salary)}/anno · ${dsSpecOf(m.spec).icon} ${dsSpecOf(m.spec).label}</small></span><button class="dyn-mini ow-hire-ds" data-hireds="${i}">Assumi</button></div>`).join('')}
+        `}
       </div>
       <div class="ow-sec">
         <div class="ow-sec-title">🔭 Settore giovanile</div>
@@ -1751,6 +1795,18 @@
       S.budget -= sev; S.manager = m; S.mgrOpts = null;
       toast(m.n + ' prende in carico la squadra. Buonuscita pagata: ' + fmtMoney(sev), 'spend'); renderBoard(); saveGame();
     }));
+    body.querySelectorAll('.ow-hire-ds').forEach((el) => el.addEventListener('click', () => {
+      const m = (S.dsOpts || [])[+el.dataset.hireds]; if (!m) return;
+      S.sportingDirector = m; S.dsOpts = null;
+      toast(m.n + ' è il nuovo direttore sportivo.', 'success'); renderBoard(); saveGame();
+    }));
+    const dsFireBtn = $('dsFireBtn');
+    if (dsFireBtn) dsFireBtn.onclick = () => {
+      const sev = Math.round(S.sportingDirector.salary * 0.3);
+      if (S.budget < sev) { toast('Non puoi permetterti la buonuscita.', 'error'); return; }
+      S.budget -= sev; S.sportingDirector = null; S.dsOpts = null;
+      toast('Direttore sportivo licenziato. Buonuscita pagata: ' + fmtMoney(sev), 'spend'); renderBoard(); saveGame();
+    };
     body.querySelectorAll('.ow-offer').forEach((el) => el.addEventListener('click', () => {
       const o = S.sponsorOpts[+el.dataset.sp]; if (!o) return;
       S.sponsor = o; S.sponsorOpts = null;
@@ -2165,7 +2221,7 @@
     };
     $('ovFarewell').onclick = () => {
       const i = S.squad.findIndex((x) => x.pid === p.pid);
-      if (i >= 0) { pushAlumnus(p); S.squad.splice(i, 1); }
+      if (i >= 0) { pushAlumnus(p, S, true); S.squad.splice(i, 1); }
       S.sent = clamp(S.sent + 4, 0, 100);
       toast('Una partita d\'addio per ' + p.n + ': i tifosi lo salutano con affetto.', 'success');
       if (DynSound) DynSound.trophy();
@@ -2177,7 +2233,11 @@
     S._pause = true;
     if (!S._janCands) S._janCands = [spinPlayer(false, undefined, 3), spinPlayer(false, undefined, 3), spinPlayer(false, undefined, 3)];
     if (S._janSwitchUsed == null) S._janSwitchUsed = false;
-    if (!S._janMgrCands) S._janMgrCands = [genManager(2), genManager(5)];
+    if (!S._janMgrCands) {
+      S._janMgrCands = [genManager(2), genManager(5)];
+      const legend = legendManagerCandidate();
+      if (legend) S._janMgrCands[rnd(S._janMgrCands.length)] = legend;
+    }
     renderWinterOverlay();
   }
 
@@ -2208,7 +2268,7 @@
       ${cands.length ? cands.map(cardHTML).join('') : '<div class="ow-sub">Nessun altro candidato in questa finestra.</div>'}
       <div class="ow-mgr"><span class="ovr" style="${ovrBadge(S.manager.rating)}">${S.manager.rating}</span><span class="nm">${flagOf(S.manager)}${S.manager.n}<small>${specOf(S.manager.spec).icon} ${specOf(S.manager.spec).label} · Allenatore in carica</small></span><span class="tag">In carica</span></div>
       <div class="ow-sub" style="margin:8px 0 6px;text-align:left">Esonera (30% di buonuscita) e nomina:</div>
-      ${mgrCands.map((m, i) => `<div class="ow-mgr cand"><span class="ovr" style="${ovrBadge(m.rating)}">${m.rating}</span><span class="nm">${flagOf(m)}${m.n}<small>${fmtMoney(m.salary)}/anno, metà pagata subito · ${specOf(m.spec).icon} ${specOf(m.spec).label}</small></span><button class="dyn-mini" data-wh="${i}" title="${specOf(m.spec).desc}">Assumi</button></div>`).join('')}
+      ${mgrCands.map((m, i) => `<div class="ow-mgr cand"><span class="ovr" style="${ovrBadge(m.rating)}">${m.rating}</span><span class="nm">${flagOf(m)}${m.n}${m.exPlayer ? ' <small title="Una tua ex leggenda">🎓</small>' : ''}<small>${fmtMoney(m.salary)}/anno, metà pagata subito · ${specOf(m.spec).icon} ${specOf(m.spec).label}${m.exPlayer ? ' · Ex giocatore del club' : ''}</small></span><button class="dyn-mini" data-wh="${i}" title="${specOf(m.spec).desc}">Assumi</button></div>`).join('')}
       <div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovPlayOn">Continua così</button></div>`);
     $('ovPlayOn').onclick = () => { S.winterDone = true; S._pause = false; S._janCands = null; S._janSwitchUsed = false; S._janMgrCands = null; closeOverlay(); saveGame(); if (S.played >= gp()) endSeason(); };
     document.querySelectorAll('#owOverlayModal [data-jan-loan]').forEach((el) => el.addEventListener('click', () => {
@@ -2693,28 +2753,50 @@
 
   // Bacheca trofei: richiamabile in ogni momento dal topbar (non solo nel riepilogo di
   // fine carriera), con il totale per competizione e lo storico stagione per stagione.
-  function showTrophyCase() {
+  function showTrophyCase(tab) {
+    tab = tab === 'traguardi' ? 'traguardi' : 'trofei';
     if (!S || !S.trophies) {
       overlay(`<h2>🏆 Bacheca trofei</h2><p class="ow-sub" style="text-align:center">Nessuna carriera attiva al momento.</p><div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovClose">Chiudi</button></div>`);
       $('ovClose').onclick = closeOverlay;
       return;
     }
-    const t = S.trophies;
-    const rows = [];
-    DIVS.forEach((d, i) => { if (t.titles[i]) rows.push(['🏆 ' + d.name + ' - Titolo', t.titles[i]]); });
-    if (t.nat) rows.push(['🇮🇹 Coppa Italia', t.nat]);
-    if (t.ucl) rows.push(['🌍 ' + EURO_COMPS.ucl.name, t.ucl]);
-    if (t.uel) rows.push(['🟠 ' + EURO_COMPS.uel.name, t.uel]);
-    if (t.conf) rows.push(['🟢 ' + EURO_COMPS.conf.name, t.conf]);
-    const timeline = (S.history || []).filter((h) => h.trophies && h.trophies.length).slice().reverse();
-    overlay(`<h2>🏆 Bacheca trofei</h2>
-      <div class="ow-sub" style="text-align:center">${t.total} trofe${t.total === 1 ? 'o' : 'i'} in ${S.season} stagion${S.season === 1 ? 'e' : 'i'} con ${S.club}</div>
-      <div style="max-height:58vh;overflow:auto;margin:10px -6px 4px">
+    const tabsHTML = `<div class="dyn-modal-actions" style="gap:6px;margin-bottom:10px">
+        <button class="dyn-btn${tab === 'trofei' ? ' dyn-btn-primary' : ''}" id="ovTabTrofei">🏆 Trofei</button>
+        <button class="dyn-btn${tab === 'traguardi' ? ' dyn-btn-primary' : ''}" id="ovTabTraguardi">🏅 Traguardi</button>
+      </div>`;
+    let bodyHTML;
+    if (tab === 'traguardi') {
+      const unlocked = S.achievements || [];
+      const sorted = ACHIEVEMENTS.slice().sort((a, b) => (unlocked.indexOf(b.key) !== -1) - (unlocked.indexOf(a.key) !== -1));
+      bodyHTML = `<div class="ow-sub" style="text-align:center">${unlocked.length}/${ACHIEVEMENTS.length} traguardi sbloccati con ${S.club}</div>
+      <div style="max-height:52vh;overflow:auto;margin:10px -6px 4px">
+        ${sorted.map((a) => {
+          const done = unlocked.indexOf(a.key) !== -1;
+          return `<div class="ow-fin-row"${done ? '' : ' style="opacity:.5"'}><span>${done ? a.icon : '🔒'} ${a.title}<small style="display:block;color:var(--muted)">${a.desc}</small></span></div>`;
+        }).join('')}
+      </div>`;
+    } else {
+      const t = S.trophies;
+      const rows = [];
+      DIVS.forEach((d, i) => { if (t.titles[i]) rows.push(['🏆 ' + d.name + ' - Titolo', t.titles[i]]); });
+      if (t.nat) rows.push(['🇮🇹 Coppa Italia', t.nat]);
+      if (t.ucl) rows.push(['🌍 ' + EURO_COMPS.ucl.name, t.ucl]);
+      if (t.uel) rows.push(['🟠 ' + EURO_COMPS.uel.name, t.uel]);
+      if (t.conf) rows.push(['🟢 ' + EURO_COMPS.conf.name, t.conf]);
+      const timeline = (S.history || []).filter((h) => h.trophies && h.trophies.length).slice().reverse();
+      bodyHTML = `<div class="ow-sub" style="text-align:center">${t.total} trofe${t.total === 1 ? 'o' : 'i'} in ${S.season} stagion${S.season === 1 ? 'e' : 'i'} con ${S.club}</div>
+      <div style="max-height:52vh;overflow:auto;margin:10px -6px 4px">
         ${rows.length ? rows.map((r) => `<div class="ow-fin-row"><span>${r[0]}</span><b class="good">${r[1]}×</b></div>`).join('') : '<div class="ow-sub" style="margin:14px 0">Ancora nessun trofeo: il momento buono arriverà.</div>'}
         ${timeline.length ? `<div class="ow-sec-title" style="margin-top:14px">Stagione per stagione</div>${timeline.map((h) => `<div class="ow-fin-row"><span>Stagione ${h.season} · ${h.div}</span><b class="good">${h.trophies.join(', ')}</b></div>`).join('')}` : ''}
-      </div>
+      </div>`;
+    }
+    overlay(`<h2>${tab === 'traguardi' ? '🏅 Traguardi' : '🏆 Bacheca trofei'}</h2>
+      ${tabsHTML}
+      ${bodyHTML}
       <div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovClose">Chiudi</button></div>`);
     $('ovClose').onclick = closeOverlay;
+    $('ovTabTrofei').onclick = () => showTrophyCase('trofei');
+    $('ovTabTraguardi').onclick = () => showTrophyCase('traguardi');
   }
 
   function showClub() {

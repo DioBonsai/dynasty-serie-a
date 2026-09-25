@@ -35,7 +35,9 @@
  *   pubblica il risultato della stagione simulata (una voce per playerId), chiude il round
  *   (`done`); richiede che tutti abbiano premuto pronto in sessione, a meno di force=true.
  *   Aggiorna anche `hallOfFame` (uno storico sintetico per playerId: club, categoria,
- *   posizione, trofei di quella stagione), che sopravvive ai round successivi.
+ *   posizione, trofei di quella stagione) e `seasonAwards` (premi della stanza per quel
+ *   round: capocannoniere, miglior mister, sorpresa della stagione), entrambi sopravvivono
+ *   ai round successivi.
  * POST room.php {action:'ackResult', code, playerId}                 -> segnali di aver
  *   scaricato il tuo risultato di questo round (solo un flag, nessuna logica)
  * POST room.php {action:'nextRound', code, playerId, force?}         -> solo l'host: apre la
@@ -236,6 +238,7 @@ if ($action === 'create') {
         ],
         'chat' => [],
         'hallOfFame' => [],
+        'seasonAwards' => [],
     ];
     if (!write_json_file_locked(room_path($DIR, $code), $room)) fail('Impossibile salvare la stanza.', 500);
     log_activity($DIR, $code, 'create');
@@ -508,6 +511,44 @@ if ($action === 'submitResult') {
             'title' => !empty($end['title']),
             'trophies' => isset($end['trophies']) && is_array($end['trophies']) ? $end['trophies'] : [],
         ];
+    }
+    // Premi della stagione: calcolati qui (mai lato client) perché servono TUTTI i risultati
+    // della stanza insieme, gruppi/categorie diverse comprese — cosa che nessun singolo host di
+    // gruppo (in multiplayer multi-categoria può essercene più di uno per round) vede da solo.
+    // Confronto fra chi ha finito questo round, non fra tutta la storia della stanza.
+    $topScorer = null; $bestManager = null; $surprise = null;
+    foreach ($results as $pid => $ctx) {
+        if (!is_array($ctx)) continue;
+        $end = $ctx['_end'] ?? null;
+        $owner = $ctx['owner'] ?? null; $club = $ctx['club'] ?? null;
+        if (is_array($ctx['squad'] ?? null)) {
+            foreach ($ctx['squad'] as $p) {
+                if (!is_array($p) || ($p['pos'] ?? '') === 'POR') continue;
+                $g = $p['seasonGoals'] ?? 0;
+                if ($g > 0 && ($topScorer === null || $g > $topScorer['goals'])) {
+                    $topScorer = ['owner' => $owner, 'club' => $club, 'player' => $p['n'] ?? '?', 'goals' => $g];
+                }
+            }
+        }
+        $mgr = $ctx['manager'] ?? null;
+        if (is_array($mgr) && isset($mgr['_ovrDelta']) && ($bestManager === null || $mgr['_ovrDelta'] > $bestManager['delta'])) {
+            $bestManager = ['owner' => $owner, 'club' => $club, 'mgr' => $mgr['n'] ?? '?', 'delta' => $mgr['_ovrDelta']];
+        }
+        if (is_array($end) && isset($end['exp'], $end['pos'])) {
+            $delta = $end['exp'] - $end['pos'];
+            if ($delta > 0 && ($surprise === null || $delta > $surprise['delta'])) {
+                $surprise = ['owner' => $owner, 'club' => $club, 'delta' => $delta, 'pos' => $end['pos']];
+            }
+        }
+    }
+    if ($topScorer || $bestManager || $surprise) {
+        if (!isset($room['seasonAwards']) || !is_array($room['seasonAwards'])) $room['seasonAwards'] = [];
+        $seasonNum = null;
+        foreach ($results as $ctx) { if (is_array($ctx) && isset($ctx['season'])) $seasonNum = max($seasonNum ?? 0, $ctx['season']); }
+        $room['seasonAwards'][] = ['season' => $seasonNum, 'topScorer' => $topScorer, 'bestManager' => $bestManager, 'surprise' => $surprise];
+        // Stesso tetto storico dell'albo d'oro: una stanza che dura 20 stagioni non deve
+        // accumulare un file all'infinito.
+        if (count($room['seasonAwards']) > 20) $room['seasonAwards'] = array_slice($room['seasonAwards'], -20);
     }
     $room['updatedAt'] = time();
     ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($room)); fflush($fp);

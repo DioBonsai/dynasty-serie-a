@@ -745,15 +745,34 @@
   // ritirato) ne salviamo un "cimelio" con i totali di carriera fissati per sempre: senza
   // questo, i migliori giocatori di sempre passati per il club spariscono dalla bacheca di
   // fine carriera non appena vengono venduti, lasciando solo chi è rimasto fino alla fine.
-  function pushAlumnus(p, ctx = S) {
+  // `retired`: true solo per chi smette di giocare per davvero (ritiro per età/partita
+  // d'addio) — non per chi viene ceduto o si svincola, che continua altrove. Serve a
+  // `legendManagerCandidate` per non offrire in panchina un giocatore ancora in attività.
+  function pushAlumnus(p, ctx = S, retired) {
     if (!ctx.alumni) ctx.alumni = [];
     ctx.alumni.push({
-      n: p.n, pos: p.pos,
+      n: p.n, pos: p.pos, nat: p.nat, ovr: p.ovr,
       apps: (p.careerApps || 0) + (p.seasonApps || 0),
       goals: (p.careerGoals || 0) + (p.seasonGoals || 0),
       assists: (p.careerAssists || 0) + (p.seasonAssists || 0),
       cleanSheets: (p.careerCleanSheets || 0) + (p.seasonCleanSheets || 0),
+      retired: !!retired, retiredSeason: ctx.season,
     });
+  }
+
+  // Una leggenda ritirata da un po' (COOLDOWN stagioni, il tempo di prendersi i patentini) può
+  // ricomparire come candidato allenatore assumibile per il TUO club — mai per un rivale: sono
+  // le sue leggende, non un pool casuale. `becameManager` evita che ricompaia una seconda volta
+  // una volta scelta (o anche solo proposta e poi ignorata: una leggenda ha un'unica occasione).
+  function legendManagerCandidate(ctx = S) {
+    const COOLDOWN = 3;
+    const pool = (ctx.alumni || []).filter((a) => a.retired && !a.becameManager && a.ovr >= 78 && (ctx.season - (a.retiredSeason || 0)) >= COOLDOWN);
+    if (!pool.length) return null;
+    const a = pick(pool);
+    a.becameManager = true;
+    const rating = clamp(a.ovr - 6 + rnd(6), 55, 95);
+    const nat = a.nat || pickNationality(ctx.div);
+    return { n: a.n, rating, salary: mgrSalaryFor(rating, ctx), nat, spec: pick(MANAGER_SPECS).key, exPlayer: true };
   }
 
   function normSquad() {
@@ -761,7 +780,15 @@
     if (S.pidNext == null) S.pidNext = 1;
     if (!S.offers) S.offers = [];
     if (!S.alumni) S.alumni = [];
-    if (S.opps) S.opps.forEach((o) => { if (!o.mgr) o.mgr = genManager(0); });
+    if (!S.achievements) S.achievements = [];
+    if (S.startDiv == null) S.startDiv = S.div;
+    if (S.noRelegStreak == null) S.noRelegStreak = 0;
+    if (S.sportingDirector === undefined) S.sportingDirector = null;
+    if (S.opps) {
+      const usedMgrNames = new Set(S.opps.filter((o) => o.mgr).map((o) => o.mgr.n).concat(S.manager && S.manager.n ? [S.manager.n] : []));
+      const mgrRegistry = S._mgrByClub || (S._mgrByClub = {});
+      S.opps.forEach((o) => { if (!o.mgr) o.mgr = managerForClub(o.name, 0, S, usedMgrNames, mgrRegistry); else mgrRegistry[o.name] = o.mgr; });
+    }
     if (!S.crestColors) S.crestColors = randCrestColors();
     if (!S.crestShape) S.crestShape = CREST_DEFAULT.shape;
     if (S.scoutLevel == null) S.scoutLevel = 0;
@@ -807,8 +834,9 @@
 
   // Un'offerta è un vero premio sul 30% del valore di svincolo, quindi incassare è
   // redditizio ma perdi il giocatore. Arrotondata a una cifra tonda.
-  function offerFee(p) {
-    const v = playerValue(p) * (0.95 + Math.random() * 0.55);
+  function offerFee(p, ctx = S) {
+    const dsMult = ctx.sportingDirector && ctx.sportingDirector.spec === 'sales_expert' ? 1.12 : 1;
+    const v = playerValue(p) * (0.95 + Math.random() * 0.55) * dsMult;
     return v >= 1e6 ? Math.round(v / 1e5) * 1e5 : Math.round(v / 1e4) * 1e4;
   }
 
@@ -834,12 +862,15 @@
   // gioielli attirino interesse e i giocatori normali no.
   function genOffers(ctx = S) {
     const d = divOf(ctx);
+    // Il direttore sportivo "rete di osservatori" allarga il giro di squadre interessate: un
+    // candidato extra in lista e più probabilità che ciascuno si faccia davvero avanti.
+    const scoutNetwork = ctx.sportingDirector && ctx.sportingDirector.spec === 'scout_network';
     const targets = ctx.squad
       .filter((p) => p.ovr >= d.avg + 3 || (p.age <= 22 && p.ovr >= d.avg))
       .sort((a, b) => (b.ovr + (b.age <= 22 ? 4 : 0)) - (a.ovr + (a.age <= 22 ? 4 : 0)))
-      .slice(0, 3);
+      .slice(0, scoutNetwork ? 4 : 3);
     const offers = [];
-    targets.forEach((p, i) => { if (Math.random() < (i === 0 ? 0.85 : i === 1 ? 0.6 : 0.4)) { const fee = offerFee(p); offers.push({ pid: p.pid, club: buyerClub(fee, ctx), fee }); } });
+    targets.forEach((p, i) => { if (Math.random() < (i === 0 ? 0.85 : i === 1 ? 0.6 : 0.4) + (scoutNetwork ? 0.15 : 0)) { const fee = offerFee(p, ctx); offers.push({ pid: p.pid, club: buyerClub(fee, ctx), fee }); } });
     return offers;
   }
 
@@ -855,12 +886,28 @@
     return Math.round(w / 1e3) * 1e3;
   }
 
-  // Ciò che resta davvero da spendere una volta coperti gli stipendi + l'allenatore della stagione.
-  const kickoffBill = () => wageBill() + S.manager.salary;
+  // Ciò che resta davvero da spendere una volta coperti stipendi + allenatore (+ direttore
+  // sportivo, se assunto: opzionale, 0 se non c'è) della stagione.
+  const kickoffBill = (ctx = S) => wageBill(ctx) + ctx.manager.salary + (ctx.sportingDirector ? ctx.sportingDirector.salary : 0);
 
   const freeToSpend = () => S.budget - kickoffBill();
 
   const mgrSalaryFor = (rating, ctx = S) => Math.round(40e3 * Math.pow(1.14, rating - 50) * diffOf(null, ctx).mgrCostMult / 1e3) * 1e3;
+
+  // Il direttore sportivo costa meno dell'allenatore (ruolo di supporto, non decide le
+  // formazioni): stessa curva salariale scalata al 55%.
+  const dsSalaryFor = (rating, ctx = S) => Math.round(mgrSalaryFor(rating, ctx) * 0.55 / 1e3) * 1e3;
+
+  // Generato come un allenatore ma senza pool di "veri" direttori sportivi noti (non ha senso
+  // qui quanto per gli allenatori): una specializzazione (DS_SPECS, data.js) che tocca il
+  // mercato in uscita invece della squadra in campo.
+  function genSportingDirector(bonus, ctx = S) {
+    const r = clamp(divOf(ctx).mgrBase - 6 + rnd(14) + (bonus || 0), 40, 90);
+    const nat = pickNationality(ctx.div);
+    const spec = pick(DS_SPECS).key;
+    const salary = Math.round(dsSalaryFor(r, ctx) * (spec === 'all_rounder' ? 0.85 : 1) / 1e3) * 1e3;
+    return { n: genName(nat), rating: r, salary, nat, spec };
+  }
 
   // Un candidato su circa 2 è un allenatore vero, se ce n'è uno con un rating abbastanza
   // vicino a quello richiesto (altrimenti si genera normalmente): non sostituiscono i
@@ -895,6 +942,21 @@
     while (used.has(n) && tries2 < 15) { n = genName(nat); tries2++; }
     used.add(n);
     return { n, rating: r, salary: mgrSalaryFor(r, ctx), nat, spec: pick(MANAGER_SPECS).key };
+  }
+
+  // L'allenatore di un club rivale/bot non deve ricominciare da un nome a caso ogni stagione:
+  // se il club è già nel registro (persiste stagione dopo stagione dentro ctx._mgrByClub, che
+  // viaggia col resto dello stato salvato/inviato ad ogni round) tiene lo stesso, esattamente
+  // come il PROPRIO allenatore resta lo stesso finché non lo si esonera. Cambia solo se il suo
+  // nome è già stato preso da un'altra squadra in questa stessa stagione (mai due squadre con
+  // lo stesso allenatore nello stesso anno) — un caso raro, possibile solo se due registri di
+  // umani diversi della stessa stanza multiplayer avevano già assegnato quel nome altrove.
+  function managerForClub(clubName, bonus, ctx, used, registry) {
+    const existing = registry[clubName];
+    if (existing && !used.has(existing.n)) { used.add(existing.n); return existing; }
+    const m = genManagerUnique(bonus, ctx, used);
+    registry[clubName] = m;
+    return m;
   }
 
   const mgrBonus = (ctx = S) => clamp((ctx.manager.rating - divOf(ctx).mgrBase) / 3.5, -3, 4)
@@ -1146,6 +1208,7 @@
       euro: false, euroComp: null, form: 0, spinsBought: 0, promoStreak: 0, premiumRoleUsed: false, stdRoleUsed: false,
       trophies: { titles: [0, 0, 0, 0, 0, 0], nat: 0, ucl: 0, uel: 0, conf: 0, total: 0 },
       history: [], over: false, peakWorth: 0,
+      achievements: [], startDiv: div, noRelegStreak: 0, sportingDirector: null,
       pidNext: 1, offers: [], alumni: [],
       crestShape: crestShape, crestColors: crestColors.slice(),
       scoutLevel: 0, scoutProspects: [], scoutProspectSeason: 0,
@@ -1220,6 +1283,7 @@
     // boccata d'ossigeno automatica ogni stagione, che non elimina il debito ma lo erode nel
     // tempo, invece di lasciare la spirale del rosso intatta finché non vendi qualcuno a mano.
     ctx._finalTable = null;
+    ctx._newAchievements = [];
     if (ctx.budget < 0) { ctx.budget = Math.round(ctx.budget * 0.6); if (local) toast('Il debito di inizio stagione si riduce del 40%: ora sei a ' + fmtMoney(ctx.budget) + '.'); }
     // Ultima chiamata per riscattare i prestiti dell'estate scorsa (bottone 💰 Riscatta
     // nella rosa, in sala del consiglio): chi non è stato riscattato torna al suo club ora.
@@ -1227,8 +1291,8 @@
     ctx.squad = ctx.squad.filter((p) => !p.loan);
     if (local && loanedBack.length) toast(loanedBack.join(', ') + ' torna' + (loanedBack.length === 1 ? '' : 'no') + ' al suo club, non riscattat' + (loanedBack.length === 1 ? 'o' : 'i') + '.');
     if (ctx.squad.length < MIN_SQUAD) { if (local) { toast('Ti servono almeno ' + MIN_SQUAD + ' giocatori per iniziare la stagione. Ingaggia svincolati gratis se sei a corto.'); renderBoard(); } return; }
-    if (ctx.budget < wageBill(ctx) + ctx.manager.salary) { if (local) { toast('Ti mancano ' + fmtMoney(wageBill(ctx) + ctx.manager.salary - ctx.budget) + ' per il monte ingaggi. Vendi giocatori o trova soldi.'); renderBoard(); } return; }
-    ctx.budget -= wageBill(ctx) + ctx.manager.salary;
+    if (ctx.budget < kickoffBill(ctx)) { if (local) { toast('Ti mancano ' + fmtMoney(kickoffBill(ctx) - ctx.budget) + ' per il monte ingaggi. Vendi giocatori o trova soldi.'); renderBoard(); } return; }
+    ctx.budget -= kickoffBill(ctx);
     ctx.sent = clamp(ctx.sent + TICKETS[ctx.ticket].sent, 0, 100);
     ctx.seasonActive = true; ctx.winterDone = false; ctx._janCands = null; ctx._janSwitchUsed = false; ctx._janMgrCands = null;
     ctx.played = 0; ctx.pts = 0; ctx.gf = 0; ctx.ga = 0; ctx.wins = 0; ctx.results = []; ctx.last5 = []; ctx.form = 0;
@@ -1259,7 +1323,8 @@
       ctx.fixtures = sharedFixtures;
     } else {
       const usedMgrNames = new Set(ctx.manager && ctx.manager.n ? [ctx.manager.n] : []);
-      ctx.opps = rivals(ctx).map((o) => ({ name: o.n, s: o.s, effS: clamp(o.s + gaussInt(0, 8), 30, 99), rrPts: 0, rrGF: 0, rrGA: 0, vsPts: 0, vsGF: 0, vsGA: 0, mgr: genManagerUnique(0, ctx, usedMgrNames) }));
+      const mgrRegistry = ctx._mgrByClub || (ctx._mgrByClub = {});
+      ctx.opps = rivals(ctx).map((o) => ({ name: o.n, s: o.s, effS: clamp(o.s + gaussInt(0, 8), 30, 99), rrPts: 0, rrGF: 0, rrGA: 0, vsPts: 0, vsGF: 0, vsGA: 0, mgr: managerForClub(o.n, 0, ctx, usedMgrNames, mgrRegistry) }));
       simRivalRoundRobin(ctx.opps);
       const fx = [];
       ctx.opps.forEach((o, i) => { fx.push({ opp: i, home: true }); fx.push({ opp: i, home: false }); });
@@ -1345,6 +1410,30 @@
   // `forcedScore` (opzionale, { gf, ga }): quando presente salta il tiro dei gol e usa questo
   // risultato — l'host multiplayer lo passa per le partite umano-contro-umano, calcolato una
   // volta sola con rollMatchScore e imposto a entrambi i lati (vedi runHostSeason).
+  // Convocazioni in nazionale: ai checkpoint di stagione (simMatch) i giocatori chiaramente
+  // sopra il livello della categoria possono essere chiamati — prestigio per il club, ma con
+  // un piccolo rischio di tornare con un acciacco preso in amichevole (stesso campo, outWeeks,
+  // dei normali infortuni di campionato). Mai un popup: si scopre dal log/dai toast, come una
+  // notizia di giornata, non una decisione da prendere.
+  function maybeNationalCallup(ctx = S) {
+    if (!ctx.squad || !ctx.squad.length) return;
+    const threshold = divOf(ctx).avg + 9;
+    const eligible = ctx.squad.filter((p) => p.ovr >= threshold && !p.loan && !(p.outWeeks > 0) && !(p.suspMatches > 0));
+    if (!eligible.length) return;
+    const called = eligible.filter(() => Math.random() < 0.5).slice(0, 3);
+    if (!called.length) return;
+    called.forEach((p) => {
+      ctx.prestige = (ctx.prestige || 0) + 1.2e6;
+      if (Math.random() < 0.12) {
+        const weeks = 1 + rnd(2);
+        p.outWeeks = weeks;
+        if (ctx === S) toast('🌍 ' + p.n + ' torna dalla nazionale con un affaticamento: fuori ' + weeks + ' settiman' + (weeks === 1 ? 'a' : 'e') + '.', 'error');
+      } else if (ctx === S) {
+        toast('🌍 ' + p.n + ' convocato in nazionale! Un po\' di prestigio in più per il club.', 'success');
+      }
+    });
+  }
+
   function simMatch(ctx = S, forcedScore = null) {
     if (!isClubCtx(ctx)) ctx = S;
     if (!ctx.seasonActive || ctx.played >= gp(ctx)) return;
@@ -1390,6 +1479,10 @@
     if (local && !BULK_SIM) { logMatch(row); if (gf > 0 && DynSound) DynSound.goal(); }
     maybeCupRound(ctx);
     computeTable(ctx);
+    // Soste per le nazionali: circa a un quarto, a metà e a tre quarti del campionato, come le
+    // vere soste FIFA. Un evento automatico (mai un popup): chi c'è c'è, si scopre dopo.
+    const cpA = Math.round(gp(ctx) * 0.25), cpB = Math.round(gp(ctx) * 0.5), cpC = Math.round(gp(ctx) * 0.75);
+    if (ctx.played === cpA || ctx.played === cpB || ctx.played === cpC) maybeNationalCallup(ctx);
     if (local && !BULK_SIM) { renderHud(); saveGame(); }
     // Un evento narrativo, quando scatta, apre un popup che il giocatore deve chiudere
     // esplicitamente (X o un bottone/una scelta): mette in pausa la stagione esattamente
@@ -1726,6 +1819,25 @@
   const janLoanCost = (p) => Math.round(p.wage * 52 * 0.6 * 0.85);   // 60% dello stipendio, scontato del 15%
   const janTransferFee = (p) => Math.round(playerValue(p) * 0.6);
 
+  // Un traguardo (ACHIEVEMENTS, data.js) si sblocca una volta sola e per sempre: niente da
+  // rifare o poter perdere. In multiplayer vale per ciascun ctx separatamente (viaggia nel suo
+  // state come captainPid/trofei), ma il toast si vede solo se è la carriera in locale — un
+  // host non deve vedere sbottare traguardi altrui mentre simula per tutti.
+  function unlockAchievement(ctx, key) {
+    if (!ctx.achievements) ctx.achievements = [];
+    if (ctx.achievements.indexOf(key) !== -1) return;
+    ctx.achievements.push(key);
+    // Tenuti da parte solo per la card di fine stagione (exportSeasonCard, ui.js): azzerati a
+    // ogni startSeason, così la card mostra solo quelli guadagnati IN QUESTA stagione, non
+    // l'intero storico (già nella scheda "Traguardi" della bacheca).
+    if (!ctx._newAchievements) ctx._newAchievements = [];
+    ctx._newAchievements.push(key);
+    if (ctx === S && typeof toast === 'function') {
+      const a = ACHIEVEMENTS.find((x) => x.key === key);
+      if (a) toast('🏅 Traguardo sbloccato: ' + a.title, 'success');
+    }
+  }
+
   /* ---------------- fine stagione ---------------- */
   function currentPos(ctx = S) { if (!isClubCtx(ctx)) ctx = S; computeTable(ctx); return ctx.table.findIndex((t) => t.me) + 1; }
 
@@ -1987,10 +2099,19 @@
       ['Percorso in Coppa Italia', ctx.cupMoney],
     ];
     if (ctx.euroMoney + euroTitleBonus > 0) statement.push([EURO_COMPS[ctx.euroComp].name + ' ' + EURO_COMPS[ctx.euroComp].flag, ctx.euroMoney + euroTitleBonus]);
-    statement.push(['Costi di gestione', -upkeep], ['Stipendi + allenatore (pagati all\'avvio)', 0]);
+    statement.push(['Costi di gestione', -upkeep], ['Stipendi + allenatore' + (ctx.sportingDirector ? ' + direttore sportivo' : '') + ' (pagati all\'avvio)', 0]);
     const treble = title && natWon && euroWon && ctx.euroComp === 'ucl';
+    // ----- traguardi di carriera (ACHIEVEMENTS, data.js) -----
+    if (title && ctx.div === 5) unlockAchievement(ctx, 'scudetto');
+    if (natWon) unlockAchievement(ctx, 'coppa_italia');
+    if (euroWon) unlockAchievement(ctx, 'coppa_europea');
+    if (treble) unlockAchievement(ctx, 'treble');
+    ctx.noRelegStreak = relegated ? 0 : (ctx.noRelegStreak || 0) + 1;
+    if (ctx.noRelegStreak >= 10) unlockAchievement(ctx, 'no_releg_10');
+    if (ctx.squad.filter((p) => p.real || p.icon).length >= 3) unlockAchievement(ctx, 'legend_squad');
     ctx._end = {
       pos, exp, promoted, relegated, title, natWon, euroWon, euroCompWon: ctx.euroComp, trophies, fate, playoff, fbDelta, euroQual: qualTier, treble,
+      newAchievements: (ctx._newAchievements || []).slice(),
       att, statement,
       net, sentItems, ratingDelta, worth,
       cupPaths: { nat: (ctx.cups.nat && ctx.cups.nat.path) || [], euro: (ctx.cups.euro && ctx.cups.euro.path) || [] },
@@ -2061,8 +2182,13 @@
     const e = ctx._end;
     evolveRivalStrengths(ctx);
     simulatePyramidMovement(ctx);
+    if (e.promoted) unlockAchievement(ctx, 'first_promo');
     if (e.promoted) ctx.div = Math.min(DIVS.length - 1, ctx.div + 1);
     if (e.relegated) ctx.div = Math.max(0, ctx.div - 1);
+    if (ctx.div === 5) {
+      unlockAchievement(ctx, 'serie_a');
+      if (ctx.startDiv === 0) unlockAchievement(ctx, 'from_bottom');
+    }
     ctx.promoStreak = e.promoted ? (ctx.promoStreak || 0) + 1 : 0;
     ctx.euro = !!ctx.euroCompNext && ctx.div === 5;
     ctx.euroComp = ctx.euro ? ctx.euroCompNext : null;
@@ -2084,7 +2210,7 @@
     // openRetirementOverlay più sotto, aperta subito dopo questa funzione.
     if (!local) {
       const retired = ctx.squad.filter((p) => p._retiring).map((p) => p.n);
-      ctx.squad.filter((p) => p._retiring).forEach((p) => pushAlumnus(p, ctx));
+      ctx.squad.filter((p) => p._retiring).forEach((p) => pushAlumnus(p, ctx, true));
       ctx.squad = ctx.squad.filter((p) => !p._retiring);
     }
     ctx.squad.forEach((p) => { delete p._ovrDelta; if (!local) delete p._retiring; });
@@ -2171,9 +2297,16 @@
     // Un solo allenatore per nome nell'intero gruppo: né due bot omonimi, né un bot col nome
     // dell'allenatore già in carica su una delle squadre umane della stanza.
     const usedMgrNames = new Set(humanCtxs.filter((h) => h.manager && h.manager.n).map((h) => h.manager.n));
+    // Registro club->allenatore condiviso da tutto il gruppo, per farlo restare lo stesso
+    // round dopo round invece di rigenerarlo da zero: ogni umano porta la propria "memoria"
+    // (_mgrByClub, viaggia nel suo state come captainPid/prestigio) di chi ha già incontrato,
+    // qui si fondono e si ridistribuiscono aggiornate a fine setup.
+    const mgrRegistry = {};
+    humanCtxs.forEach((h) => { if (h._mgrByClub) Object.assign(mgrRegistry, h._mgrByClub); });
     const bots = POOLS[div].filter((c) => !humanNames.has(c.n)).slice(0, botCount)
-      .map((o) => ({ name: o.n, s: o.s, effS: clamp(o.s + gaussInt(0, 8), 30, 99), rrPts: 0, rrGF: 0, rrGA: 0, vsPts: 0, vsGF: 0, vsGA: 0, mgr: genManagerUnique(0, humanCtxs[0], usedMgrNames) }));
+      .map((o) => ({ name: o.n, s: o.s, effS: clamp(o.s + gaussInt(0, 8), 30, 99), rrPts: 0, rrGF: 0, rrGA: 0, vsPts: 0, vsGF: 0, vsGA: 0, mgr: managerForClub(o.n, 0, humanCtxs[0], usedMgrNames, mgrRegistry) }));
     simRivalRoundRobin(bots);
+    humanCtxs.forEach((h) => { h._mgrByClub = mgrRegistry; });
     const { opps, fixtures } = buildMultiplayerFixtures(humanCtxs, bots);
     humanCtxs.forEach((ctx, i) => startSeason(ctx, opps[i], fixtures[i]));
     return { ctxs: humanCtxs, bots, fixtures, matchday: 0, total: gp(humanCtxs[0]) };
@@ -2291,6 +2424,7 @@
 
   /* ---------------- fine carriera ---------------- */
   function endDynasty(how, saleMoney) {
+    if (how === 'retired' && S.season >= MAX_SEASONS) unlockAchievement(S, 'dynasty_complete');
     S.over = true; clearSave();
     S._how = how; S._sale = saleMoney || 0;
     renderEnd();

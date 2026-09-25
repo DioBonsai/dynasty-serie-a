@@ -449,6 +449,16 @@
     { key: 'negotiator', label: 'Negoziatore', icon: '💬', desc: 'Sa trattare bene con i giocatori: i rinnovi di contratto costano un po\' meno.' },
   ];
 
+  // Staff tecnico, secondo ruolo assumibile oltre l'allenatore: non tocca la squadra in campo,
+  // solo il mercato in uscita (offerte che arrivano per i tuoi giocatori). Chiavi diverse da
+  // MANAGER_SPECS di proposito, anche se lette da una lookup separata (dsSpecOf, ui.js): niente
+  // ambiguità visiva fra "il negoziatore dell'allenatore" e questo.
+  const DS_SPECS = [
+    { key: 'sales_expert', label: 'Esperto di cessioni', icon: '💰', desc: 'Offerte in uscita più alte per i tuoi giocatori più richiesti.' },
+    { key: 'scout_network', label: 'Rete di osservatori', icon: '🔭', desc: 'Più club rivali si fanno avanti per i tuoi giocatori migliori.' },
+    { key: 'all_rounder', label: 'Uomo di fiducia', icon: '⚖️', desc: 'Nessuna specializzazione spiccata, ma costa un po\' meno.' },
+  ];
+
   // Derby/rivalità storiche: coppie di nomi già presenti nei POOLS di qualche categoria
   // (vere per Serie A/B/C, plausibili per geografia nelle categorie con nomi di fantasia).
   // Il match conta come derby quando ENTRAMBI i nomi di una coppia si affrontano nella
@@ -1385,6 +1395,22 @@
   // ragazzino, per quanto forte. In cambio, indossarla vale +1 OVR effettivo (captainBonus,
   // sim.js) sulla forza della squadra in campo.
   const CAPTAIN_MIN_AGE = 22;
+
+  // Traguardi di carriera (diversi dai trofei di club, già nella Bacheca trofei): puramente
+  // di prestigio personale, sbloccati una volta sola e per sempre (checkAchievements, sim.js),
+  // mostrati come seconda scheda della stessa bacheca (showTrophyCase, ui.js).
+  const ACHIEVEMENTS = [
+    { key: 'first_promo', icon: '⬆️', title: 'Si comincia a salire', desc: 'Ottieni la tua prima promozione di categoria.' },
+    { key: 'from_bottom', icon: '🌱', title: 'Dal fondo alla vetta', desc: 'Parti dalla Promozione e arriva in Serie A con lo stesso club.' },
+    { key: 'serie_a', icon: '🇮🇹', title: 'Sei arrivato', desc: 'Porta il tuo club in Serie A.' },
+    { key: 'scudetto', icon: '🥇', title: 'Scudetto', desc: 'Vinci il campionato di Serie A.' },
+    { key: 'coppa_italia', icon: '🏆', title: 'Coppa nazionale', desc: 'Vinci la Coppa Italia.' },
+    { key: 'coppa_europea', icon: '🌍', title: 'Notti europee', desc: 'Vinci una coppa europea.' },
+    { key: 'treble', icon: '👑', title: 'Tripletta', desc: 'Vinci scudetto, Coppa Italia e Champions League nella stessa stagione.' },
+    { key: 'no_releg_10', icon: '🧱', title: 'Un decennio di stabilità', desc: '10 stagioni di fila senza mai retrocedere.' },
+    { key: 'legend_squad', icon: '⭐', title: 'Squadra di fenomeni', desc: 'Metti insieme 3 giocatori reali o leggende in rosa nella stessa stagione.' },
+    { key: 'dynasty_complete', icon: '🏁', title: 'Fine di un\'era', desc: 'Porta a termine tutte le 20 stagioni della dynasty.' },
+  ];
 
   // Difficoltà scelta all'avvio della carriera (vedi startDynasty in sim.js): ogni voce
   // ritocca budget di partenza, forza effettiva percepita in campo (teamEffDelta, positivo
