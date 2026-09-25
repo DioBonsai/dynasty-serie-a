@@ -436,6 +436,57 @@
     },
     { icon: '🧓', title: 'Ex bandiera in tribuna', text: 'Una vecchia bandiera del club, ora ritirata, assiste alla partita dalla tribuna d\'onore: standing ovation per lui.', sent: 4, prestige: 0.5e6 },
     { icon: '🛑', title: 'Sciopero dei tifosi organizzati', text: 'La curva organizzata annuncia una protesta silenziosa per la prossima partita.', sent: -4, ownerRating: -1 },
+    {
+      icon: '📝', title: 'Un club più ricco fa un\'offerta al tuo staff',
+      // Un allenatore/DS chiaramente sopra il livello della categoria attira l'interesse di
+      // chi può pagarlo di più: prima si controlla l'allenatore (il ruolo più visibile),
+      // solo se non è lui abbastanza forte si guarda al direttore sportivo.
+      requires: (S) => {
+        const base = (DIVS[S.div] || {}).mgrBase || 70;
+        return (S.manager && S.manager.rating >= base + 12) || (S.sportingDirector && S.sportingDirector.rating >= base + 8);
+      },
+      build: (S) => {
+        const base = (DIVS[S.div] || {}).mgrBase || 70;
+        return { role: (S.manager && S.manager.rating >= base + 12) ? 'manager' : 'ds' };
+      },
+      text: (S, ctx) => {
+        const isManager = !ctx || ctx.role === 'manager';
+        const person = isManager ? S.manager : S.sportingDirector;
+        return 'Un club più prestigioso ha messo gli occhi su ' + (person ? person.n : 'un membro del tuo staff') + ' (' + (isManager ? 'il tuo allenatore' : 'il tuo direttore sportivo') + '): per trattenerlo serve un accordo migliore.';
+      },
+      choices: [
+        {
+          label: 'Trattienilo con un rinnovo migliore',
+          hint: 'Stipendio +25% da subito',
+          apply: (S, ctx) => {
+            const isManager = !ctx || ctx.role === 'manager';
+            const person = isManager ? S.manager : S.sportingDirector;
+            if (!person) return;
+            person.salary = Math.round(person.salary * 1.25 / 1e3) * 1e3;
+            S.sent = clamp(S.sent + 2, 0, 100);
+          },
+        },
+        {
+          label: 'Lascialo andare',
+          hint: 'Incassi un indennizzo, ma dovrai trovarne uno nuovo',
+          apply: (S, ctx) => {
+            const isManager = !ctx || ctx.role === 'manager';
+            const person = isManager ? S.manager : S.sportingDirector;
+            if (!person) return;
+            S.budget += Math.round(person.salary * 0.6 / 1e3) * 1e3;
+            if (isManager) {
+              const base = (DIVS[S.div] || {}).mgrBase || 70;
+              const r = clamp(base - 6 + rnd(10), 45, 90);
+              const nat = pickNationality(S.div);
+              S.manager = { n: genName(nat), rating: r, salary: mgrSalaryFor(r), nat, spec: pick(MANAGER_SPECS).key };
+            } else {
+              S.sportingDirector = null; S.dsOpts = null;
+            }
+            S.sent = clamp(S.sent - 2, 0, 100);
+          },
+        },
+      ],
+    },
   ];
 
   // Ogni allenatore (generato o candidato) ha una specializzazione, oltre al rating: un

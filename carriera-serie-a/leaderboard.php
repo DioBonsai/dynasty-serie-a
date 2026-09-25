@@ -9,7 +9,7 @@
  * attaccante motivato (nessun endpoint pubblico scrivibile lo è, senza login reale),
  * ma è sufficiente contro spam/abuso occasionale.
  *
- * GET  leaderboard.php            -> le migliori 50 carriere (JSON)
+ * GET  leaderboard.php            -> le migliori 10 carriere (JSON)
  * POST leaderboard.php {body JSON}-> invia una carriera (rifiutata se invalida o troppo
  *                                    frequente dallo stesso IP)
  */
@@ -20,7 +20,7 @@ header('Cache-Control: no-store');
 $DATA_FILE = __DIR__ . '/leaderboard_data.json';
 $RATE_FILE = __DIR__ . '/leaderboard_rate.json';
 $MAX_ENTRIES = 100;      // quante carriere restano salvate (le migliori per punteggio)
-$RETURN_TOP = 50;        // quante ne restituisce la GET
+$RETURN_TOP = 10;        // quante ne restituisce la GET
 $RATE_LIMIT_SECONDS = 300; // un invio ogni 5 minuti per IP
 
 function fail($msg, $code = 400) {

@@ -965,7 +965,7 @@
 
   function sponsorOffers() {
     const d = divOf();
-    const base = (d.prize * 0.3 + capOf() * 9) * 1.2 * diffOf().sponsorMult;   // +20% su tutti gli accordi sponsor, poi scalato per difficoltà
+    const base = (d.prize * 0.3 + capOf() * 9) * 1.3 * diffOf().sponsorMult;   // +30% su tutti gli accordi sponsor (aumentato di un ulteriore 8% circa), poi scalato per difficoltà
     const mk = (tag, mult, yrs, sent) => ({ name: pick(SPONSOR_BRANDS[tag]), tag, perYear: Math.round(base * mult * (0.85 + Math.random() * 0.3) / 1e4) * 1e4, years: yrs, left: yrs, sent });
     // Sempre QUATTRO offerte, con un peso economico più alto di prima: più scelta e
     // più soldi in ballo. Dalla Serie B in su un mega-sponsor globale sostituisce lo
@@ -1063,6 +1063,7 @@
      scheda in questo momento (per saveGame/loadSave "impliciti", legati a S). */
   const SAVES_INDEX_KEY = 'dsa_saves_index';
   const ACTIVE_SAVE_KEY = 'dsa_active_save';
+  const LEGACY_KEY = 'dsa_legacy';
   const saveSlotKey = (id) => 'dsa_save_' + id;
   const savePoolsKey = (id) => 'dsa_save_' + id + '_pools';
   // Versione del FORMATO di salvataggio (non della build del gioco): finora ogni cambio di
@@ -1198,10 +1199,14 @@
     const squad = [];
     const dAvg = DIVS[div].avg;
     for (let i = 0; i < 16; i++) { const ovr = clamp(gaussInt(t.str - 1, 3.5), dAvg - 9, dAvg + 9); const nat = pickNationality(div); squad.push({ n: genName(nat), nat, ovr, age: genAge(23, 4.5, 17, 34), wage: wageFor(ovr), yrs: 1 + rnd(3), pos: randPos(squad), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 }); }
+    // "New Era": la MIGLIORE dynasty già completata (dsa_legacy) da' un piccolo bonus di
+    // budget di partenza alla prossima, fino a un tetto del 25% — mai a chi sta ancora
+    // giocando la sua prima carriera (legacyBonus è 0 finché non se ne chiude una).
+    const legacyBonus = readLegacyBonus();
     S = {
       owner, club: (customClub || '').slice(0, 24) || pick(POOLS[div]).n, div: div, season: 1,
       difficulty: diffKey,
-      budget: Math.round(t.budget * diffOf(diffKey).budgetMult), fanbase: Math.round(t.fanbase * 100) / 100,
+      budget: Math.round(t.budget * diffOf(diffKey).budgetMult * (1 + legacyBonus)), fanbase: Math.round(t.fanbase * 100) / 100,
       stadiumTier: t.stadiumTier, stadiumSpent: 0.6e6 + (t.stadiumTier ? STADIUM[1].cost : 0), ticket: 1,
       squad, manager: (function () { const r = clamp(DIVS[div].mgrBase - 2 + rnd(8), 45, 92); const nat = pickNationality(div); return { n: genName(nat), rating: r, salary: mgrSalaryFor(r), nat, spec: pick(MANAGER_SPECS).key }; })(),
       sponsor: null, sent: 55, ownerRating: 62, prestige: 0, debtSeasons: 0,
@@ -1218,6 +1223,7 @@
     normSquad();
     S.peakWorth = computeWorth();
     renderBoard();
+    if (legacyBonus > 0 && typeof toast === 'function') toast('👑 Eredità del tuo passato da presidente: budget di partenza +' + Math.round(legacyBonus * 100) + '%.', 'success');
   }
 
   // Stima mostrata in Dirigenza PRIMA che la stagione inizi: allineata alla stessa formula di
@@ -1284,6 +1290,8 @@
     // tempo, invece di lasciare la spirale del rosso intatta finché non vendi qualcuno a mano.
     ctx._finalTable = null;
     ctx._newAchievements = [];
+    ctx._motmSnapshot = {};
+    ctx._playoffState = null;
     if (ctx.budget < 0) { ctx.budget = Math.round(ctx.budget * 0.6); if (local) toast('Il debito di inizio stagione si riduce del 40%: ora sei a ' + fmtMoney(ctx.budget) + '.'); }
     // Ultima chiamata per riscattare i prestiti dell'estate scorsa (bottone 💰 Riscatta
     // nella rosa, in sala del consiglio): chi non è stato riscattato torna al suo club ora.
@@ -1434,6 +1442,26 @@
     });
   }
 
+  // Giocatore del mese: confronta i gol+assist fatti dall'ultimo checkpoint (uno snapshot per
+  // pid, azzerato a inizio stagione) invece del totale stagionale, altrimenti sarebbe sempre lo
+  // stesso capocannoniere a vincerlo ogni volta. Solo un piccolo bump di umore: la vera notizia
+  // è l'onorificenza in sé, non l'effetto in classifica.
+  function maybePlayerOfMonth(ctx = S) {
+    if (!ctx.squad || !ctx.squad.length) return;
+    if (!ctx._motmSnapshot) ctx._motmSnapshot = {};
+    let best = null, bestDelta = 0;
+    ctx.squad.forEach((p) => {
+      const now = (p.seasonGoals || 0) + (p.seasonAssists || 0);
+      const before = ctx._motmSnapshot[p.pid] || 0;
+      const delta = now - before;
+      if (delta > bestDelta) { bestDelta = delta; best = p; }
+      ctx._motmSnapshot[p.pid] = now;
+    });
+    if (!best || bestDelta < 2) return;
+    ctx.sent = clamp(ctx.sent + 2, 0, 100);
+    if (ctx === S) toast('⭐ ' + best.n + ' è il giocatore del mese: la tifoseria è entusiasta.', 'success');
+  }
+
   function simMatch(ctx = S, forcedScore = null) {
     if (!isClubCtx(ctx)) ctx = S;
     if (!ctx.seasonActive || ctx.played >= gp(ctx)) return;
@@ -1460,7 +1488,7 @@
     // bilancio testa a testa che cresce stagione dopo stagione (ctx.derbyRecord), invece di
     // restare un semplice bollino "DERBY" identico ogni volta senza memoria di chi comanda
     // la rivalità nell'arco della carriera.
-    const derby = isDerby(ctx.club, opp.name);
+    const derby = isDerby(ctx.club, opp.name) || (ctx.rivalries && ctx.rivalries.indexOf(opp.name) !== -1);
     let derbyRecord = null;
     if (derby) {
       if (res === 'W') ctx.sent = clamp(ctx.sent + 3, 0, 100); else if (res === 'L') ctx.sent = clamp(ctx.sent - 3, 0, 100);
@@ -1483,6 +1511,10 @@
     // vere soste FIFA. Un evento automatico (mai un popup): chi c'è c'è, si scopre dopo.
     const cpA = Math.round(gp(ctx) * 0.25), cpB = Math.round(gp(ctx) * 0.5), cpC = Math.round(gp(ctx) * 0.75);
     if (ctx.played === cpA || ctx.played === cpB || ctx.played === cpC) maybeNationalCallup(ctx);
+    // Giocatore del mese: sfalsato rispetto alle soste nazionali (un quinto, due quinti, ecc.),
+    // così le due notizie non capitano mai lo stesso giorno.
+    const motmSteps = [0.2, 0.4, 0.6, 0.8];
+    if (motmSteps.some((f) => ctx.played === Math.round(gp(ctx) * f))) maybePlayerOfMonth(ctx);
     if (local && !BULK_SIM) { renderHud(); saveGame(); }
     // Un evento narrativo, quando scatta, apre un popup che il giocatore deve chiudere
     // esplicitamente (X o un bottone/una scelta): mette in pausa la stagione esattamente
@@ -1841,6 +1873,127 @@
   /* ---------------- fine stagione ---------------- */
   function currentPos(ctx = S) { if (!isClubCtx(ctx)) ctx = S; computeTable(ctx); return ctx.table.findIndex((t) => t.me) + 1; }
 
+  // Playoff promozione: chi si incontra ad ogni turno dipende SOLO dall'altra metà del
+  // tabellone (sorteggiata/decisa con hypoWinner, indipendente dai propri risultati) — si può
+  // quindi decidere l'intero percorso "se continui a vincere" in un colpo solo, PRIMA di
+  // giocare anche solo la prima gara. playNextPlayoffStep poi gioca un turno alla volta e si
+  // ferma da solo alla prima sconfitta, senza dover ricalcolare nulla.
+  function buildPlayoffPlan(ctx, pos, d, lo, hi) {
+    const strAt = (position) => { const row = ctx.table[position - 1]; const o = ctx.opps.find((x) => x.name === row.name); return o ? o.effS : d.avg; };
+    const hypoWinner = (a, b) => (Math.random() < (1 / (1 + Math.exp(-(strAt(a) - strAt(b)) / 5))) ? a : b);
+    const plan = [];
+    if (d.playoff >= 6) {
+      const byeA = lo, byeB = lo + 1;   // 3° e 4°: già in semifinale
+      const qfPairOf = (bye) => (bye === byeA ? [lo + 3, lo + 4] : [lo + 2, lo + 5]);   // 6°-7° per il 3°, 5°-8° per il 4°
+      const partnerOf = {}; partnerOf[lo + 3] = lo + 4; partnerOf[lo + 4] = lo + 3; partnerOf[lo + 2] = lo + 5; partnerOf[lo + 5] = lo + 2;
+      const byeOf = {}; byeOf[lo + 3] = byeA; byeOf[lo + 4] = byeA; byeOf[lo + 2] = byeB; byeOf[lo + 5] = byeB;
+      const otherBye = (b) => (b === byeA ? byeB : byeA);
+      const finalOpponent = (myBye) => { const ob = otherBye(myBye), [oa, obb] = qfPairOf(ob); return hypoWinner(ob, hypoWinner(oa, obb)); };
+      if (pos === byeA || pos === byeB) {
+        const [a, b] = qfPairOf(pos);
+        const semiOpp = hypoWinner(a, b);
+        plan.push({ kind: 'twoLeg', oppPos: semiOpp, stage: 'Semifinale', isFinal: false });
+        plan.push({ kind: 'twoLeg', oppPos: finalOpponent(pos), stage: 'Finale', isFinal: true });
+      } else {
+        plan.push({ kind: 'prelim', oppPos: partnerOf[pos], stage: 'Quarti' });
+        const myBye = byeOf[pos];
+        plan.push({ kind: 'twoLeg', oppPos: myBye, stage: 'Semifinale', isFinal: false });
+        plan.push({ kind: 'twoLeg', oppPos: finalOpponent(myBye), stage: 'Finale', isFinal: true });
+      }
+    } else {
+      const mirror = lo + hi - pos;   // semifinali con teste di serie: 3° vs 6°, 4° vs 5° (e equivalenti 4°-7°)
+      plan.push({ kind: 'single', oppPos: mirror, stage: 'Semifinale' });
+      const rest = []; for (let i = lo; i <= hi; i++) if (i !== pos && i !== mirror) rest.push(i);
+      const finalist = hypoWinner(rest[0], rest[1] != null ? rest[1] : rest[0]);
+      plan.push({ kind: 'single', oppPos: finalist, stage: 'Finale' });
+    }
+    return plan;
+  }
+
+  // Un piano a "turni" (twoLeg = un turno, due gare) diventa una coda di gare ATOMICHE (una
+  // gara = un click di "Gioca la prossima gara di playoff"): playNextPlayoffStep ne consuma una
+  // alla volta.
+  function flattenPlayoffQueue(plan) {
+    const queue = [];
+    plan.forEach((st) => {
+      if (st.kind === 'twoLeg') {
+        queue.push({ atomicType: 'leg', oppPos: st.oppPos, stage: st.stage, isFinal: st.isFinal, leg: 0 });
+        queue.push({ atomicType: 'leg', oppPos: st.oppPos, stage: st.stage, isFinal: st.isFinal, leg: 1 });
+      } else {
+        queue.push({ atomicType: st.kind === 'prelim' ? 'prelim' : 'po', oppPos: st.oppPos, stage: st.stage });
+      }
+    });
+    return queue;
+  }
+
+  // Gioca UNA gara/gamba dalla coda di ctx._playoffState (mai più di una per chiamata): stessa
+  // matematica di sempre (gara secca, turno preliminare con supplementari, doppia gara con
+  // punti/differenza reti/piazzamento/rigori), solo spezzata in passi invece che tutta in un
+  // colpo solo. Usata sia dal flusso interattivo in singolo (un click alla volta) sia, in un
+  // ciclo stretto senza pause, per il multiplayer (host che simula per un ctx remoto, senza
+  // nessuno davanti allo schermo pronto a cliccare turno per turno).
+  function playNextPlayoffStep(ctx = S) {
+    const pf = ctx._playoffState;
+    if (!pf || pf.done || !pf.queue.length) return null;
+    const d = divOf(ctx), pos = pf.pos;
+    const strAt = (position) => { const row = ctx.table[position - 1]; const o = ctx.opps.find((x) => x.name === row.name); return o ? o.effS : d.avg; };
+    const nameAt = (position) => ctx.table[position - 1].name;
+    const legSim = (oppStr) => { const diff = teamEff(ctx) - oppStr; return { gf: poisson(clamp(1.25 + diff * 0.05, 0.2, 4)), ga: poisson(clamp(1.25 - diff * 0.05, 0.2, 4)) }; };
+    const step = pf.queue.shift();
+    const oppName = nameAt(step.oppPos), oppStr = strAt(step.oppPos);
+    let eliminated = false, entry = null;
+    if (step.atomicType === 'po') {
+      let { gf, ga } = legSim(oppStr);
+      const diff = teamEff(ctx) - oppStr;
+      const winP = 1 / (1 + Math.exp(-diff / 6.0));
+      const won = Math.random() < winP;
+      if (won && gf < ga) { const t = gf; gf = ga; ga = t; } else if (!won && gf > ga) { const t = gf; gf = ga; ga = t; }
+      const lineup = pickMatchLineup(ctx.squad, ctx);
+      registerAppearances(lineup, ctx);
+      entry = { stage: step.stage, opp: oppName, gf, ga, won, pens: gf === ga, goalsFor: genGoals(gf, true, null, lineup, ctx), goalsAgainst: genGoals(ga, false, oppName, null, ctx) };
+      registerCleanSheet(ga, lineup, ctx);
+      pf.rounds.push(entry);
+      if (!won) eliminated = true;
+    } else if (step.atomicType === 'prelim') {
+      let { gf, ga } = legSim(oppStr);
+      let extra = false;
+      if (gf === ga) { extra = true; const et = legSim(oppStr); gf += et.gf; ga += et.ga; }
+      const won = gf !== ga ? gf > ga : pos < step.oppPos;
+      const lineup = pickMatchLineup(ctx.squad, ctx);
+      registerAppearances(lineup, ctx);
+      entry = { stage: step.stage, opp: oppName, gf, ga, won, extra, seedWin: gf === ga, goalsFor: genGoals(gf, true, null, lineup, ctx), goalsAgainst: genGoals(ga, false, oppName, null, ctx) };
+      registerCleanSheet(ga, lineup, ctx);
+      pf.rounds.push(entry);
+      if (!won) eliminated = true;
+    } else if (step.atomicType === 'leg') {
+      if (step.leg === 0) pf.legAcc = { aggGF: 0, aggGA: 0, myPts: 0, oppPts: 0 };
+      const { gf, ga } = legSim(oppStr);
+      pf.legAcc.aggGF += gf; pf.legAcc.aggGA += ga;
+      pf.legAcc.myPts += gf > ga ? 3 : gf === ga ? 1 : 0;
+      pf.legAcc.oppPts += ga > gf ? 3 : ga === gf ? 1 : 0;
+      const lineup = pickMatchLineup(ctx.squad, ctx);
+      registerAppearances(lineup, ctx);
+      registerCleanSheet(ga, lineup, ctx);
+      entry = { stage: step.stage, leg: step.leg === 0 ? 'Andata' : 'Ritorno', opp: oppName, gf, ga, goalsFor: genGoals(gf, true, null, lineup, ctx), goalsAgainst: genGoals(ga, false, oppName, null, ctx) };
+      pf.rounds.push(entry);
+      if (step.leg === 1) {
+        const { aggGF, aggGA, myPts, oppPts } = pf.legAcc;
+        let won, tiebreak = null;
+        if (myPts !== oppPts) won = myPts > oppPts;
+        else if (aggGF !== aggGA) { won = aggGF > aggGA; tiebreak = 'dr'; }
+        else if (step.isFinal && ctx.table[pos - 1].pts === ctx.table[step.oppPos - 1].pts) {
+          const diff = teamEff(ctx) - oppStr;
+          won = Math.random() < 1 / (1 + Math.exp(-diff / 4));
+          tiebreak = 'pens';
+        } else { won = pos < step.oppPos; tiebreak = 'seed'; }
+        pf.rounds.push({ stage: step.stage + ' (aggregato)', opp: oppName, gf: aggGF, ga: aggGA, won, tiebreak, aggregate: true });
+        if (!won) eliminated = true;
+      }
+    }
+    if (eliminated || pf.queue.length === 0) { pf.done = true; pf.won = !eliminated; }
+    return { entry, done: pf.done, won: pf.won, eliminated };
+  }
+
   function endSeason(ctx = S) {
     if (!isClubCtx(ctx)) ctx = S;
     const local = ctx === S;
@@ -1848,6 +2001,24 @@
     const d = divOf(ctx), G = gp(ctx);
     const pos = currentPos(ctx);
     const exp = expectedPos(ctx);
+    // Rivalità "nate in campo": un club che ti sta appiccicato in classifica (un posto sopra o
+    // sotto di te) per più stagioni diventa una rivalità sentita quanto un derby storico, anche
+    // senza esserlo per tradizione (DERBIES, data.js) — la classifica stessa, col tempo, ne
+    // scrive di nuove. Non serve che siano stagioni consecutive: un rapporto che si ripete nel
+    // tempo conta comunque.
+    if (!ctx.rivalryHeat) ctx.rivalryHeat = {};
+    if (!ctx.rivalries) ctx.rivalries = [];
+    const myTableIdx = ctx.table.findIndex((r) => r.me);
+    if (myTableIdx !== -1) {
+      [myTableIdx - 1, myTableIdx + 1].forEach((i) => {
+        const row = ctx.table[i]; if (!row || row.me) return;
+        ctx.rivalryHeat[row.name] = (ctx.rivalryHeat[row.name] || 0) + 1;
+        if (ctx.rivalryHeat[row.name] >= 3 && ctx.rivalries.indexOf(row.name) === -1) {
+          ctx.rivalries.push(row.name);
+          if (ctx === S) toast('🔥 ' + row.name + ' è diventata una rivalità sentita: vi state sempre appiccicati in classifica.', 'success');
+        }
+      });
+    }
     // La vera Serie B promuove la 3ª classificata SENZA playoff se ha almeno 15 punti di
     // vantaggio sulla 4ª: un distacco enorme che rende inutile lo spareggio.
     const gap3v4 = (d.playoff >= 6 && pos === 3) ? (ctx.table[2].pts - ctx.table[3].pts) : 0;
@@ -1863,109 +2034,41 @@
     // campionato a pari punti, decidono supplementari e rigori nel ritorno.
     // Le partite che non coinvolgono il nostro club (l'altra metà del tabellone) non vengono
     // simulate per esteso: si risolvono con un confronto di forza, come già per la finale
-    // nel tabellone da 4. ----
+    // nel tabellone da 4.
+    // Per il giocatore in locale i playoff si giocano UNA GARA ALLA VOLTA (come le coppe),
+    // non tutti in un colpo solo scoperti solo nel resoconto finale: qui si prepara solo il
+    // tabellone (buildPlayoffPlan/flattenPlayoffQueue) e si esce SUBITO da endSeason, che verrà
+    // richiamata di nuovo — stavolta per finire davvero il resoconto — quando playNextPlayoffStep
+    // (ui.js, un click alla volta) avrà esaurito la coda. Un ctx remoto (host multiplayer) non ha
+    // nessuno davanti allo schermo pronto a cliccare: per lui si risolve tutto insieme, come prima. ----
     let playoff = null;
     if (!auto && d.playoff > 0 && pos > d.promoted && pos <= d.promoted + d.playoff) {
       const lo = d.promoted + 1, hi = d.promoted + d.playoff;
-      const strAt = (position) => { const row = ctx.table[position - 1]; const o = ctx.opps.find((x) => x.name === row.name); return o ? o.effS : d.avg; };
-      const nameAt = (position) => ctx.table[position - 1].name;
-      const hypoWinner = (a, b) => (Math.random() < (1 / (1 + Math.exp(-(strAt(a) - strAt(b)) / 5))) ? a : b);
-      const rounds = [];
-      // Simula una gamba (usata sia dal tabellone a 4, gara secca, sia dalle gambe del
-      // tabellone Serie B).
-      const legSim = (oppStr) => {
-        const diff = teamEff(ctx) - oppStr;
-        return { gf: poisson(clamp(1.25 + diff * 0.05, 0.2, 4)), ga: poisson(clamp(1.25 - diff * 0.05, 0.2, 4)) };
-      };
-      const playPO = (oppPos, stage) => {
-        const oppName = nameAt(oppPos), oppStr = strAt(oppPos);
-        let { gf, ga } = legSim(oppStr);
-        const diff = teamEff(ctx) - oppStr;
-        const winP = 1 / (1 + Math.exp(-diff / 6.0));
-        const won = Math.random() < winP;
-        // manteniamo il risultato coerente con l'esito (parità significa rigori)
-        if (won && gf < ga) { const t = gf; gf = ga; ga = t; }
-        else if (!won && gf > ga) { const t = gf; gf = ga; ga = t; }
-        const poLineup = pickMatchLineup(ctx.squad, ctx);
-        registerAppearances(poLineup, ctx);
-        rounds.push({ stage, opp: oppName, gf, ga, won, pens: gf === ga, goalsFor: genGoals(gf, true, null, poLineup, ctx), goalsAgainst: genGoals(ga, false, oppName, null, ctx) });
-        registerCleanSheet(ga, poLineup, ctx);
-        return won;
-      };
-      // Turno preliminare Serie B (5°-8°, 6°-7°): gara secca, supplementari se pareggio, e a
-      // parità anche dopo i supplementari passa la squadra meglio piazzata — mai rigori qui.
-      const playPOPrelim = (oppPos, stage) => {
-        const oppName = nameAt(oppPos), oppStr = strAt(oppPos);
-        let { gf, ga } = legSim(oppStr);
-        let extra = false;
-        if (gf === ga) { extra = true; const et = legSim(oppStr); gf += et.gf; ga += et.ga; }
-        const won = gf !== ga ? gf > ga : pos < oppPos;
-        const poLineup = pickMatchLineup(ctx.squad, ctx);
-        registerAppearances(poLineup, ctx);
-        rounds.push({ stage, opp: oppName, gf, ga, won, extra, seedWin: gf === ga, goalsFor: genGoals(gf, true, null, poLineup, ctx), goalsAgainst: genGoals(ga, false, oppName, null, ctx) });
-        registerCleanSheet(ga, poLineup, ctx);
-        return won;
-      };
-      // Semifinale/finale Serie B: andata e ritorno, punti di gara (3/1/0) sulle due gambe a
-      // decidere il turno, poi differenza reti, poi il piazzamento in classifica — tranne la
-      // finale fra due squadre a pari punti in classifica, dove decidono supplementari/rigori.
-      const playPOTwoLegs = (oppPos, stage, isFinal) => {
-        const oppName = nameAt(oppPos), oppStr = strAt(oppPos);
-        let aggGF = 0, aggGA = 0, myPts = 0, oppPts = 0;
-        for (let leg = 0; leg < 2; leg++) {
-          const { gf, ga } = legSim(oppStr);
-          aggGF += gf; aggGA += ga;
-          myPts += gf > ga ? 3 : gf === ga ? 1 : 0;
-          oppPts += ga > gf ? 3 : ga === gf ? 1 : 0;
-          const poLineup = pickMatchLineup(ctx.squad, ctx);
-          registerAppearances(poLineup, ctx);
-          registerCleanSheet(ga, poLineup, ctx);
-          rounds.push({ stage, leg: leg === 0 ? 'Andata' : 'Ritorno', opp: oppName, gf, ga, goalsFor: genGoals(gf, true, null, poLineup, ctx), goalsAgainst: genGoals(ga, false, oppName, null, ctx) });
-        }
-        let won, tiebreak = null;
-        if (myPts !== oppPts) won = myPts > oppPts;
-        else if (aggGF !== aggGA) { won = aggGF > aggGA; tiebreak = 'dr'; }
-        else if (isFinal && ctx.table[pos - 1].pts === ctx.table[oppPos - 1].pts) {
-          const diff = teamEff(ctx) - oppStr;
-          won = Math.random() < 1 / (1 + Math.exp(-diff / 4));
-          tiebreak = 'pens';
-        } else { won = pos < oppPos; tiebreak = 'seed'; }
-        rounds.push({ stage: stage + ' (aggregato)', opp: oppName, gf: aggGF, ga: aggGA, won, tiebreak, aggregate: true });
-        return won;
-      };
-      let won = false;
-      if (d.playoff >= 6) {
-        const byeA = lo, byeB = lo + 1;   // 3° e 4°: già in semifinale
-        const qfPairOf = (bye) => (bye === byeA ? [lo + 3, lo + 4] : [lo + 2, lo + 5]);   // 6°-7° per il 3°, 5°-8° per il 4°
-        const partnerOf = {}; partnerOf[lo + 3] = lo + 4; partnerOf[lo + 4] = lo + 3; partnerOf[lo + 2] = lo + 5; partnerOf[lo + 5] = lo + 2;
-        const byeOf = {}; byeOf[lo + 3] = byeA; byeOf[lo + 4] = byeA; byeOf[lo + 2] = byeB; byeOf[lo + 5] = byeB;
-        const otherBye = (b) => (b === byeA ? byeB : byeA);
-        const finalOpponent = (myBye) => {
-          const ob = otherBye(myBye), [oa, obb] = qfPairOf(ob);
-          return hypoWinner(ob, hypoWinner(oa, obb));
-        };
-        if (pos === byeA || pos === byeB) {
-          const [a, b] = qfPairOf(pos);
-          won = playPOTwoLegs(hypoWinner(a, b), 'Semifinale', false);
-          if (won) won = playPOTwoLegs(finalOpponent(pos), 'Finale', true);
-        } else {
-          won = playPOPrelim(partnerOf[pos], 'Quarti');
-          if (won) {
-            const myBye = byeOf[pos];
-            won = playPOTwoLegs(myBye, 'Semifinale', false);
-            if (won) won = playPOTwoLegs(finalOpponent(myBye), 'Finale', true);
-          }
-        }
+      if (local && ctx._playoffState && ctx._playoffState.done) {
+        // Il giocatore ha appena finito di giocarsi il playoff passo-passo: il risultato è
+        // già pronto in ctx._playoffState, si continua il resoconto di fine stagione da qui.
+        playoff = { rounds: ctx._playoffState.rounds, won: ctx._playoffState.won };
+        ctx._playoffState = null;
+      } else if (local) {
+        ctx._playoffState = { pos, rounds: [], queue: flattenPlayoffQueue(buildPlayoffPlan(ctx, pos, d, lo, hi)), done: false, won: false, legAcc: null };
+        ctx._pause = true;
+        toast('🏟️ Ti sei qualificato per i playoff! Gioca la tua prima gara quando vuoi.', 'success');
+        // Si resta sulla schermata di stagione (mai passata a "non attiva" agli occhi
+        // dell'utente): il bottone "Gioca prossima partita" diventa "Gioca la prossima gara di
+        // playoff" (renderHud, ui.js), il log si ricostruisce per intero nel caso si sia
+        // arrivati qui con "Simula fino a fine stagione" (che durante BULK_SIM non logga).
+        $('owLog').innerHTML = ''; (ctx.results || []).forEach(logMatch); renderCups(); renderHud(); renderSeasonTarget();
+        saveGame();
+        return;
       } else {
-        const mirror = lo + hi - pos;   // semifinali con teste di serie: 3° vs 6°, 4° vs 5° (e equivalenti 4°-7°)
-        won = playPO(mirror, 'Semifinale');
-        if (won) {
-          const rest = []; for (let i = lo; i <= hi; i++) if (i !== pos && i !== mirror) rest.push(i);
-          const finalist = hypoWinner(rest[0], rest[1] != null ? rest[1] : rest[0]);
-          won = playPO(finalist, 'Finale');
-        }
+        // Host multiplayer: nessuno è davanti allo schermo pronto a cliccare gara per gara,
+        // si risolve tutto insieme come sempre — stessa identica logica, solo senza pause.
+        const bulk = { pos, rounds: [], queue: flattenPlayoffQueue(buildPlayoffPlan(ctx, pos, d, lo, hi)), done: false, won: false, legAcc: null };
+        ctx._playoffState = bulk;
+        while (!bulk.done) playNextPlayoffStep(ctx);
+        playoff = { rounds: bulk.rounds, won: bulk.won };
+        ctx._playoffState = null;
       }
-      playoff = { rounds, won };
     }
     const promoted = auto || !!(playoff && playoff.won);
     const relegated = d.releg > 0 && pos > d.teams - d.releg;
@@ -2012,6 +2115,9 @@
     if (title) { trophies.push(d.name + ' - Titolo'); ctx.trophies.titles[ctx.div]++; ctx.trophies.total++; ctx.prestige += TROPHY_WORTH[ctx.div]; }
     if (natWon) { trophies.push('Coppa Italia'); ctx.trophies.nat++; ctx.trophies.total++; ctx.prestige += ctx.div >= 4 ? 45e6 : 2e6; }
     if (euroWon) { const ec = EURO_COMPS[ctx.euroComp]; trophies.push(ec.name); ctx.trophies[ctx.euroComp]++; ctx.trophies.total++; ctx.prestige += ec.prestige; }
+    // Supercoppa dei Presidenti (multiplayer, resolveSupercoppa): un trofeo vero a tutti gli
+    // effetti, solo mai possibile in singolo (_supercoppaWon esiste solo se impostato lì).
+    if (ctx._supercoppaWon) { trophies.push('Supercoppa dei Presidenti'); ctx.trophies.total++; ctx.prestige += 5e6; }
     if (qualTier) ctx.prestige += EURO_COMPS[qualTier].qualPrestige;   // la qualificazione europea costruisce il brand
     // ----- umore -----
     const sentItems = [];
@@ -2378,6 +2484,33 @@
     return humanCtxs;
   }
 
+  // Supercoppa dei Presidenti: un'amichevole di fine stagione fra i DUE UMANI meglio piazzati
+  // di UN gruppo (stessa categoria/round) della stanza — serve almeno 2 umani nello stesso
+  // gruppo, non ha senso fra categorie diverse. Va chiamata per ogni run/gruppo, DOPO
+  // finishHostSeason (serve la ctx.table già congelata) e PRIMA di endSeason: imposta un flag
+  // sul vincitore che endSeason legge come un trofeo vero (stesso trattamento di scudetto/
+  // Coppa Italia), così finisce da solo nei trofei di carriera e nell'albo d'oro della stanza,
+  // senza bisogno di un canale a parte.
+  function resolveSupercoppa(run) {
+    if (!run.ctxs || run.ctxs.length < 2) return null;
+    const table = run.ctxs[0]._finalTable || run.ctxs[0].table;
+    if (!table) return null;
+    const humanClubs = new Set(run.ctxs.map((c) => c.club));
+    const topHumans = table.filter((r) => humanClubs.has(r.name)).slice(0, 2);
+    if (topHumans.length < 2) return null;
+    const a = run.ctxs.find((c) => c.club === topHumans[0].name);
+    const b = run.ctxs.find((c) => c.club === topHumans[1].name);
+    if (!a || !b) return null;
+    const dVal = teamEff(a) - teamEff(b) + gaussInt(0, 3);
+    const { gf, ga } = rollMatchScore(dVal, a);
+    let winner, loser, wGf, wGa, pens = false;
+    if (gf === ga) { pens = true; winner = Math.random() < 0.5 ? a : b; loser = winner === a ? b : a; wGf = gf; wGa = ga; }
+    else if (gf > ga) { winner = a; loser = b; wGf = gf; wGa = ga; }
+    else { winner = b; loser = a; wGf = ga; wGa = gf; }
+    winner._supercoppaWon = true;
+    return { winnerClub: winner.club, loserClub: loser.club, gf: wGf, ga: wGa, pens };
+  }
+
   // Coppa Italia e coppe europee, a differenza del campionato, sono simulate come un bracket
   // indipendente per ciascun umano (avversari bot generati per lui, mai un vero incrocio con
   // gli altri presidenti della stanza): due giocatori della stessa stanza possono quindi
@@ -2425,9 +2558,32 @@
   /* ---------------- fine carriera ---------------- */
   function endDynasty(how, saleMoney) {
     if (how === 'retired' && S.season >= MAX_SEASONS) unlockAchievement(S, 'dynasty_complete');
+    saveLegacy(S);
     S.over = true; clearSave();
     S._how = how; S._sale = saleMoney || 0;
     renderEnd();
+  }
+
+  // "New Era": un piccolo bonus di partenza per la PROSSIMA carriera, proporzionale a quanto
+  // vale quella appena chiusa (trofei + massimo valore raggiunto) — solo la MIGLIORE fra tutte
+  // le dynasty completate resta salvata (dsa_legacy), non si accumula riprovando più volte.
+  function legacyScore(ctx) { return (ctx.trophies ? ctx.trophies.total : 0) * 8e6 + (ctx.peakWorth || 0) * 0.02; }
+  function saveLegacy(ctx) {
+    try {
+      const score = legacyScore(ctx);
+      const prev = JSON.parse(localStorage.getItem(LEGACY_KEY) || 'null');
+      if (prev && prev.score >= score) return;
+      localStorage.setItem(LEGACY_KEY, JSON.stringify({ score, owner: ctx.owner, club: ctx.club }));
+    } catch (e) {}
+  }
+  function readLegacyBonus() {
+    try {
+      const l = JSON.parse(localStorage.getItem(LEGACY_KEY) || 'null');
+      if (!l || !l.score) return 0;
+      // Scala dolcemente e con un tetto: una leggenda pregressa enorme non deve rendere
+      // banale la prossima carriera, solo darle una spinta in più all'inizio.
+      return clamp(l.score / 40e6, 0, 0.25);
+    } catch (e) { return 0; }
   }
 
   function computeTable(ctx = S) {

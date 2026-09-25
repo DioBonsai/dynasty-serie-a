@@ -15,6 +15,9 @@
  *   sempre quella con cui la stanza è nata (utile a chi entra a dynasty già avviata)
  * POST room.php {action:'rename', code, playerId, roomName}         -> solo l'host: cambia il
  *   nome della stanza (il codice resta comunque l'unico modo di entrarci)
+ * POST room.php {action:'announce', code, playerId, text}           -> solo l'host: fissa (o
+ *   svuota, con text vuoto) un annuncio pinnato sopra la chat, visto da tutti finché non
+ *   cambia — per regole/obiettivi della stanza che altrimenti si perderebbero nello scroll
  * POST room.php {action:'chat', code, playerId, text}               -> aggiunge un messaggio
  *   alla chat della stanza (log condiviso, ultimi 60 messaggi, nessuna logica di gioco)
  * POST room.php {action:'ready', code, playerId, ready, state?}     -> imposta il tuo stato
@@ -239,6 +242,7 @@ if ($action === 'create') {
         'chat' => [],
         'hallOfFame' => [],
         'seasonAwards' => [],
+        'announcement' => null,
     ];
     if (!write_json_file_locked(room_path($DIR, $code), $room)) fail('Impossibile salvare la stanza.', 500);
     log_activity($DIR, $code, 'create');
@@ -303,6 +307,31 @@ if ($action === 'rename') {
     if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
     if ($room['hostId'] !== $playerId) { flock($fp, LOCK_UN); fclose($fp); fail('Solo l\'host può rinominare la stanza.', 403); }
     $room['name'] = $roomName !== '' ? $roomName : null;
+    $room['updatedAt'] = time();
+    ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($room)); fflush($fp);
+    flock($fp, LOCK_UN); fclose($fp);
+    echo json_encode(['ok' => true, 'room' => public_room($room)]);
+    exit;
+}
+
+if ($action === 'announce') {
+    $code = strtoupper(trim($body['code'] ?? ''));
+    $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    // Un annuncio non è un nome ma nemmeno un messaggio di chat "usa e getta": stesso testo
+    // permissivo della chat (clean_chat_text, non clean_name — niente più punteggiatura
+    // stroncata), ma un unico slot che resta fisso finché l'host non lo cambia o lo svuota.
+    $text = clean_chat_text($body['text'] ?? '', 200);
+    if ($code === '' || $playerId === '') fail('Richiesta non valida.');
+
+    $path = room_path($DIR, $code);
+    $fp = fopen($path, 'c+');
+    if (!$fp) fail('Stanza non trovata.', 404);
+    flock($fp, LOCK_EX);
+    $raw = stream_get_contents($fp);
+    $room = $raw ? json_decode($raw, true) : null;
+    if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
+    if ($room['hostId'] !== $playerId) { flock($fp, LOCK_UN); fclose($fp); fail('Solo l\'host può fissare un annuncio.', 403); }
+    $room['announcement'] = $text !== '' ? $text : null;
     $room['updatedAt'] = time();
     ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($room)); fflush($fp);
     flock($fp, LOCK_UN); fclose($fp);

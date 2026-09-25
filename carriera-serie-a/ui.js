@@ -164,10 +164,12 @@
     normSquad();
     const sc = S._screen || 'owBoardScreen';
     if (sc === 'owSeasonEndScreen' && S._end) { renderSeasonEnd(); }
-    else if (sc === 'owSeasonScreen' && S.seasonActive) {
+    else if (sc === 'owSeasonScreen' && (S.seasonActive || (S._playoffState && !S._playoffState.done))) {
       show('owSeasonScreen'); $('owLog').innerHTML = '';
-      (S.results || []).forEach(logMatch); renderHud(); renderCups(); renderSeasonTarget();
-      if (S.played === (gp() >> 1) && !S.winterDone) openWinter();
+      (S.results || []).forEach(logMatch);
+      if (S._playoffState) (S._playoffState.rounds || []).forEach(logPlayoffEntry);
+      renderHud(); renderCups(); renderSeasonTarget();
+      if (S.seasonActive && S.played === (gp() >> 1) && !S.winterDone) openWinter();
     }
     else { renderBoard(); }
   }
@@ -482,6 +484,11 @@
         return `<tr class="${r.isHuman ? 'me' : ''} ${zone}"><td>${i + 1}. ${r.club}</td><td style="font-size:11px;color:var(--muted)">${r.mgr || '-'}</td><td class="num">${r.pts}</td><td class="num">${r.gd > 0 ? '+' : ''}${r.gd}</td></tr>`;
       }).join('')}</tbody></table>` : '<div class="ow-sub">In attesa che l\'host avvii la simulazione…</div>'}
       </div>`;
+    // Annuncio fisso dell'host: a differenza della chat (che scorre e si perde), resta pinnato
+    // finché l'host non lo cambia — regole della stanza, obiettivo condiviso della dynasty, ecc.
+    const announceHTML = `
+      ${room.announcement ? `<div class="ow-sec-title" style="margin-top:10px">📌 Annuncio dell'host</div><div class="ow-fin-row" style="background:rgba(201,144,47,.12);border-radius:8px">${escapeHtml(room.announcement)}</div>` : ''}
+      ${isHost ? `<button class="dyn-mini" id="mpAnnounceBtn" style="margin-top:${room.announcement ? '6px' : '10px'}">📌 ${room.announcement ? 'Modifica annuncio' : 'Fissa un annuncio'}</button>` : ''}`;
     // Chat semplicissima della stanza: ultimi messaggi (room.chat, room.php li tiene già
     // limitati agli ultimi 60) più un campo per scriverne uno nuovo — visibile in ogni fase,
     // per coordinarsi senza dover uscire dall'app.
@@ -502,6 +509,7 @@
       <p class="ow-sub">${(DIVS[room.div] || {}).name || ''} · condividi il codice <b>${room.code}</b> con chi manca.</p>
       <p class="ow-sub" style="text-align:center">${stageLabel}</p>
       ${inSimStage ? liveTableHTML : playersListHTML}
+      ${announceHTML}
       ${chatHTML}
       <div class="dyn-modal-actions">
         ${terminated ? `
@@ -536,6 +544,8 @@
     const chatLogEl = $('mpChatLog'); if (chatLogEl) chatLogEl.scrollTop = chatLogEl.scrollHeight;
     const renameBtn = $('mpRenameBtn');
     if (renameBtn) renameBtn.onclick = () => confirmRenameRoom(room, playerId);
+    const announceBtn = $('mpAnnounceBtn');
+    if (announceBtn) announceBtn.onclick = () => confirmAnnounce(room, playerId);
     document.querySelectorAll('#owOverlayModal [data-kick]').forEach((el) => el.addEventListener('click', () => confirmKickPlayer(room, playerId, el.dataset.kick)));
     const chatSendBtn = $('mpChatSend');
     const chatInput = $('mpChatInput');
@@ -624,6 +634,11 @@
       finishBtn.disabled = true;
       try {
         mpHostRuns.forEach((run) => finishHostSeason(run));
+        // Supercoppa dei Presidenti: un'amichevole in più fra i due umani meglio piazzati DELLO
+        // STESSO gruppo (categorie diverse non si incrociano) — va risolta qui, gruppo per
+        // gruppo, PRIMA di endSeason (che legge il flag _supercoppaWon e lo trasforma in un
+        // trofeo vero, stesso trattamento di scudetto/Coppa Italia).
+        const supercoppaResults = mpHostRuns.map((run) => resolveSupercoppa(run)).filter(Boolean);
         // Coppa Italia e coppe europee non sono un bracket condiviso (ogni umano ha il suo,
         // vedi resolveMultiplayerTrophies): senza questo passaggio due presidenti di gruppi
         // diversi della stessa stanza potrebbero risultare entrambi vincitori dello stesso
@@ -633,6 +648,7 @@
         const allHumanCtxs = mpHostRuns.reduce((a, run) => a.concat(run.ctxs), []);
         resolveMultiplayerTrophies(allHumanCtxs);
         allHumanCtxs.forEach((ctx) => { if (ctx.seasonActive && ctx.played >= gp(ctx)) endSeason(ctx); });
+        supercoppaResults.forEach((r) => toast('🏆 Supercoppa dei Presidenti: ' + r.winnerClub + ' batte ' + r.loserClub + ' ' + r.gf + '-' + r.ga + (r.pens ? ' (rigori)' : ''), 'success'));
         const results = {};
         mpHostRuns.forEach((run) => {
           run.playerIds.forEach((pid, i) => { results[pid] = run.ctxs[i]; });
@@ -749,6 +765,32 @@
       catch (e) { toast(e.message || 'Impossibile rinominare la stanza.', 'error'); renderLobby(room, playerId); }
     };
     $('ovRenameNo').onclick = () => renderLobby(room, playerId);
+  }
+
+  // Stesso schema di confirmRenameRoom: un textarea invece di un input a riga singola, dato
+  // che un annuncio ("obiettivo della stagione", "regole della lega") è spesso più lungo di un
+  // nome stanza. Vuoto = rimuove l'annuncio pinnato.
+  function confirmAnnounce(room, playerId) {
+    overlay(`
+      <h2>📌 Annuncio della stanza</h2>
+      <p class="ow-sub">Resta pinnato sopra la chat per tutti finché non lo cambi o lo svuoti.</p>
+      <label class="dyn-field"><span>Testo dell'annuncio</span><textarea id="mpAnnounceInput" maxlength="200" rows="3" placeholder="Es. Obiettivo di stagione: tutti in Serie A entro l'anno 10">${room.announcement || ''}</textarea></label>
+      <div class="dyn-modal-actions">
+        <button class="dyn-btn dyn-btn-primary" id="ovAnnounceGo">Salva</button>
+        ${room.announcement ? '<button class="dyn-btn ow-danger" id="ovAnnounceClear">Rimuovi annuncio</button>' : ''}
+        <button class="dyn-btn" id="ovAnnounceNo">Annulla</button>
+      </div>`);
+    $('ovAnnounceGo').onclick = async () => {
+      const text = ($('mpAnnounceInput').value || '').trim();
+      try { const data = await mpApi('announce', { code: room.code, playerId, text }); renderLobby(data.room, playerId); }
+      catch (e) { toast(e.message || 'Impossibile salvare l\'annuncio.', 'error'); renderLobby(room, playerId); }
+    };
+    const clearBtn = $('ovAnnounceClear');
+    if (clearBtn) clearBtn.onclick = async () => {
+      try { const data = await mpApi('announce', { code: room.code, playerId, text: '' }); renderLobby(data.room, playerId); }
+      catch (e) { toast(e.message || 'Impossibile rimuovere l\'annuncio.', 'error'); renderLobby(room, playerId); }
+    };
+    $('ovAnnounceNo').onclick = () => renderLobby(room, playerId);
   }
 
   // Solo l'host: espelle un altro giocatore dalla stanza (stessa richiesta di conferma delle
@@ -1299,7 +1341,7 @@
     if (mpBtn) mpBtn.addEventListener('click', openMultiplayerHub);
     const tutBtn = $('owTutorialBtn');
     if (tutBtn) tutBtn.addEventListener('click', openTutorial);
-    $('owNextBtn').addEventListener('click', () => simMatch());
+    $('owNextBtn').addEventListener('click', () => { if (S._playoffState && !S._playoffState.done) playNextPlayoffStepUI(); else simMatch(); });
     $('owSimBtn').addEventListener('click', () => simToEnd());
     $('owTableBtn').addEventListener('click', showTable);
     $('owClubBtn').addEventListener('click', showClub);
@@ -2410,6 +2452,25 @@
           )).join('')}
           </div>` : ''}
       </div>`;
+    // Squadra della stagione: gli 11 migliori DELLA TUA rosa (non un'ideale di tutta la
+    // categoria — i rivali/bot non hanno una rosa di individui, solo un numero di forza
+    // complessivo, vedi rivals() in sim.js), un 4-3-3 scelto per overall con un piccolo peso
+    // per chi ha inciso di più nel proprio ruolo (gol per gli attaccanti, assist a centrocampo,
+    // clean sheet in porta).
+    const xiShape = { POR: 1, DIF: 4, CEN: 3, ATT: 3 };
+    const xiScore = (p) => p.ovr + (p.pos === 'ATT' ? (p.seasonGoals || 0) * 0.3 : p.pos === 'CEN' ? (p.seasonAssists || 0) * 0.3 : p.pos === 'POR' ? (p.seasonCleanSheets || 0) * 0.3 : 0);
+    const bestXiHTML = `
+      <div class="ow-sec">
+        <div class="ow-sec-title">⭐ Squadra della stagione</div>
+        <div class="ow-sub">L'undici migliore che hai schierato quest'anno</div>
+        ${Object.keys(xiShape).map((role) => {
+          const picks = S.squad.filter((p) => p.pos === role).sort((a, b) => xiScore(b) - xiScore(a)).slice(0, xiShape[role]);
+          return picks.map((p) => statRowHTML(
+            `<span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span><span class="postag postag-${p.pos}">${p.pos}</span><span class="nm">${flagOf(p)}${p.n}</span>`,
+            `${p.pos === 'ATT' ? '<span style="color:var(--gold)">⚽ ' + (p.seasonGoals || 0) + '</span>' : p.pos === 'CEN' ? '<span>👟 ' + (p.seasonAssists || 0) + '</span>' : p.pos === 'POR' ? '<span style="color:var(--good)">🧤 ' + (p.seasonCleanSheets || 0) + '</span>' : ''}`
+          )).join('');
+        }).join('')}
+      </div>`;
     // Un'animazione speciale per OGNI coppa/titolo vinto in questa stagione, non solo per i
     // 4 grandi momenti: scudetto (di qualunque categoria, non solo Serie A), Coppa Italia,
     // e ciascuna delle tre coppe europee ha il suo banner dedicato. Il Tripletе le sostituisce
@@ -2461,6 +2522,7 @@
         <div class="ow-fin-row total" style="margin-top:10px"><span>Valore del club</span><b>${fmtMoney(e.worth)}</b></div>
       </div>
       ${statsHTML}
+      ${bestXiHTML}
       <button class="dyn-btn" id="owShareBtn">📤 Condividi la stagione</button>
       <button class="dyn-btn dyn-btn-primary" id="owEndBtn">${e.fate ? 'Affronta le conseguenze' : S.season >= MAX_SEASONS ? 'Concludi la tua carriera' : 'Torna in sala del consiglio'}</button>`;
     $('owShareBtn').onclick = exportSeasonCard;
@@ -2578,9 +2640,11 @@
       const res = await fetch('leaderboard.php');
       const data = await res.json();
       if (!data || !data.ok) throw new Error('bad response');
-      const rows = (data.entries || []).map((e, i) => `<div class="ow-fin-row"><span>${i + 1}. ${e.club}<small style="display:block;color:var(--muted)">${e.owner} · ${(DIVS[e.div] || {}).name || ''} · ${e.trophies} trofe${e.trophies === 1 ? 'o' : 'i'}</small></span><b class="good">${Math.round(e.score).toLocaleString('it-IT')}</b></div>`).join('');
+      const top10 = (data.entries || []).slice(0, 10);
+      const diffLabel = (key) => (DIFFICULTIES.find((d) => d.key === key) || {}).label || 'Media';
+      const rows = top10.map((e, i) => `<div class="ow-fin-row"><span>${i + 1}. ${e.club}<small style="display:block;color:var(--muted)">${e.owner} · ${(DIVS[e.div] || {}).name || ''} · ${e.trophies} trofe${e.trophies === 1 ? 'o' : 'i'} · difficoltà ${diffLabel(e.difficulty)}</small></span><b class="good">${Math.round(e.score).toLocaleString('it-IT')}</b></div>`).join('');
       overlay(`<h2>🌍 Classifica presidenti</h2>
-        <div class="ow-sub" style="text-align:center">Le migliori carriere condivise da chi gioca</div>
+        <div class="ow-sub" style="text-align:center">Le migliori 10 carriere condivise da chi gioca</div>
         <div style="max-height:58vh;overflow:auto;margin:10px -6px 4px">${rows || '<div class="ow-sub" style="margin:14px 0">Ancora nessuna carriera condivisa: sii il primo a fine partita.</div>'}</div>
         <div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovClose">Chiudi</button></div>`);
       $('ovClose').onclick = closeOverlay;
@@ -2612,15 +2676,24 @@
     const pp = projectedPos();
     $('owProjChip').querySelector('b').textContent = pp ? ord(pp) : '-';
     $('owWorthChip').querySelector('b').textContent = fmtMoney(computeWorth());
-    $('owNextBtn').disabled = !S.seasonActive || S.played >= gp();
-    $('owSimBtn').disabled = !S.seasonActive || S.played >= gp();
-    $('owNextBtn').textContent = S.played >= gp() ? 'Stagione completata' : 'Gioca prossima partita';
+    const inPlayoff = S._playoffState && !S._playoffState.done;
+    $('owNextBtn').disabled = inPlayoff ? false : (!S.seasonActive || S.played >= gp());
+    $('owSimBtn').disabled = inPlayoff || !S.seasonActive || S.played >= gp();
+    $('owNextBtn').textContent = inPlayoff ? '🏟️ Gioca la prossima gara di playoff' : (S.played >= gp() ? 'Stagione completata' : 'Gioca prossima partita');
   }
 
   // Piccolo promemoria persistente dell'obiettivo dichiarato a inizio stagione (vedi
-  // seasonTarget in sim.js), visibile per tutta la durata del campionato.
+  // seasonTarget in sim.js), visibile per tutta la durata del campionato — durante il playoff
+  // (stagione già chiusa, obiettivo ormai deciso) mostra invece chi si affronta nella prossima
+  // gara, la stessa vetrina usata per l'obiettivo.
   function renderSeasonTarget() {
     const el = $('owSeasonTarget'); if (!el) return;
+    if (S._playoffState && !S._playoffState.done) {
+      const next = S._playoffState.queue[0];
+      const oppName = next ? (S.table[next.oppPos - 1] || {}).name : null;
+      el.innerHTML = `<span class="ow-target-pill playoff">🏟️ Playoff${oppName ? ': ' + next.stage + ' vs ' + oppName : ' in corso'}</span>`;
+      return;
+    }
     const t = S.seasonTargetInfo;
     el.innerHTML = t ? `<span class="ow-target-pill ${t.key}">🎯 Obiettivo: ${t.label}</span>` : '';
   }
@@ -2730,6 +2803,48 @@
     $('owLog').prepend(row);
   }
 
+  // Una gara/gamba di playoff (playNextPlayoffStep, sim.js), loggata nello stesso stile delle
+  // coppe: una gamba di andata/ritorno mostra solo il punteggio (il verdetto arriva con la riga
+  // "aggregato" subito dopo), una gara secca o il turno preliminare mostrano già l'esito.
+  function logPlayoffEntry(m) {
+    const row = document.createElement('div'); row.className = 'mrow cup';
+    const usSc = fmtScorers(m.goalsFor || []), themSc = fmtScorers(m.goalsAgainst || []);
+    const scorersHTML = (usSc || themSc) ? `<div class="mrow-scorers">
+        ${usSc ? '<div class="sc us">⚽ ' + usSc + '</div>' : ''}
+        ${themSc ? '<div class="sc them">🥅 ' + themSc + '</div>' : ''}
+      </div>` : '';
+    if (m.leg) {
+      row.innerHTML = `<div class="mrow-mw">🏟️ PO</div>
+        <div class="mrow-main"><div class="mrow-fix">${m.stage} · ${m.leg} <span class="ha">vs ${m.opp}</span></div>${scorersHTML}</div>
+        <div class="mrow-res">${m.gf}-${m.ga}</div>`;
+    } else if (m.aggregate) {
+      const note = m.tiebreak === 'pens' ? ' (rigori)' : m.tiebreak === 'seed' ? ' (meglio piazzato)' : m.tiebreak === 'dr' ? ' (differenza reti)' : '';
+      row.innerHTML = `<div class="mrow-mw">🏟️ PO</div>
+        <div class="mrow-main"><div class="mrow-fix">${m.stage} <span class="ha">vs ${m.opp}</span></div><div class="mrow-you">${m.won ? 'Passa il turno' : 'Eliminato'}${note}</div></div>
+        <div class="mrow-res ${m.won ? 'W' : 'L'}">${m.gf}-${m.ga}</div>`;
+    } else {
+      const note = m.extra ? ' (supplementari)' : m.seedWin ? ' (meglio piazzato)' : m.pens ? ' (rigori)' : '';
+      row.innerHTML = `<div class="mrow-mw">🏟️ PO</div>
+        <div class="mrow-main"><div class="mrow-fix">${m.stage} <span class="ha">vs ${m.opp}</span></div><div class="mrow-you">${m.won ? 'Vince' : 'Eliminato'}${note}</div>${scorersHTML}</div>
+        <div class="mrow-res ${m.won ? 'W' : 'L'}">${m.gf}-${m.ga}</div>`;
+    }
+    $('owLog').prepend(row);
+  }
+
+  // Un click su "Gioca la prossima gara di playoff": una sola gara/gamba per chiamata
+  // (playNextPlayoffStep, sim.js), loggata subito. Quando la coda si esaurisce (vittoria della
+  // finale o eliminazione), richiama endSeason: la seconda chiamata trova ctx._playoffState.done
+  // e completa il resoconto di fine stagione da lì (vedi sim.js).
+  function playNextPlayoffStepUI() {
+    const res = playNextPlayoffStep(S);
+    if (!res) return;
+    if (res.entry) logPlayoffEntry(res.entry);
+    if (DynSound && res.entry && res.entry.gf > 0) DynSound.goal();
+    if (res.done) { if (DynSound) DynSound.whistle(); endSeason(S); return; }
+    saveGame();
+    renderHud(); renderSeasonTarget();
+  }
+
   // Niente più "Media" (punti a partita) riga per riga: con un solo divisore condiviso
   // (le partite giocate DA TE) applicato al punteggio di squadre che magari non hanno nemmeno
   // giocato lo stesso numero di gare in quel preciso istante, il numero era più fuorviante che
@@ -2811,12 +2926,29 @@
       ${meterHTML('Gradimento proprietario', S.ownerRating, S.ownerRating < 35)}
       <div class="dyn-modal-actions" style="margin-top:12px">
         <button class="dyn-btn" id="ovEditCrest">🎨 Modifica stemma</button>
+        ${S.derbyRecord && Object.keys(S.derbyRecord).length ? '<button class="dyn-btn" id="ovDerbyHistory">🥊 Storico derby</button>' : ''}
         <button class="dyn-btn" id="ovSellNow">💷 Vendi per ${fmtMoney(worth)}</button>
         <button class="dyn-btn dyn-btn-primary" id="ovClose">Chiudi</button>
       </div>`);
     $('ovClose').onclick = closeOverlay;
     $('ovSellNow').onclick = () => { closeOverlay(); confirmSell(); };
     $('ovEditCrest').onclick = showCrestEditor;
+    const derbyBtn = $('ovDerbyHistory');
+    if (derbyBtn) derbyBtn.onclick = showDerbyHistory;
+  }
+
+  // Il bilancio testa a testa di ogni derby storico (S.derbyRecord, sim.js: simMatch) esiste
+  // già da tempo ma restava sepolto nel log partita: qui una vista dedicata, ordinata dal
+  // derby più giocato al meno giocato.
+  function showDerbyHistory() {
+    const entries = Object.entries(S.derbyRecord || {}).sort((a, b) => (b[1].w + b[1].d + b[1].l) - (a[1].w + a[1].d + a[1].l));
+    overlay(`<h2>🥊 Storico derby</h2>
+      <div class="ow-sub" style="text-align:center">Bilancio testa a testa con ${S.club} contro le rivali storiche</div>
+      <div style="max-height:58vh;overflow:auto;margin:10px -6px 4px">
+        ${entries.length ? entries.map(([opp, r]) => `<div class="ow-fin-row"><span>${opp}</span><b>${r.w}V ${r.d}N ${r.l}P</b></div>`).join('') : '<div class="ow-sub" style="margin:14px 0">Nessun derby giocato ancora.</div>'}
+      </div>
+      <div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovClose">Chiudi</button></div>`);
+    $('ovClose').onclick = () => { closeOverlay(); showClub(); };
   }
 
   // Riapre lo stesso editor visto in fase di creazione (forma + due colori), ma per il
