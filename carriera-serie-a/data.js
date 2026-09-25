@@ -76,18 +76,22 @@
     { base: 95, premium: 99 },
   ];
 
-  // Il modulo scelto ora pesa davvero sulla partita (prima era solo l'anteprima grafica):
-  // atk/def sono un piccolo delta aggiunto/sottratto al numero atteso di gol fatti/subiti.
-  // Un modulo più offensivo (3-4-3) segna un po' di più ma incassa un po' di più; uno più
-  // difensivo (5-3-2) il contrario. Il 4-3-3 resta il modulo "neutro" di riferimento.
+  // Il modulo scelto pesa davvero sulla partita: atk/def sono un piccolo delta aggiunto/
+  // sottratto al numero atteso di gol fatti/subiti. Un modulo più offensivo (3-4-3) segna un
+  // po' di più ma incassa un po' di più; uno più difensivo (5-3-2) il contrario. Il 4-3-3
+  // resta il modulo "neutro" di riferimento. `need` è quanti giocatori per ruolo servono
+  // davvero per schierarlo (usato sia da pickMatchLineup per chi scende in campo, sia da
+  // formationFitMalus in sim.js: chi sceglie un modulo che la rosa non copre bene — es. un
+  // 4-2-4 con un solo vero attaccante — gioca qualcuno fuori ruolo e ne paga un prezzo in
+  // campo, non solo sulla carta).
   const FORMATION_TACTICS = {
-    '433': { atk: 0, def: 0 },
-    '442': { atk: -0.03, def: -0.05 },
-    '352': { atk: 0.03, def: 0.04 },
-    '4231': { atk: 0.06, def: 0.02 },
-    '343': { atk: 0.14, def: 0.12 },
-    '532': { atk: -0.14, def: -0.12 },
-    '424': { atk: 0.22, def: 0.20 },   // il più sbilanciato in avanti di tutti: 4 attaccanti, solo 2 mediani a coprire
+    '433': { atk: 0, def: 0, need: { POR: 1, DIF: 4, CEN: 3, ATT: 3 } },
+    '442': { atk: -0.03, def: -0.05, need: { POR: 1, DIF: 4, CEN: 4, ATT: 2 } },
+    '352': { atk: 0.03, def: 0.04, need: { POR: 1, DIF: 3, CEN: 5, ATT: 2 } },
+    '4231': { atk: 0.06, def: 0.02, need: { POR: 1, DIF: 4, CEN: 5, ATT: 1 } },
+    '343': { atk: 0.14, def: 0.12, need: { POR: 1, DIF: 3, CEN: 4, ATT: 3 } },
+    '532': { atk: -0.14, def: -0.12, need: { POR: 1, DIF: 5, CEN: 3, ATT: 2 } },
+    '424': { atk: 0.22, def: 0.20, need: { POR: 1, DIF: 4, CEN: 2, ATT: 4 } },   // il più sbilanciato in avanti di tutti: 4 attaccanti, solo 2 mediani a coprire
   };
 
   // Eventi narrativi casuali: pura ambientazione fra una partita e l'altra (non toccano
@@ -492,6 +496,94 @@
             S.sent = clamp(S.sent - 2, 0, 100);
           },
         },
+      ],
+    },
+    {
+      icon: '🏥', title: 'Infortunio serio alla vigilia',
+      // L'evento narrativo dedicato ai casi DAVVERO gravi (settimane, non partite): quelli
+      // automatici di ogni giornata (rollAbsences, sim.js) restano muscolari/traumatici brevi,
+      // qui invece c'è una vera scelta con un rischio reale, non solo un tiro a dadi silenzioso.
+      requires: (S) => S.squad && S.squad.some((p) => !p.loan && !(p.outWeeks > 0)),
+      build: (S) => ({ player: S.squad.filter((p) => !p.loan && !(p.outWeeks > 0)).sort((a, b) => b.ovr - a.ovr)[0] }),
+      text: (S, ctx) => (ctx && ctx.player ? ctx.player.n : 'Un titolare') + ' si ferma per un problema serio: lo staff medico propone due strade diverse per il recupero.',
+      choices: [
+        {
+          label: 'Operare subito',
+          hint: 'Stop lungo ma certo: fuori 10-14 settimane, nessun rischio di ricaduta',
+          apply: (S, ctx) => {
+            const p = ctx && ctx.player; if (!p) return;
+            p.outWeeks = Math.max(p.outWeeks || 0, 10 + rnd(5));
+            p._muscleRisk = 0;
+            S.sent = clamp(S.sent - 2, 0, 100);
+          },
+        },
+        {
+          label: 'Terapie conservative',
+          hint: 'Stop più corto (5-8 settimane), ma il 35% delle volte non basta e si allunga',
+          apply: (S, ctx) => {
+            const p = ctx && ctx.player; if (!p) return;
+            let weeks = 5 + rnd(4);
+            if (Math.random() < 0.35) { weeks += 6 + rnd(5); toast(p.n + ': la terapia conservativa non basta, lo stop si allunga.'); }
+            p.outWeeks = Math.max(p.outWeeks || 0, weeks);
+            S.sent = clamp(S.sent - 1, 0, 100);
+          },
+        },
+      ],
+    },
+    {
+      icon: '📝', title: 'Cessione imposta dalla proprietà',
+      requires: (S) => S.squad && S.squad.filter((p) => !p.loan).length > MIN_SQUAD + 2,
+      build: (S) => { const pool = S.squad.filter((p) => !p.loan).sort((a, b) => b.ovr - a.ovr); return { player: pool[Math.min(2, pool.length - 1)] }; },
+      text: (S, ctx) => 'La proprietà chiede di cedere ' + (ctx && ctx.player ? ctx.player.n : 'un big della rosa') + ' per far quadrare i conti: un club è già pronto a chiudere in fretta, senza passare dal mercato vero e proprio.',
+      choices: [
+        {
+          label: 'Accetta la cessione',
+          hint: 'Incassi subito una cifra vicina al valore di mercato, ma il giocatore se ne va',
+          apply: (S, ctx) => {
+            const p = ctx && ctx.player; if (!p) return;
+            const i = S.squad.findIndex((x) => x.pid === p.pid); if (i < 0) return;
+            const fee = Math.round(playerValue(p) * (0.85 + Math.random() * 0.2));
+            S.budget += fee;
+            pushAlumnus(p, S);
+            S.squad.splice(i, 1);
+            S.sent = clamp(S.sent - 5, 0, 100);
+            toast(p.n + ' ceduto per ' + fmtMoney(fee) + ': la proprietà è soddisfatta.', 'money');
+          },
+        },
+        { label: 'Rifiuta, è incedibile', sent: 4, ownerRating: -3 },
+      ],
+    },
+    {
+      icon: '🎉', title: 'Colpo a sorpresa fuori sessione',
+      requires: (S) => S.budget > 2e6 && S.squad && S.squad.length < 30,
+      text: 'Un intermediario di fiducia segnala un\'occasione più unica che rara: un giocatore svincolato, chiaramente sopra la media della categoria, disposto a firmare subito — fuori da ogni finestra di mercato.',
+      choices: [
+        {
+          label: 'Tesseralo subito',
+          hint: 'Un giocatore via via più forte della media della categoria, stipendio normale',
+          apply: (S) => {
+            const d = DIVS[S.div] || {};
+            const ovr = clamp((d.avg || 60) + 6 + rnd(8), (d.avg || 60), (d.avg || 60) + 16);
+            const nat = pickNationality(S.div);
+            const p = { n: genName(nat), nat, ovr, age: genAge(26, 4, 21, 32), wage: wageFor(ovr), yrs: 2 + rnd(2), pid: newPid(S), pos: randPos(S.squad, S), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 };
+            S.squad.push(p);
+            S.sent = clamp(S.sent + 3, 0, 100);
+            toast(p.n + ' firma a parametro zero: un colpo davvero a sorpresa.', 'success');
+          },
+        },
+        { label: 'Lascia perdere, rosa già definita', sent: -1 },
+      ],
+    },
+    {
+      icon: '⚠️', title: 'Crisi societaria vera',
+      text: 'Voci sempre più insistenti parlano di una crisi di liquidità della proprietà: i tifosi chiedono chiarezza, la stampa non molla la presa.',
+      choices: [
+        {
+          label: 'Convoca un\'assemblea pubblica con i tifosi',
+          hint: 'Costi di gestione della crisi (-3% di budget), ma +4 gradimento se la affronti a viso aperto',
+          apply: (S) => { S.budget = Math.round(S.budget * 0.97); S.ownerRating = clamp(S.ownerRating + 4, 0, 100); S.sent = clamp(S.sent - 2, 0, 100); },
+        },
+        { label: 'Nega tutto, tira dritto', sent: -6, ownerRating: -5 },
       ],
     },
   ];
@@ -1442,6 +1534,38 @@
     { n: 'Frank Lampard', rating: 66, nat: 'ENG', spec: 'motivator' },
     { n: 'Steven Gerrard', rating: 65, nat: 'ENG', spec: 'motivator' },
     { n: 'Michael Carrick', rating: 63, nat: 'ENG', spec: 'tactician' },
+  ];
+
+  // Direttori sportivi veri, stesso trattamento di REAL_MANAGERS (genSportingDirector,
+  // sim.js): `spec` coerente con la fama reale — chi è noto per gli scovatori di talenti va
+  // su 'scout_network', chi per le cessioni ben piazzate su 'sales_expert', gli altri su
+  // 'all_rounder' (vedi DS_SPECS più sopra).
+  const REAL_DS = [
+    { n: 'Txiki Begiristain', rating: 90, nat: 'ESP', spec: 'all_rounder' },
+    { n: 'Michael Edwards', rating: 89, nat: 'ENG', spec: 'sales_expert' },
+    { n: 'Ramon Rodriguez "Monchi"', rating: 89, nat: 'ESP', spec: 'scout_network' },
+    { n: 'Cristiano Giuntoli', rating: 88, nat: 'ITA', spec: 'scout_network' },
+    { n: 'Giovanni Sartori', rating: 87, nat: 'ITA', spec: 'scout_network' },
+    { n: 'Luis Campos', rating: 87, nat: 'POR', spec: 'scout_network' },
+    { n: 'Andrea Berta', rating: 86, nat: 'ITA', spec: 'scout_network' },
+    { n: 'Fabio Paratici', rating: 85, nat: 'ITA', spec: 'sales_expert' },
+    { n: 'Piero Ausilio', rating: 84, nat: 'ITA', spec: 'sales_expert' },
+    { n: 'Edu Gaspar', rating: 83, nat: 'BRA', spec: 'scout_network' },
+    { n: 'Marc Overmars', rating: 82, nat: 'NED', spec: 'scout_network' },
+    { n: 'Igli Tare', rating: 80, nat: 'ALB', spec: 'sales_expert' },
+    { n: 'Sven Mislintat', rating: 79, nat: 'GER', spec: 'scout_network' },
+    { n: 'Frederic Massara', rating: 78, nat: 'ITA', spec: 'all_rounder' },
+    { n: 'Walter Sabatini', rating: 76, nat: 'ITA', spec: 'scout_network' },
+    { n: 'Tiago Pinto', rating: 75, nat: 'POR', spec: 'all_rounder' },
+    { n: 'Riccardo Bigon', rating: 74, nat: 'ITA', spec: 'all_rounder' },
+    { n: 'Federico Cherubini', rating: 73, nat: 'ITA', spec: 'sales_expert' },
+    { n: 'Marco Ottolini', rating: 72, nat: 'ITA', spec: 'all_rounder' },
+    { n: 'Sean Sogliano', rating: 71, nat: 'ITA', spec: 'all_rounder' },
+    { n: 'Roberto Goretti', rating: 70, nat: 'ITA', spec: 'scout_network' },
+    { n: 'Pietro Accardi', rating: 69, nat: 'ITA', spec: 'scout_network' },
+    { n: 'Massimiliano Mirabelli', rating: 68, nat: 'ITA', spec: 'sales_expert' },
+    { n: 'Manuel Gerolin', rating: 67, nat: 'ITA', spec: 'scout_network' },
+    { n: 'Giorgio Perinetti', rating: 65, nat: 'ITA', spec: 'all_rounder' },
   ];
 
   /* ---------------- stato ---------------- */

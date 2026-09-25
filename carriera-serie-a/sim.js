@@ -208,9 +208,13 @@
   }
 
   // Dopo la partita, chi ha giocato rischia un infortunio (più probabile più si va avanti
-  // con l'età) o, se titolare, un cartellino che lo terrà fuori dalla prossima. Leggero di
-  // proposito: qui l'obiettivo è dare peso alla gestione della rosa, non simulare un vero
-  // bollettino medico.
+  // con l'età, o se ha appena recuperato da un problema muscolare senza il tempo di
+  // rifiatare davvero) o, se titolare, un cartellino che lo terrà fuori dalla prossima.
+  // Due tipi di infortunio, non più uno solo: muscolare (breve, ma con un rischio di ricaduta
+  // se rientra troppo presto — p._muscleRisk, settimane residue del rischio) e traumatico
+  // (più lungo, nessuna ricaduta perché non è un affaticamento). Resta leggero di proposito:
+  // l'obiettivo è dare peso alla gestione della rosa, non un vero bollettino medico — i casi
+  // davvero gravi restano un evento narrativo a parte (data.js), non un tiro automatico qui.
   function rollAbsences(lineup, ctx = S) {
     const events = [];
     ctx.squad.forEach((p) => {
@@ -220,15 +224,23 @@
       // più sana, sia sul fronte infortuni sia su quello cartellini.
       const mgrMedic = ctx.manager && ctx.manager.spec === 'medic' ? 0.7 : 1;
       const injMult = diffOf(null, ctx).injuryMult * mgrMedic;
-      const injChance = (p.age >= 32 ? 0.03 : p.age >= 28 ? 0.02 : 0.013) * injMult;
+      const recidivism = p._muscleRisk > 0 ? 0.02 * p._muscleRisk : 0;
+      const injChance = ((p.age >= 32 ? 0.03 : p.age >= 28 ? 0.02 : 0.013) + recidivism) * injMult;
+      let injuredNow = false;
       if (Math.random() < injChance) {
-        const weeks = 2 + rnd(4);
+        injuredNow = true;
+        const muscular = Math.random() < 0.65;
+        const weeks = muscular ? 1 + rnd(3) : 4 + rnd(4);
         p.outWeeks = weeks;
-        events.push({ n: p.n, nat: p.nat, kind: 'inj', weeks });
+        p._muscleRisk = muscular ? 3 : 0;
+        events.push({ n: p.n, nat: p.nat, kind: 'inj', weeks, type: muscular ? 'muscular' : 'traumatic' });
       } else if (lineup.starters.has(p.pid) && Math.random() < 0.018 * injMult) {
         p.suspMatches = 1;
         events.push({ n: p.n, nat: p.nat, kind: 'susp' });
       }
+      // La finestra di rischio ricaduta scende di una settimana ogni volta che gioca senza
+      // farsi male di nuovo — non mentre è fermo ai box (lì non sta ancora rischiando nulla).
+      if (!injuredNow && p._muscleRisk > 0) p._muscleRisk--;
     });
     return events;
   }
@@ -263,7 +275,9 @@
       const byPos = { POR: [], DIF: [], CEN: [], ATT: [] };
       rated.forEach((r) => { if (!starters.has(r.p.pid) && byPos[r.p.pos]) byPos[r.p.pos].push(r); });
       Object.keys(byPos).forEach((k) => byPos[k].sort((a, b) => b.eff - a.eff));
-      const need = { POR: 1, DIF: 4, CEN: 3, ATT: 3 };
+      // Il fabbisogno di ruoli segue il modulo scelto (FORMATION_TACTICS, data.js), non più
+      // sempre un 4-3-3 fisso: un 4-2-4 prova davvero a schierare 4 attaccanti, non 3.
+      const need = (FORMATION_TACTICS[ctx.formation] || FORMATION_TACTICS['433']).need;
       Object.keys(need).forEach((k) => byPos[k].slice(0, Math.max(0, need[k] - [...starters].filter((pid) => squad.find((p) => p.pid === pid)?.pos === k).length)).forEach((r) => starters.add(r.p.pid)));
       if (starters.size < target) rated.slice().sort((a, b) => b.eff - a.eff).forEach((r) => { if (starters.size < target) starters.add(r.p.pid); });
     }
@@ -518,7 +532,11 @@
       const p = pickScorer(lineup, ctx);
       if (p) {
         p.seasonGoals = (p.seasonGoals || 0) + 1;
-        if (Math.random() < 0.8) { const a = pickAssister(p.pid, lineup, ctx); if (a) a.seasonAssists = (a.seasonAssists || 0) + 1; }
+        // Una prestazione da ricordare spinge la forma più su di quanto la regressione verso
+        // la media (regressPlayerForm, chiamata prima di questa) l'abbia appena tirata giù:
+        // un gol pesa più di un assist, entrambi più della semplice regressione.
+        p.formSeason = clamp((p.formSeason || 1) + 0.05, 0.45, 1.9);
+        if (Math.random() < 0.8) { const a = pickAssister(p.pid, lineup, ctx); if (a) { a.seasonAssists = (a.seasonAssists || 0) + 1; a.formSeason = clamp((a.formSeason || 1) + 0.03, 0.45, 1.9); } }
       }
       return { min, name: p ? p.n : 'Autorete' };
     });
@@ -529,7 +547,20 @@
   function registerCleanSheet(ga, lineup, ctx = S) {
     if (ga !== 0) return;
     const p = matchGK(lineup, ctx);
-    if (p) p.seasonCleanSheets = (p.seasonCleanSheets || 0) + 1;
+    if (p) { p.seasonCleanSheets = (p.seasonCleanSheets || 0) + 1; p.formSeason = clamp((p.formSeason || 1) + 0.04, 0.45, 1.9); }
+  }
+
+  // La forma di un giocatore non è più un numero fissato a caso a inizio stagione e mai più
+  // toccato: chi scende in campo regredisce un filo verso la media (8% della distanza da 1)
+  // ad ogni partita, poi un gol/assist/clean sheet (genGoals/registerCleanSheet, chiamate
+  // subito dopo questa) lo spinge di nuovo su — una vera striscia positiva/negativa nasce da
+  // sé, partita dopo partita, invece di restare un unico numero per tutta la stagione.
+  function regressPlayerForm(lineup, ctx = S) {
+    ctx.squad.forEach((p) => {
+      if (!(lineup.starters.has(p.pid) || lineup.subs.has(p.pid))) return;
+      const cur = p.formSeason || 1;
+      p.formSeason = clamp(cur + (1 - cur) * 0.08, 0.45, 1.9);
+    });
   }
 
   // Raggruppa i gol per marcatore per una riga compatta tipo "Rossi 12', 55' · Bianchi 78'".
@@ -898,11 +929,19 @@
   // formazioni): stessa curva salariale scalata al 55%.
   const dsSalaryFor = (rating, ctx = S) => Math.round(mgrSalaryFor(rating, ctx) * 0.55 / 1e3) * 1e3;
 
-  // Generato come un allenatore ma senza pool di "veri" direttori sportivi noti (non ha senso
-  // qui quanto per gli allenatori): una specializzazione (DS_SPECS, data.js) che tocca il
-  // mercato in uscita invece della squadra in campo.
+  // Generato come un allenatore: un candidato su circa 3 è un vero direttore sportivo (vedi
+  // REAL_DS in data.js), con la specializzazione coerente con la sua fama reale invece che
+  // a caso — non sostituiscono i generati, si aggiungono come opzione possibile in più.
   function genSportingDirector(bonus, ctx = S) {
     const r = clamp(divOf(ctx).mgrBase - 6 + rnd(14) + (bonus || 0), 40, 90);
+    if (Math.random() < 0.35) {
+      const near = REAL_DS.filter((m) => Math.abs(m.rating - r) <= 8);
+      if (near.length) {
+        const m = pick(near);
+        const salary = Math.round(dsSalaryFor(m.rating, ctx) * (m.spec === 'all_rounder' ? 0.85 : 1) / 1e3) * 1e3;
+        return { n: m.n, rating: m.rating, salary, nat: natByCode(m.nat), real: true, spec: m.spec };
+      }
+    }
     const nat = pickNationality(ctx.div);
     const spec = pick(DS_SPECS).key;
     const salary = Math.round(dsSalaryFor(r, ctx) * (spec === 'all_rounder' ? 0.85 : 1) / 1e3) * 1e3;
@@ -989,7 +1028,34 @@
   // a chi ha avuto una stagione intera per consolidarsi: un piccolo malus, non un muro.
   const promoStreakMalus = (ctx = S) => (ctx.promoStreak > 0 ? 2.2 * diffOf(null, ctx).promoStreakMalusMult * (ctx.manager && ctx.manager.spec === 'motivator' ? 0.5 : 1) : 0);
 
-  const teamEff = (ctx = S) => squadStr(ctx) + mgrBonus(ctx) + (ctx.form || 0) - promoStreakMalus(ctx) + diffOf(null, ctx).teamEffDelta + captainBonus(ctx);
+  // Una "personalità tattica" per un rivale bot, fissata a inizio stagione (mai un numero
+  // di forza e basta): pescata dalla stessa scala di FORMATION_TACTICS, letta poi al
+  // contrario in rollMatchScore (un avversario aggressivo segna di più contro di te, uno
+  // con una difesa fragile ti regala qualche gol in più).
+  const randomFmt = () => { const t = FORMATION_TACTICS[pick(Object.keys(FORMATION_TACTICS))]; return { atk: t.atk, def: t.def }; };
+
+  // Quanto la rosa disponibile (non infortunati/squalificati) copre DAVVERO il modulo scelto:
+  // ogni titolare che manca in un ruolo (es. un 4-2-4 con un solo vero attaccante) va coperto
+  // da qualcuno fuori posto, un prezzo in campo — non solo l'inquadratura sbagliata a bordo
+  // campo. Il 4-3-3 di riferimento, con una rosa equilibrata, non paga mai nulla qui.
+  function formationFitMalus(ctx = S) {
+    const need = (FORMATION_TACTICS[ctx.formation] || FORMATION_TACTICS['433']).need;
+    const avail = ctx.squad.filter((p) => !(p.outWeeks > 0) && !(p.suspMatches > 0));
+    let malus = 0;
+    ['DIF', 'CEN', 'ATT'].forEach((pos) => {
+      const have = avail.filter((p) => p.pos === pos).length;
+      const short = need[pos] - have;
+      if (short > 0) malus += short * 0.9;
+    });
+    return malus;
+  }
+
+  // Quante settimane cariche di fila (coppa+campionato nella stessa settimana, vedi
+  // maybeCupRound) la squadra si porta dietro: 0.35 a settimana, fino a un tetto di 3
+  // settimane (-1.05) — un preparatore di ferro (spec `medic`) la dimezza.
+  const fatigueMalus = (ctx = S) => (ctx._congestion || 0) * 0.35 * (ctx.manager && ctx.manager.spec === 'medic' ? 0.5 : 1);
+
+  const teamEff = (ctx = S) => squadStr(ctx) + mgrBonus(ctx) + (ctx.form || 0) - promoStreakMalus(ctx) - formationFitMalus(ctx) - fatigueMalus(ctx) + diffOf(null, ctx).teamEffDelta + captainBonus(ctx);
 
   // Un capitano disponibile (non infortunato, non squalificato) dà una piccola spinta in più
   // alla squadra — un modo semplice per rendere "chi porta la fascia" qualcosa di più di
@@ -1299,6 +1365,7 @@
     ctx._newAchievements = [];
     ctx._motmSnapshot = {};
     ctx._playoffState = null;
+    ctx._congestion = 0;
     if (ctx.budget < 0) { ctx.budget = Math.round(ctx.budget * 0.6); if (local) toast('Il debito di inizio stagione si riduce del 40%: ora sei a ' + fmtMoney(ctx.budget) + '.'); }
     // Ultima chiamata per riscattare i prestiti dell'estate scorsa (bottone 💰 Riscatta
     // nella rosa, in sala del consiglio): chi non è stato riscattato torna al suo club ora.
@@ -1339,7 +1406,7 @@
     } else {
       const usedMgrNames = new Set(ctx.manager && ctx.manager.n ? [ctx.manager.n] : []);
       const mgrRegistry = ctx._mgrByClub || (ctx._mgrByClub = {});
-      ctx.opps = rivals(ctx).map((o) => ({ name: o.n, s: o.s, effS: clamp(o.s + gaussInt(0, 8), 30, 99), rrPts: 0, rrGF: 0, rrGA: 0, vsPts: 0, vsGF: 0, vsGA: 0, mgr: managerForClub(o.n, 0, ctx, usedMgrNames, mgrRegistry) }));
+      ctx.opps = rivals(ctx).map((o) => ({ name: o.n, s: o.s, effS: clamp(o.s + gaussInt(0, 8), 30, 99), rrPts: 0, rrGF: 0, rrGA: 0, vsPts: 0, vsGF: 0, vsGA: 0, mgr: managerForClub(o.n, 0, ctx, usedMgrNames, mgrRegistry), fmt: randomFmt() }));
       simRivalRoundRobin(ctx.opps, RIVAL_DRAW_BOOST[ctx.div]);
       const fx = [];
       ctx.opps.forEach((o, i) => { fx.push({ opp: i, home: true }); fx.push({ opp: i, home: false }); });
@@ -1395,31 +1462,55 @@
   // Punteggio di una partita a partire dal solo divario di forza (+ vantaggio/svantaggio
   // casa già incluso in `d`): estratto da simMatch così l'host multiplayer può tirarlo UNA
   // volta sola per una partita umano-contro-umano e imporre lo stesso risultato a entrambi i
-  // lati, invece di lasciare che ciascuno lo tiri per conto suo (e diverga).
-  function rollMatchScore(d, ctx = S) {
+  // lati, invece di lasciare che ciascuno lo tiri per conto suo (e diverga). `oppFmt`
+  // (opzionale, { atk, def }): la tendenza tattica dell'AVVERSARIO — prima solo il TUO modulo
+  // pesava sul punteggio, un rivale era sempre e solo un numero di forza, mai una vera
+  // personalità in campo. Un avversario aggressivo (atk alto) segna di più contro di te, uno
+  // con una difesa fragile (def alto, "concede di più") ti regala qualche gol in più a tua
+  // volta — stessa scala di FORMATION_TACTICS, letta dal punto di vista opposto.
+  function rollMatchScore(d, ctx = S, oppFmt) {
     // Più alta è la varianza di difficoltà, meno pesa il gap di forza reale sul risultato:
     // partite più imprevedibili, upset più frequenti anche quando si è nettamente più forti.
     const coeff = 0.045 / diffOf(null, ctx).varianceMult;
     // Il modulo scelto in "Probabile formazione" pesa davvero: uno più offensivo segna un
     // filo di più e incassa un filo di più, uno più difensivo il contrario.
     const fb = FORMATION_TACTICS[ctx.formation] || FORMATION_TACTICS['433'];
+    const opf = oppFmt || { atk: 0, def: 0 };
     // Un modulo molto sbilanciato in avanti (343/424) lascia scoperture che un avversario
     // attento sa sfruttare: oltre al calo difensivo già scontato nel modulo stesso (fb.def),
     // un piccolo extra quando l'aggressività è estrema — una reazione tattica minima ma
     // reale, non un'intelligenza artificiale vera che sceglie un contro-modulo.
     const counterPenalty = fb.atk >= 0.14 ? (fb.atk - 0.10) * 0.6 : 0;
-    const gfMean = clamp(1.32 + fb.atk + d * coeff, 0.15, 4.4);
-    const gaMean = clamp(1.32 + fb.def + counterPenalty - d * coeff, 0.15, 4.4);
-    // Due tempi invece di un tiro secco unico: chi va sotto all'intervallo si getta in avanti
-    // (media più alta nella ripresa), chi è avanti gestisce un filo più guardingo — una vera
-    // dinamica di partita (rimonte possibili) invece di un solo numero deciso in un colpo.
-    // Ogni tempo parte dalla metà della media originale, così sulla lunga distanza la media
-    // gol complessiva di una stagione non si sposta rispetto a prima.
+    const gfMean = clamp(1.32 + fb.atk + opf.def + d * coeff, 0.15, 4.4);
+    const gaMean = clamp(1.32 + fb.def + counterPenalty + opf.atk - d * coeff, 0.15, 4.4);
+    return twoHalfScore(gfMean, gaMean);
+  }
+
+  // Due tempi invece di un tiro secco unico: chi va sotto all'intervallo si getta in avanti
+  // (media più alta nella ripresa), chi è avanti gestisce un filo più guardingo — una vera
+  // dinamica di partita (rimonte possibili) invece di un solo numero deciso in un colpo. Ogni
+  // tempo parte dalla metà della media originale, così sulla lunga distanza la media gol
+  // complessiva non si sposta. Estratta da rollMatchScore per essere riusata anche dalle
+  // coppe (cupMatchScore, sotto): prima avevano un tiro Poisson secco, senza rimonte né
+  // effetto del modulo scelto — più superficiali del campionato, ora stessa qualità.
+  function twoHalfScore(gfMean, gaMean) {
     const gf1 = poisson(gfMean / 2), ga1 = poisson(gaMean / 2);
     const behind = clamp((ga1 - gf1) * 0.10, -0.25, 0.25);   // positivo = sei sotto all'intervallo
     const gf2 = poisson(clamp(gfMean / 2 + behind, 0.05, 4.4));
     const ga2 = poisson(clamp(gaMean / 2 - behind * 0.6, 0.05, 4.4));
     return { gf: gf1 + gf2, ga: ga1 + ga2 };
+  }
+
+  // Punteggio di una partita di coppa: stesso motore a due tempi del campionato, col modulo
+  // scelto che pesa davvero anche qui (prima nessuna coppa lo considerava) — solo senza una
+  // personalità tattica dell'avversario (cupOpponentName genera solo un nome, non una rosa),
+  // e con la stessa media gol leggermente più bassa già usata in coppa (1.3 invece di 1.32).
+  function cupMatchScore(diff, ctx = S) {
+    const fb = FORMATION_TACTICS[ctx.formation] || FORMATION_TACTICS['433'];
+    const counterPenalty = fb.atk >= 0.14 ? (fb.atk - 0.10) * 0.6 : 0;
+    const gfMean = clamp(1.3 + fb.atk + diff * 0.05, 0.15, 4.4);
+    const gaMean = clamp(1.3 + fb.def + counterPenalty - diff * 0.05, 0.15, 4.4);
+    return twoHalfScore(gfMean, gaMean);
   }
 
   // `forcedScore` (opzionale, { gf, ga }): quando presente salta il tiro dei gol e usa questo
@@ -1478,7 +1569,7 @@
     if (forcedScore) { gf = forcedScore.gf; ga = forcedScore.ga; }
     else {
       const d = teamEff(ctx) - opp.effS + (fx.home ? 2.4 * homeAdvantage(ctx) : -1.1);
-      ({ gf, ga } = rollMatchScore(d, ctx));
+      ({ gf, ga } = rollMatchScore(d, ctx, opp.fmt));
     }
     ctx.played++; ctx.gf += gf; ctx.ga += ga;
     const res = gf > ga ? 'W' : gf < ga ? 'L' : 'D';
@@ -1489,6 +1580,7 @@
     ctx.form = clamp(ctx.last5.reduce((a, b) => a + b, 0) * 0.5, -2.5, 2.5);
     const lineup = pickMatchLineup(ctx.squad, ctx);
     registerAppearances(lineup, ctx);
+    regressPlayerForm(lineup, ctx);
     const goalsFor = genGoals(gf, true, null, lineup, ctx), goalsAgainst = genGoals(ga, false, opp.name, null, ctx);
     registerCleanSheet(ga, lineup, ctx);
     // Derby/rivalità storica: un filo di umore in più in palio, oltre ai 3 punti — e un
@@ -1663,12 +1755,20 @@
       euroKO: euroKOFracs.map(f),
     };
     const nat = ctx.cups.nat;
-    if (nat && !nat.out && !nat.won && (nat.legIndex || 0) < checkpoints.nat.length && ctx.played >= checkpoints.nat[nat.legIndex || 0]) resolveNatRound(ctx);
+    let cupPlayedNow = false;
+    if (nat && !nat.out && !nat.won && (nat.legIndex || 0) < checkpoints.nat.length && ctx.played >= checkpoints.nat[nat.legIndex || 0]) { resolveNatRound(ctx); cupPlayedNow = true; }
     if (euro && !euro.out && !euro.won) {
-      if (euro.phase === 'league') { if (euro.leagueAt < euro.legLen && ctx.played >= checkpoints.euroLeague[euro.leagueAt]) resolveEuroLeagueMatch(ctx); }
-      else if (euro.phase === 'playoff') { if (!euro.playoffDone && (euro.playoffLegAt || 0) < checkpoints.euroPlayoff.length && ctx.played >= checkpoints.euroPlayoff[euro.playoffLegAt || 0]) resolveEuroPlayoff(ctx); }
-      else if (euro.at < euro.rounds.length && (euro.legIndex || 0) < checkpoints.euroKO.length && ctx.played >= checkpoints.euroKO[euro.legIndex || 0]) resolveCupRound('euro', ctx);
+      if (euro.phase === 'league') { if (euro.leagueAt < euro.legLen && ctx.played >= checkpoints.euroLeague[euro.leagueAt]) { resolveEuroLeagueMatch(ctx); cupPlayedNow = true; } }
+      else if (euro.phase === 'playoff') { if (!euro.playoffDone && (euro.playoffLegAt || 0) < checkpoints.euroPlayoff.length && ctx.played >= checkpoints.euroPlayoff[euro.playoffLegAt || 0]) { resolveEuroPlayoff(ctx); cupPlayedNow = true; } }
+      else if (euro.at < euro.rounds.length && (euro.legIndex || 0) < checkpoints.euroKO.length && ctx.played >= checkpoints.euroKO[euro.legIndex || 0]) { resolveCupRound('euro', ctx); cupPlayedNow = true; }
     }
+    // Stanchezza da calendario fitto: i checkpoint di coppa cadono sempre su una giornata di
+    // campionato già in corso (stesso ctx.played), quindi coppa+campionato nella stessa
+    // "settimana" è già rilevabile qui. Pesa sulla partita SUCCESSIVA (teamEff la legge a
+    // inizio simMatch, prima che questa funzione giri di nuovo), non su quella appena
+    // giocata — troppo tardi per cambiarla. Si accumula fino a un tetto (settimane cariche
+    // consecutive) e scende appena torna un calendario respirabile.
+    ctx._congestion = cupPlayedNow ? Math.min(3, (ctx._congestion || 0) + 1) : Math.max(0, (ctx._congestion || 0) - 1);
   }
 
   // Un turno di Coppa Italia: per quarti e semifinale (sempre i due turni prima della
@@ -1692,7 +1792,7 @@
     const diff = teamEff(ctx) - oppStr;
     const winP = 1 / (1 + Math.exp(-diff / 6.5));
     const wonLeg = Math.random() < winP;
-    let gf = poisson(clamp(1.3 + diff * 0.05, 0.2, 4)), ga = poisson(clamp(1.3 - diff * 0.05, 0.2, 4));
+    let { gf, ga } = cupMatchScore(diff, ctx);
     if (legs === 1) {
       // gara secca: manteniamo il risultato coerente con l'esito (parità = rigori)
       if (wonLeg && gf < ga) { const t = gf; gf = ga; ga = t; }
@@ -1739,7 +1839,7 @@
     const drawP = 0.24;
     const roll = Math.random();
     const won = roll < winP * (1 - drawP), draw = !won && roll < winP * (1 - drawP) + drawP;
-    let gf = poisson(clamp(1.3 + diff * 0.05, 0.2, 4)), ga = poisson(clamp(1.3 - diff * 0.05, 0.2, 4));
+    let { gf, ga } = cupMatchScore(diff, ctx);
     if (draw) { const avgg = Math.round((gf + ga) / 2); gf = avgg; ga = avgg; }
     else if (won && gf <= ga) gf = ga + 1;
     else if (!won && gf >= ga) ga = gf + 1;
@@ -1777,7 +1877,7 @@
     }
     const oppStr = cup.playoffOppStr, oppName = cup.playoffOppName;
     const diff = teamEff(ctx) - oppStr;
-    const gf = poisson(clamp(1.3 + diff * 0.05, 0.2, 4)), ga = poisson(clamp(1.3 - diff * 0.05, 0.2, 4));
+    const { gf, ga } = cupMatchScore(diff, ctx);
     cup.playoffAggGF += gf; cup.playoffAggGA += ga;
     const lineup = pickMatchLineup(ctx.squad, ctx);
     registerAppearances(lineup, ctx);
@@ -1815,7 +1915,7 @@
     const diff = teamEff(ctx) - oppStr;
     const winP = 1 / (1 + Math.exp(-diff / 6.5));
     const wonLeg = Math.random() < winP;
-    let gf = poisson(clamp(1.3 + diff * 0.05, 0.2, 4)), ga = poisson(clamp(1.3 - diff * 0.05, 0.2, 4));
+    let { gf, ga } = cupMatchScore(diff, ctx);
     if (legs === 1) {
       // gara secca: manteniamo il risultato coerente con l'esito (parità = rigori)
       if (wonLeg && gf < ga) { const t = gf; gf = ga; ga = t; }
@@ -2463,7 +2563,7 @@
     const mgrRegistry = {};
     humanCtxs.forEach((h) => { if (h._mgrByClub) Object.assign(mgrRegistry, h._mgrByClub); });
     const bots = POOLS[div].filter((c) => !humanNames.has(c.n)).slice(0, botCount)
-      .map((o) => ({ name: o.n, s: o.s, effS: clamp(o.s + gaussInt(0, 8), 30, 99), rrPts: 0, rrGF: 0, rrGA: 0, vsPts: 0, vsGF: 0, vsGA: 0, mgr: managerForClub(o.n, 0, humanCtxs[0], usedMgrNames, mgrRegistry) }));
+      .map((o) => ({ name: o.n, s: o.s, effS: clamp(o.s + gaussInt(0, 8), 30, 99), rrPts: 0, rrGF: 0, rrGA: 0, vsPts: 0, vsGF: 0, vsGA: 0, mgr: managerForClub(o.n, 0, humanCtxs[0], usedMgrNames, mgrRegistry), fmt: randomFmt() }));
     simRivalRoundRobin(bots, RIVAL_DRAW_BOOST[div]);
     humanCtxs.forEach((h) => { h._mgrByClub = mgrRegistry; });
     const { opps, fixtures } = buildMultiplayerFixtures(humanCtxs, bots);
@@ -2488,7 +2588,10 @@
         const ctxA = ctx, ctxB = run.ctxs[fx.humanIdx];
         const [homeCtx, awayCtx] = fx.home ? [ctxA, ctxB] : [ctxB, ctxA];
         const dVal = teamEff(homeCtx) - teamEff(awayCtx) + 2.4 * homeAdvantage(homeCtx);
-        const { gf, ga } = rollMatchScore(dVal, homeCtx);
+        // Sfida diretta fra due presidenti: qui l'"avversario" non è un numero generato a
+        // caso, è un altro umano col SUO modulo scelto davvero — usa quello, non un fmt finto.
+        const awayFmt = FORMATION_TACTICS[awayCtx.formation] || FORMATION_TACTICS['433'];
+        const { gf, ga } = rollMatchScore(dVal, homeCtx, awayFmt);
         simMatch(homeCtx, { gf, ga });
         simMatch(awayCtx, { gf: ga, ga: gf });
         // Sfida diretta fra due presidenti: si marca l'ultima riga appena aggiunta a ciascuno

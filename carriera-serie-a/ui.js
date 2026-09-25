@@ -2768,7 +2768,7 @@
         ${usSc ? '<div class="sc us">⚽ ' + usSc + '</div>' : ''}
         ${themSc ? '<div class="sc them">🥅 ' + themSc + '</div>' : ''}
       </div>` : '';
-    const eventsHTML = (m.events && m.events.length) ? `<div class="mrow-scorers">${m.events.map((ev) => `<div class="sc them">${ev.kind === 'inj' ? '🚑' : '🟥'} ${flagOf(ev)}${ev.n} ${ev.kind === 'inj' ? 'ko, fuori ' + ev.weeks + ' partit' + (ev.weeks === 1 ? 'a' : 'e') : 'squalificato per la prossima'}</div>`).join('')}</div>` : '';
+    const eventsHTML = (m.events && m.events.length) ? `<div class="mrow-scorers">${m.events.map((ev) => `<div class="sc them">${ev.kind === 'inj' ? '🚑' : '🟥'} ${flagOf(ev)}${ev.n} ${ev.kind === 'inj' ? (ev.type === 'traumatic' ? 'infortunio serio, fuori ' : 'problema muscolare, fuori ') + ev.weeks + ' partit' + (ev.weeks === 1 ? 'a' : 'e') : 'squalificato per la prossima'}</div>`).join('')}</div>` : '';
     row.innerHTML = `<div class="mrow-mw">G${m.mw}</div>
       <div class="mrow-main"><div class="mrow-fix"><span class="ha ${m.home ? 'home' : 'away'}">${m.home ? 'C' : 'T'}</span> vs ${m.opp}${m.derby ? ` <span class="mrow-derby" title="Bilancio testa a testa in questa rivalità, da quando la segui">🔥 DERBY${m.derbyRecord ? ' (' + m.derbyRecord.w + 'V ' + m.derbyRecord.d + 'N ' + m.derbyRecord.l + 'P)' : ''}</span>` : ''}</div>${scorersHTML}${eventsHTML}</div>
       <div class="mrow-res ${m.res}">${m.gf}-${m.ga}</div>`;
