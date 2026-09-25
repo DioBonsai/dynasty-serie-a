@@ -47,6 +47,7 @@
     <p class="dyn-sub">Scegli da che categoria partire e compra un club a tua misura. Ingaggia giocatori con gli spin, gestisci il monte ingaggi, assumi l'allenatore, scegli lo sponsor, fai crescere lo stadio e tieni i tifosi dalla tua parte. Scala la piramide fino alla Serie A, e vendi quando il prezzo è giusto.</p>
     <button type="button" id="owTutorialBtn" class="dyn-mini" style="margin:0 auto 10px;display:block">📖 Come si gioca (tutorial)</button>
     <button type="button" id="owMultiplayerBtn" class="dyn-mini" style="margin:0 auto 10px;display:block">👥 Gioca con gli amici</button>
+    <button type="button" id="owInstallBtn" class="dyn-mini hidden" style="margin:0 auto 10px;display:block">📲 Installa l'app</button>
     <div id="hotseatWrap"></div>
     <div id="saveSlotsWrap"></div>
     <label class="dyn-field">
@@ -134,16 +135,56 @@
 
 <div id="owToast" class="dyn-toast hidden"></div>
 
-<script src="sfx.js?v=61"></script>
-<script src="data.js?v=61"></script>
-<script src="sim.js?v=61"></script>
-<script src="ui.js?v=61"></script>
+<script src="sfx.js?v=62"></script>
+<script src="data.js?v=62"></script>
+<script src="sim.js?v=62"></script>
+<script src="ui.js?v=62"></script>
 <script>
   // Service worker: rende il gioco installabile ("aggiungi a Home") e disponibile offline
   // dopo la prima visita. Nessun impatto sul deploy: index.html resta sempre network-first.
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
   }
+
+  // Pulsante "Installa l'app": senza, l'unico modo per installarla è il menu del browser
+  // (spesso nascosto/non ovvio da telefono). Se il browser è già stato aperto una volta prima
+  // di installare, restava così invisibile all'utente — da qui la richiesta di un bottone.
+  (function () {
+    const btn = document.getElementById('owInstallBtn');
+    if (!btn) return;
+    const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    if (standalone) return;   // già installata: il bottone resta nascosto
+    const ua = navigator.userAgent || '';
+    const isIOS = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    let deferredPrompt = null;
+    // Chrome/Edge/Android: il browser offre il prompt nativo solo se lo intercettiamo qui
+    // (altrimenti lo mostrerebbe lui da solo, in un momento a sua scelta, non al tocco del
+    // bottone) — va "salvato" e richiamato dentro il click, i browser lo richiedono così.
+    window.addEventListener('beforeinstallprompt', (ev) => {
+      ev.preventDefault();
+      deferredPrompt = ev;
+      btn.classList.remove('hidden');
+    });
+    window.addEventListener('appinstalled', () => { btn.classList.add('hidden'); deferredPrompt = null; });
+    // iOS/Safari non supporta affatto il prompt automatico (nessun beforeinstallprompt): l'unica
+    // via è Condividi -> Aggiungi a Home, quindi il bottone resta comunque utile come promemoria
+    // con le istruzioni, anche se non può far comparire lui il popup di sistema.
+    if (isIOS) btn.classList.remove('hidden');
+    btn.addEventListener('click', async () => {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        try { await deferredPrompt.userChoice; } catch (e) {}
+        deferredPrompt = null;
+        btn.classList.add('hidden');
+        return;
+      }
+      if (isIOS) {
+        alert('Per installarla su iPhone/iPad: tocca l\'icona Condividi (il quadrato con la freccia verso l\'alto) nella barra di Safari, poi "Aggiungi alla schermata Home".');
+        return;
+      }
+      alert('Apri il menu del browser (di solito i tre puntini in alto) e cerca "Installa app" o "Aggiungi a schermata Home".');
+    });
+  })();
 </script>
 </body>
 </html>

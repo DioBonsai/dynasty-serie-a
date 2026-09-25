@@ -11,6 +11,11 @@
 
   let crestUid = 0;
 
+  // Escaping per testo libero non fidato inserito via innerHTML (es. i messaggi di chat: dal
+  // lato server ora arrivano puliti solo dai caratteri di controllo, non da <, >, & o virgolette
+  // — l'escaping va fatto qui, in fase di rendering, non troncando il testo a monte.
+  const escapeHtml = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
   // I tre "disegni" disponibili: contorno + un piccolo emblema a stella interno, entrambi
   // riempiti con lo stesso gradiente a 2 colori scelto dal presidente.
   function crestInner(shape, gradId) {
@@ -483,7 +488,7 @@
     const chatHTML = `
       <div class="ow-sec-title" style="margin-top:10px">💬 Chat della stanza</div>
       <div id="mpChatLog" style="max-height:100px;overflow:auto;font-size:12px;background:rgba(127,127,127,.08);border-radius:8px;padding:6px 8px;margin-bottom:6px">
-        ${chat.length ? chat.map((m) => `<div style="margin-bottom:2px"><b>${m.club || m.name}:</b> ${m.text}</div>`).join('') : '<div class="ow-sub" style="margin:0">Nessun messaggio ancora.</div>'}
+        ${chat.length ? chat.map((m) => `<div style="margin-bottom:2px"><b>${escapeHtml(m.club || m.name)}:</b> ${escapeHtml(m.text)}</div>`).join('') : '<div class="ow-sub" style="margin:0">Nessun messaggio ancora.</div>'}
       </div>
       <div style="display:flex;gap:6px;margin-bottom:6px">
         <input id="mpChatInput" type="text" maxlength="200" placeholder="Scrivi un messaggio…" autocomplete="off" style="flex:1;min-width:0" />
@@ -515,8 +520,8 @@
               : `<button class="dyn-btn dyn-btn-primary" id="mpNextDayBtn">▶️ Prossima giornata${live ? ' (' + live.matchday + '/' + live.total + ')' : ''}</button>`)
             : `<div class="ow-sub">⏳ L'host sta simulando le giornate, aggiornamento automatico.</div>`}
         ` : `
-          ${inSessionStage && !(me && me.ready) ? `<button class="dyn-btn" id="mpManageBtn">🏟️ Gestisci la tua squadra</button>` : ''}
-          <button class="dyn-btn ${me && me.ready ? '' : 'dyn-btn-primary'}" id="mpReadyBtn">${me && me.ready ? 'Non sono più pronto' : '✅ Sono pronto'}</button>
+          ${inSessionStage && !(me && me.ready) ? `<button class="dyn-btn dyn-btn-primary" id="mpManageBtn">🏟️ Gestisci la tua squadra</button>` : ''}
+          <button class="dyn-btn ${inSessionStage && !(me && me.ready) ? '' : (me && me.ready ? '' : 'dyn-btn-primary')}" id="mpReadyBtn">${me && me.ready ? 'Non sono più pronto' : '✅ Sono pronto'}</button>
           ${isHost && inLobbyStage ? `<button class="dyn-btn dyn-btn-primary" id="mpStartSessionBtn" ${allLobbyReady ? '' : 'disabled'}>▶️ Avvia sessione${allLobbyReady ? '' : ' (' + readyCount + '/' + total + ' pronti)'}</button>` : ''}
           ${isHost && inLobbyStage && !allLobbyReady && total > 1 ? `<button class="dyn-btn" id="mpForceSessionBtn">⏭️ Forza avvio senza aspettare tutti</button>` : ''}
           ${isHost && inSessionStage ? `<button class="dyn-btn dyn-btn-primary" id="mpStartSimBtn" ${allSessionReady ? '' : 'disabled'}>▶️ Inizia simulazione${allSessionReady ? '' : ' (' + readyCount + '/' + total + ' pronti)'}</button>` : ''}
@@ -617,9 +622,18 @@
       if (!mpHostRuns) { toast('Simulazione non trovata in questa scheda: riaprila dalla scheda con cui l\'hai avviata.', 'error'); return; }
       finishBtn.disabled = true;
       try {
+        mpHostRuns.forEach((run) => finishHostSeason(run));
+        // Coppa Italia e coppe europee non sono un bracket condiviso (ogni umano ha il suo,
+        // vedi resolveMultiplayerTrophies): senza questo passaggio due presidenti di gruppi
+        // diversi della stessa stanza potrebbero risultare entrambi vincitori dello stesso
+        // trofeo nella stessa stagione. Va fatto QUI, con tutti i gruppi della stanza insieme
+        // e PRIMA di chiudere la stagione di ciascuno (endSeason), l'unico momento in cui i
+        // flag `cups.*.won` diventano trofei/soldi permanenti in carriera.
+        const allHumanCtxs = mpHostRuns.reduce((a, run) => a.concat(run.ctxs), []);
+        resolveMultiplayerTrophies(allHumanCtxs);
+        allHumanCtxs.forEach((ctx) => { if (ctx.seasonActive && ctx.played >= gp(ctx)) endSeason(ctx); });
         const results = {};
         mpHostRuns.forEach((run) => {
-          finishHostSeason(run);
           run.playerIds.forEach((pid, i) => { results[pid] = run.ctxs[i]; });
         });
         const data = await mpApi('submitResult', { code: room.code, playerId, results, force: true });
@@ -820,6 +834,14 @@
   // porta anche i ctx completi del gruppo (non solo la classifica): se l'host sparisce a metà
   // simulazione, chiunque prenda il suo posto può ricostruire la run da lì (resumeMatchdaySimFromLive)
   // invece di restare bloccato sull'ultima giornata pubblicata.
+  // `resume` (i ctx completi, roster compresi) è l'unica parte pesante di ogni giornata: con
+  // più categorie/umani nella stanza, mandarlo per intero ad OGNI giornata è quello che rende
+  // "Prossima giornata" lento (JSON enorme da serializzare, spedire, riscrivere su disco con
+  // lock, e che ogni scheda in poll deve poi riscaricare). Serve solo per ricostruire la run se
+  // l'host sparisce a metà simulazione, quindi basta rinfrescarlo ogni tot giornate (e sempre
+  // alla prima e all'ultima): room.php tiene quello precedente per le giornate di mezzo invece
+  // di perderlo, si perde al più qualche giornata di "ripresa" in un caso già raro.
+  const LIVE_RESUME_EVERY = 3;
   function buildLiveGroups(runs) {
     return runs.map((run) => ({
       div: run.div,
@@ -828,7 +850,9 @@
       total: run.total,
       table: buildLiveTable(run),
       news: buildMatchdayNews(run),
-      resume: { ctxs: run.ctxs, bots: run.bots, playerIds: run.playerIds },
+      resume: (run.matchday <= 1 || run.matchday >= run.total || run.matchday % LIVE_RESUME_EVERY === 0)
+        ? { ctxs: run.ctxs, bots: run.bots, playerIds: run.playerIds }
+        : null,
     }));
   }
 
@@ -1485,7 +1509,7 @@
     const squadRows = squadFiltered.length ? squadFiltered.map((p) => {
       const fy = !p.loan && finalYear(p);
       return `
-      <div class="ow-player${fy ? ' final' : ''}" data-pid="${p.pid}"><span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span>
+      <div class="ow-player${fy ? ' final' : ''}" data-pid="${p.pid}"><span class="ovr" style="${ovrBadge(p.ovr)}" title="${p.pid === S.captainPid ? 'Capitano: +1 OVR' : ''}">${p.pid === S.captainPid ? p.ovr + 1 : p.ovr}</span>
         <span class="postag postag-${p.pos}">${p.pos}</span>
         <span class="nm">${flagOf(p)}${p.n}${p.pid === S.captainPid ? ' <span title="Capitano">©</span>' : ''}<small>età ${p.age}</small></span>
         ${p.outWeeks > 0 ? `<span class="stat-tag inj" title="Infortunato">🚑 ${p.outWeeks}</span>` : p.suspMatches > 0 ? '<span class="stat-tag susp" title="Squalificato">🟥</span>' : ''}
@@ -2004,7 +2028,7 @@
       <h2>Scheda giocatore</h2>
       <div class="ow-spin-card${p.real ? ' is-real' : ''}">
         ${p.icon ? '<div class="real-badge icon-badge">🏆 LEGGENDA</div>' : p.real && p.fromClub ? `<div class="real-badge">🌟 GIOCATORE REALE · da ${p.fromClub}</div>` : ''}
-        <div class="big" style="color:${ovrTier(p.ovr).c}">${p.ovr}</div>
+        <div class="big" style="color:${ovrTier(p.ovr).c}">${p.pid === S.captainPid ? p.ovr + 1 : p.ovr}${p.pid === S.captainPid ? ' <small title="Il capitano gioca con +1 OVR">© +1</small>' : ''}</div>
         <div class="nm">${flagOf(p)}${p.n}${p.pid === S.captainPid ? ' ©' : ''} <span class="postag postag-${p.pos}" style="vertical-align:middle">${p.pos}</span></div>
         <div class="meta">${POS_LABEL[p.pos]} · ${p.nat ? p.nat.name : '-'} · età ${p.age}</div>
       </div>
@@ -2015,18 +2039,21 @@
         <div class="ow-fin-row"><span>Valore di mercato stimato</span><b>${fmtMoney(playerValue(p))}</b></div>
         ${p.outWeeks > 0 ? `<div class="ow-fin-row bad"><span>Infortunato</span><b>🚑 fuori ${p.outWeeks} partit${p.outWeeks === 1 ? 'a' : 'e'}</b></div>` : ''}
         ${p.suspMatches > 0 ? `<div class="ow-fin-row bad"><span>Squalificato</span><b>🟥 salta la prossima</b></div>` : ''}
-        <div class="ow-fin-row"><span>Fascia di capitano</span><b>${p.pid === S.captainPid ? '© È lui/lei il capitano' : 'Non è il capitano'}</b></div>
+        <div class="ow-fin-row"><span>Fascia di capitano</span><b>${p.pid === S.captainPid ? '© È lui/lei il capitano (+1 OVR)' : p.age > CAPTAIN_MIN_AGE ? 'Non è il capitano' : `Non è il capitano (serve più di ${CAPTAIN_MIN_AGE} anni)`}</b></div>
       </div>
       <div class="dyn-modal-actions">
         ${!p.loan ? `<button class="dyn-btn dyn-btn-primary" id="ovDetailRenew">📝 Rinnova</button>` : ''}
-        ${p.pid !== S.captainPid && !p.loan ? `<button class="dyn-btn" id="ovDetailCaptain">© Nomina capitano</button>` : ''}
+        ${p.pid !== S.captainPid && !p.loan && p.age > CAPTAIN_MIN_AGE ? `<button class="dyn-btn" id="ovDetailCaptain">© Nomina capitano</button>` : ''}
         <button class="dyn-btn" id="ovDetailClose">Chiudi</button>
       </div>`);
     $('ovDetailClose').onclick = closeOverlay;
     const renewBtn = $('ovDetailRenew');
     if (renewBtn) renewBtn.onclick = () => openRenewOverlay(p);
     const captainBtn = $('ovDetailCaptain');
-    if (captainBtn) captainBtn.onclick = () => { S.captainPid = p.pid; toast(p.n + ' è il nuovo capitano.', 'success'); closeOverlay(); renderBoard(); saveGame(); };
+    if (captainBtn) captainBtn.onclick = () => {
+      if (p.age <= CAPTAIN_MIN_AGE) { toast('Il capitano deve avere più di ' + CAPTAIN_MIN_AGE + ' anni.', 'error'); return; }
+      S.captainPid = p.pid; toast(p.n + ' è il nuovo capitano.', 'success'); closeOverlay(); renderBoard(); saveGame();
+    };
   }
 
   function confirmSell() {

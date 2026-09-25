@@ -1381,6 +1381,11 @@
 
   const MIN_SQUAD = 16;
 
+  // Il capitano deve avere più di questa età: uno spogliatoio non affida la fascia a un
+  // ragazzino, per quanto forte. In cambio, indossarla vale +1 OVR effettivo (captainBonus,
+  // sim.js) sulla forza della squadra in campo.
+  const CAPTAIN_MIN_AGE = 22;
+
   // Difficoltà scelta all'avvio della carriera (vedi startDynasty in sim.js): ogni voce
   // ritocca budget di partenza, forza effettiva percepita in campo (teamEffDelta, positivo
   // aiuta noi/penalizza gli avversari, negativo il contrario), quanto pesano gli imprevisti

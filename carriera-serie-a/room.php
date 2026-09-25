@@ -122,6 +122,20 @@ function clean_name($v, $maxLen) {
     return $v;
 }
 
+// Un messaggio di chat non è un nome: clean_name toglierebbe ogni punteggiatura ed emoji
+// (!,?,: e virgole comprese), rendendo la chat quasi inutilizzabile o, per un messaggio fatto
+// solo di quello, un invio "riuscito" ma con testo vuoto — il motivo per cui la chat sembrava
+// non funzionare. Qui si tolgono solo i caratteri di controllo (compresi i newline, per tenere
+// un messaggio su una riga sola) e si limita la lunghezza: l'escaping per un rendering HTML
+// sicuro è compito di chi la mostra (ui.js), non di chi la salva.
+function clean_chat_text($v, $maxLen) {
+    $v = is_string($v) ? $v : '';
+    $v = trim(preg_replace('/[\x00-\x1F\x7F]+/u', ' ', $v));
+    if (function_exists('mb_substr')) $v = mb_substr($v, 0, $maxLen);
+    else $v = substr($v, 0, $maxLen);
+    return $v;
+}
+
 function gen_player_id() {
     return 'p_' . bin2hex(random_bytes(6));
 }
@@ -296,7 +310,7 @@ if ($action === 'rename') {
 if ($action === 'chat') {
     $code = strtoupper(trim($body['code'] ?? ''));
     $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
-    $text = clean_name($body['text'] ?? '', 200);
+    $text = clean_chat_text($body['text'] ?? '', 200);
     if ($code === '' || $playerId === '' || $text === '') fail('Richiesta non valida.');
 
     $path = room_path($DIR, $code);
@@ -430,6 +444,18 @@ if ($action === 'pushMatchday') {
     if (!in_array($phase, ['readyForSim', 'simulating'], true) && !($phase === 'session' && !empty($body['force']))) {
         flock($fp, LOCK_UN); fclose($fp); fail('Non tutti i giocatori sono pronti a simulare.', 409);
     }
+    // `resume` di un gruppo può mancare (ui.js: buildLiveGroups la manda solo ogni tot
+    // giornate, per non riscrivere ad ogni giornata l'intero roster di ogni umano della
+    // stanza): quando manca, si tiene quella dell'ultima giornata in cui c'era, invece di
+    // perderla e lasciare la ripresa (resumeMatchdaySimFromLive) senza dati.
+    $prevByDiv = [];
+    foreach (($room['live']['groups'] ?? []) as $pg) { if (isset($pg['div'])) $prevByDiv[$pg['div']] = $pg; }
+    foreach ($groups as &$g) {
+        if ((!isset($g['resume']) || $g['resume'] === null) && isset($prevByDiv[$g['div']]['resume'])) {
+            $g['resume'] = $prevByDiv[$g['div']]['resume'];
+        }
+    }
+    unset($g);
     $room['phase'] = 'simulating';
     $room['live'] = ['matchday' => $matchday, 'total' => $total, 'groups' => $groups, 'updatedAt' => time()];
     $room['updatedAt'] = time();

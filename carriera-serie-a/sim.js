@@ -877,6 +877,26 @@
     return { n: genName(nat), rating: r, salary: mgrSalaryFor(r, ctx), nat, spec: pick(MANAGER_SPECS).key };
   }
 
+  // Come genManager, ma senza creare due allenatori omonimi nella stessa lega: `used` è il
+  // set (mutato sul posto) dei nomi già assegnati alle altre squadre dello stesso campionato
+  // (rivali generati per una singola carriera, o l'intero gruppo di una stanza multiplayer).
+  // Capita spesso senza: il pool di REAL_MANAGERS vicini al rating richiesto è piccolo, e con
+  // più squadre generate in fila `pick(near)` ripesca facilmente lo stesso nome.
+  function genManagerUnique(bonus, ctx, used) {
+    for (let tries = 0; tries < 8; tries++) {
+      const m = genManager(bonus, ctx);
+      if (!used.has(m.n)) { used.add(m.n); return m; }
+    }
+    // Il pool di nomi "veri" vicini a quel rating è esaurito: si forza un nome generato (mai
+    // un allenatore reale), ripescando finché non è libero anche lì.
+    const r = clamp(divOf(ctx).mgrBase - 4 + rnd(12) + (bonus || 0), 45, 92);
+    const nat = pickNationality(ctx.div);
+    let n = genName(nat), tries2 = 0;
+    while (used.has(n) && tries2 < 15) { n = genName(nat); tries2++; }
+    used.add(n);
+    return { n, rating: r, salary: mgrSalaryFor(r, ctx), nat, spec: pick(MANAGER_SPECS).key };
+  }
+
   const mgrBonus = (ctx = S) => clamp((ctx.manager.rating - divOf(ctx).mgrBase) / 3.5, -3, 4)
     + (ctx.manager && ctx.manager.spec === 'tactician' ? 1.2 : 0)
     + (ctx.manager && ctx.manager.spec === 'motivator' && ctx.sent < 40 ? 1.5 : 0);
@@ -925,11 +945,16 @@
   // scheda del giocatore).
   function ensureCaptain(ctx = S) {
     if (!ctx || !ctx.squad || !ctx.squad.length) return;
-    if (ctx.captainPid && ctx.squad.some((p) => p.pid === ctx.captainPid)) return;
+    // Anche un capitano già assegnato, se non è (più) eleggibile — es. una rosa importata da
+    // prima che la regola dell'età esistesse — va sostituito, non solo quando manca del tutto.
+    const current = ctx.captainPid && ctx.squad.find((p) => p.pid === ctx.captainPid);
+    if (current && current.age > CAPTAIN_MIN_AGE) return;
     const hadCaptain = ctx.captainPid != null;
-    const best = ctx.squad.slice().sort((a, b) => b.ovr - a.ovr)[0];
+    const eligible = ctx.squad.filter((p) => p.age > CAPTAIN_MIN_AGE);
+    const pool = eligible.length ? eligible : ctx.squad;
+    const best = pool.slice().sort((a, b) => b.ovr - a.ovr)[0];
     ctx.captainPid = best ? best.pid : null;
-    if (hadCaptain && best && ctx === S && typeof toast === 'function') toast(best.n + ' è il nuovo capitano della squadra.', 'success');
+    if (hadCaptain && best && (!current || best.pid !== current.pid) && ctx === S && typeof toast === 'function') toast(best.n + ' è il nuovo capitano della squadra.', 'success');
   }
 
   // Il fattore campo non è più una costante fissa uguale per tutti: uno stadio grande e pieno,
@@ -1194,6 +1219,7 @@
     // stipendi/allenatore), la banca/gli investitori del club coprono il 40% del debito: una
     // boccata d'ossigeno automatica ogni stagione, che non elimina il debito ma lo erode nel
     // tempo, invece di lasciare la spirale del rosso intatta finché non vendi qualcuno a mano.
+    ctx._finalTable = null;
     if (ctx.budget < 0) { ctx.budget = Math.round(ctx.budget * 0.6); if (local) toast('Il debito di inizio stagione si riduce del 40%: ora sei a ' + fmtMoney(ctx.budget) + '.'); }
     // Ultima chiamata per riscattare i prestiti dell'estate scorsa (bottone 💰 Riscatta
     // nella rosa, in sala del consiglio): chi non è stato riscattato torna al suo club ora.
@@ -1232,7 +1258,8 @@
       ctx.opps = sharedOpps;
       ctx.fixtures = sharedFixtures;
     } else {
-      ctx.opps = rivals(ctx).map((o) => ({ name: o.n, s: o.s, effS: clamp(o.s + gaussInt(0, 8), 30, 99), rrPts: 0, rrGF: 0, rrGA: 0, vsPts: 0, vsGF: 0, vsGA: 0, mgr: genManager(0, ctx) }));
+      const usedMgrNames = new Set(ctx.manager && ctx.manager.n ? [ctx.manager.n] : []);
+      ctx.opps = rivals(ctx).map((o) => ({ name: o.n, s: o.s, effS: clamp(o.s + gaussInt(0, 8), 30, 99), rrPts: 0, rrGF: 0, rrGA: 0, vsPts: 0, vsGF: 0, vsGA: 0, mgr: genManagerUnique(0, ctx, usedMgrNames) }));
       simRivalRoundRobin(ctx.opps);
       const fx = [];
       ctx.opps.forEach((o, i) => { fx.push({ opp: i, home: true }); fx.push({ opp: i, home: false }); });
@@ -1377,7 +1404,18 @@
   // stagione. Richiamata sia in coda a simMatch sia dalla chiusura di un evento narrativo.
   function checkSeasonMilestones(ctx = S) {
     if (ctx.played === (gp(ctx) >> 1) && !ctx.winterDone) { if (ctx === S) openWinter(); else ctx.winterDone = true; return; }
-    if (ctx.played >= gp(ctx)) { if (ctx === S && DynSound) DynSound.whistle(); endSeason(ctx); }
+    if (ctx.played >= gp(ctx)) {
+      // Per un club remoto (host multiplayer, dentro stepHostMatchday) la chiusura stagione
+      // resta differita a finishHostSeason/resolveMultiplayerTrophies (ui.js, quando l'host
+      // preme "Vedi resoconto"): chiuderla già qui, appena finisce l'ultima giornata, vorrebbe
+      // dire chiamare endSeason -> currentPos -> computeTable PRIMA che i pts degli altri
+      // umani del gruppo siano rifiniti (finishHostSeason) e prima di risolvere trofei in
+      // comune (Coppa Italia/coppe europee) — ognuno si vedrebbe "primo" nella propria
+      // classifica, il bug delle vittorie multiple in multiplayer.
+      if (ctx !== S) return;
+      if (DynSound) DynSound.whistle();
+      endSeason(ctx);
+    }
   }
 
   function simToEnd(ctx = S) {
@@ -2130,8 +2168,11 @@
     const N = humanCtxs.length;
     const botCount = Math.max(0, teams - N);
     const humanNames = new Set(humanCtxs.map((h) => h.club));
+    // Un solo allenatore per nome nell'intero gruppo: né due bot omonimi, né un bot col nome
+    // dell'allenatore già in carica su una delle squadre umane della stanza.
+    const usedMgrNames = new Set(humanCtxs.filter((h) => h.manager && h.manager.n).map((h) => h.manager.n));
     const bots = POOLS[div].filter((c) => !humanNames.has(c.n)).slice(0, botCount)
-      .map((o) => ({ name: o.n, s: o.s, effS: clamp(o.s + gaussInt(0, 8), 30, 99), rrPts: 0, rrGF: 0, rrGA: 0, vsPts: 0, vsGF: 0, vsGA: 0, mgr: genManager(0, humanCtxs[0]) }));
+      .map((o) => ({ name: o.n, s: o.s, effS: clamp(o.s + gaussInt(0, 8), 30, 99), rrPts: 0, rrGF: 0, rrGA: 0, vsPts: 0, vsGF: 0, vsGA: 0, mgr: genManagerUnique(0, humanCtxs[0], usedMgrNames) }));
     simRivalRoundRobin(bots);
     const { opps, fixtures } = buildMultiplayerFixtures(humanCtxs, bots);
     humanCtxs.forEach((ctx, i) => startSeason(ctx, opps[i], fixtures[i]));
@@ -2195,14 +2236,46 @@
         if (bot) { row.pts = bot.rrPts + bot.vsPts; row.gd = (bot.rrGF + bot.vsGF) - (bot.rrGA + bot.vsGA); }
       });
       ctx.table.sort((a, b) => b.pts - a.pts || b.gd - a.gd);
+      // Congelata: endSeason (currentPos -> computeTable) NON deve più ricalcolarla da
+      // ctx.opps, altrimenti i pts degli altri umani tornerebbero quelli (quasi nulli) del
+      // solo scontro diretto, facendo apparire "primo" chiunque guardi la propria — il bug
+      // per cui più presidenti dello stesso gruppo potevano vincere lo stesso scudetto.
+      ctx._finalTable = ctx.table;
     });
-    // NON si chiama advance(ctx) qui: farlo cancellerebbe subito ctx._end (advance lo azzera
-    // per preparare la stagione successiva), e ogni giocatore deve poter ancora VEDERE il
-    // proprio resoconto di fine stagione una volta scaricato il risultato — esattamente come
-    // in singolo, dove advance() scatta solo quando si preme "Torna in sala del consiglio"
-    // dopo aver letto il resoconto (renderSeasonEnd, ui.js), non subito dopo endSeason.
-    humanCtxs.forEach((ctx) => { if (ctx.seasonActive && ctx.played >= gp(ctx)) endSeason(ctx); });
     return humanCtxs;
+  }
+
+  // Coppa Italia e coppe europee, a differenza del campionato, sono simulate come un bracket
+  // indipendente per ciascun umano (avversari bot generati per lui, mai un vero incrocio con
+  // gli altri presidenti della stanza): due giocatori della stessa stanza possono quindi
+  // finire entrambi con `cups.nat.won`/`cups.euro.won` a true nella stessa stagione. Non ha
+  // senso che la STESSA Coppa Italia o la STESSA edizione di una coppa europea vengano
+  // consegnate a più di un presidente della stessa dynasty: fra chi la stanza ha visto
+  // "vincerla" in una data stagione, ne resta uno solo (il percorso più lungo, poi la rosa più
+  // forte, poi a sorte) — gli altri restano comunque finalisti, solo non alzano il trofeo.
+  // Va chiamata su TUTTI gli umani della stanza (tutti i gruppi/categorie insieme), DOPO
+  // finishHostSeason e PRIMA di endSeason (che è il momento in cui questi flag diventano
+  // trofei/prestigio/soldi permanenti in carriera).
+  function resolveMultiplayerTrophies(allHumanCtxs) {
+    const pickOne = (cands) => cands.slice().sort((a, b) => (b._mpScore - a._mpScore) || (Math.random() - 0.5))[0];
+    const natWinners = allHumanCtxs.filter((c) => c.cups && c.cups.nat && c.cups.nat.won);
+    if (natWinners.length > 1) {
+      natWinners.forEach((c) => { c._mpScore = teamEff(c); });
+      const winner = pickOne(natWinners);
+      natWinners.forEach((c) => {
+        if (c === winner) return;
+        c.cups.nat.won = false;
+        const lastLeg = c.cups.nat.path && c.cups.nat.path[c.cups.nat.path.length - 1];
+        if (lastLeg) lastLeg.won = false;
+      });
+    }
+    ['ucl', 'uel', 'conf'].forEach((comp) => {
+      const winners = allHumanCtxs.filter((c) => c.euroComp === comp && c.cups && c.cups.euro && c.cups.euro.won);
+      if (winners.length <= 1) return;
+      winners.forEach((c) => { c._mpScore = teamEff(c); });
+      const winner = pickOne(winners);
+      winners.forEach((c) => { if (c !== winner) c.cups.euro.won = false; });
+    });
   }
 
   // Compatibilità/uso non interattivo: prepara e gioca l'intera stagione in un colpo solo,
@@ -2210,7 +2283,10 @@
   function runHostSeason(humanCtxs, div, difficulty) {
     const run = setupHostSeason(humanCtxs, div, difficulty);
     while (run.matchday < run.total) stepHostMatchday(run);
-    return finishHostSeason(run);
+    finishHostSeason(run);
+    resolveMultiplayerTrophies(run.ctxs);
+    run.ctxs.forEach((ctx) => { if (ctx.seasonActive && ctx.played >= gp(ctx)) endSeason(ctx); });
+    return run.ctxs;
   }
 
   /* ---------------- fine carriera ---------------- */
@@ -2222,6 +2298,13 @@
 
   function computeTable(ctx = S) {
     if (!isClubCtx(ctx)) ctx = S;
+    // Fine stagione multiplayer: finishHostSeason ha già rifinito la classifica leggendo i
+    // pts VERI degli altri umani del gruppo (ctx.opps li tiene solo come punti dello scontro
+    // diretto fra i due, non il loro totale in campionato — vedi buildMultiplayerFixtures).
+    // Ricalcolare da ctx.opps qui sotto sottostimerebbe ogni co-giocatore umano, facendo
+    // apparire "primo" chiunque riguardi la propria classifica (da qui il bug delle vittorie
+    // simultanee): si usa invece lo scatto già corretto, congelato fino al prossimo startSeason.
+    if (ctx._finalTable) { ctx.table = ctx._finalTable; return; }
     // Il girone fra rivali (rrPts/rrGF/rrGA) è deciso per intero all'avvio stagione, quindi
     // si mostra scalato sulla frazione di campionato giocata (per non far vedere la
     // classifica finale dal giorno 1); i punti contro il presidente (vsPts/vsGF/vsGA) sono
