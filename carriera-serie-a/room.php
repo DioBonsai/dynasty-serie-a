@@ -52,6 +52,33 @@
  *   compito di questo endpoint calcolare quanto vale un club)
  * POST room.php {action:'kick', code, playerId, targetId}           -> solo l'host: rimuove un
  *   altro giocatore dalla stanza (stessa logica di 'leave', avviata da un altro)
+ * POST room.php {action:'adoptBot', code, playerId, targetId}       -> solo l'host: un
+ *   giocatore che non risponde più (sparito a metà dynasty) viene marcato bot=true — da quel
+ *   momento il suo club NON blocca più i controlli "tutti pronti"/"tutti hanno scaricato" e,
+ *   lato client (hostBeginMatchdaySim, ui.js), esce dal gruppo di club umani per il resto della
+ *   stanza: il suo posto in categoria lo riempie automaticamente un bot vero (setupHostSeason,
+ *   sim.js, calcola già botCount = squadre - umani). Non reversibile: chi è stato adottato può
+ *   solo uscire (leave) e provare a rientrare come nuovo giocatore.
+ * POST room.php {action:'claimHost', code, playerId}                 -> chiunque sia nella
+ *   stanza può proporsi come nuovo host SE l'host attuale sembra sparito: o non è più fra i
+ *   giocatori (ha lasciato senza che il passaggio automatico di 'leave' sia scattato, caso
+ *   raro), o la stanza non riceve nessun aggiornamento da più di $HOST_INACTIVE_SECONDS —
+ *   un'euristica (qualunque azione di chiunque aggiorna updatedAt), non una vera rilevazione di
+ *   presenza, ma sufficiente a sbloccare una stanza davvero ferma senza permettere a chi ha
+ *   fretta di scippare un host ancora presente.
+ * POST room.php {action:'proposeTrade', code, playerId, targetId, playerName, fee} -> propone
+ *   una trattativa diretta a un altro umano della stanza per un suo giocatore (indicato per
+ *   nome: non c'è modo di sfogliare la rosa altrui, il nome si scopre altrove, es. in chat) a
+ *   un prezzo offerto. Crea una voce in room['trades'], stato 'pending'.
+ * POST room.php {action:'respondTrade', code, playerId, tradeId, response, counterFee?,
+ *   playerSnapshot?} -> risponde a una trattativa. Chi riceve una proposta 'pending' può
+ *   accept (allegando playerSnapshot: il giocatore VERO preso dalla propria rosa, lato client),
+ *   reject, o counter (counterFee, nuovo prezzo proposto); chi l'ha creata può accept/reject
+ *   solo una trattativa 'countered' (la controproposta), o cancel una propria 'pending' ancora
+ *   inevasa. Nessuna logica di gioco qui: la cessione vera (rimuovere/aggiungere il giocatore,
+ *   spostare il budget) avviene in locale in ciascuno dei due browser (ui.js), leggendo questo
+ *   stato al prossimo poll — stesso principio di "questo endpoint è solo il tramite" di tutto
+ *   il resto del file.
  * POST room.php {action:'leave', code, playerId}                    -> esci dalla stanza
  * GET  room.php?action=state&code=XXXX                               -> stato attuale (poll)
  *
@@ -82,6 +109,11 @@ $MAX_PLAYERS = 6;
 // margine per settimane/mesi di inattività fra una stagione e l'altra senza perdere la stanza.
 $ROOM_TTL_SECONDS = 180 * 24 * 3600;
 $CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // niente 0/O/1/I, meno errori a mano
+// Sotto questa inattività (nessun aggiornamento alla stanza, da chiunque) si considera l'host
+// verosimilmente sparito e si accetta un claimHost da un altro giocatore. 15 minuti: abbastanza
+// da non scippare un host che sta solo simulando una stagione lunga senza pubblicare ancora
+// nulla, abbastanza poco da non lasciare la stanza bloccata per giorni.
+$HOST_INACTIVE_SECONDS = 15 * 60;
 
 function fail($msg, $code = 400) {
     http_response_code($code);
@@ -242,6 +274,7 @@ if ($action === 'create') {
         'chat' => [],
         'hallOfFame' => [],
         'seasonAwards' => [],
+        'trades' => [],
         'announcement' => null,
     ];
     if (!write_json_file_locked(room_path($DIR, $code), $room)) fail('Impossibile salvare la stanza.', 500);
@@ -446,7 +479,7 @@ if ($action === 'startSession') {
     if (count($room['players']) < 2) { flock($fp, LOCK_UN); fclose($fp); fail('Serve almeno un altro giocatore nella stanza.', 409); }
     if ($phase !== 'allReadyLobby' && !$force) { flock($fp, LOCK_UN); fclose($fp); fail('Non tutti i giocatori sono pronti.', 409); }
     $room['phase'] = 'session';
-    foreach ($room['players'] as &$p) { $p['ready'] = false; unset($p['state']); }
+    foreach ($room['players'] as &$p) { if (empty($p['bot'])) { $p['ready'] = false; unset($p['state']); } }
     unset($p);
     $room['updatedAt'] = time();
     ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($room)); fflush($fp);
@@ -630,7 +663,7 @@ if ($action === 'nextRound') {
     $room['season'] = ($room['season'] ?? 1) + 1;
     unset($room['results']);
     unset($room['live']);
-    foreach ($room['players'] as &$p) { $p['ready'] = false; $p['acked'] = false; unset($p['state']); }
+    foreach ($room['players'] as &$p) { if (empty($p['bot'])) { $p['ready'] = false; $p['acked'] = false; unset($p['state']); } }
     unset($p);
     $room['updatedAt'] = time();
     ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($room)); fflush($fp);
@@ -689,13 +722,223 @@ if ($action === 'kick') {
     $prevPhase = $room['phase'] ?? 'lobby';
     if (!in_array($prevPhase, ['simulating', 'done', 'terminated'], true)) {
         $room['phase'] = in_array($prevPhase, ['session', 'readyForSim'], true) ? 'session' : 'lobby';
-        foreach ($room['players'] as &$p) { $p['ready'] = false; }
+        foreach ($room['players'] as &$p) { if (empty($p['bot'])) $p['ready'] = false; }
         unset($p);
     }
     $room['updatedAt'] = time();
     ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($room)); fflush($fp);
     flock($fp, LOCK_UN); fclose($fp);
     log_activity($DIR, $code, 'kick:' . $targetId);
+    echo json_encode(['ok' => true, 'room' => public_room($room)]);
+    exit;
+}
+
+if ($action === 'adoptBot') {
+    $code = strtoupper(trim($body['code'] ?? ''));
+    $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    $targetId = is_string($body['targetId'] ?? null) ? $body['targetId'] : '';
+    if ($code === '' || $playerId === '' || $targetId === '') fail('Richiesta non valida.');
+    if ($targetId === $playerId) fail('Non puoi adottare il tuo stesso club: usa "Esci dalla stanza" se vuoi lasciare.');
+
+    $path = room_path($DIR, $code);
+    $fp = fopen($path, 'c+');
+    if (!$fp) fail('Stanza non trovata.', 404);
+    flock($fp, LOCK_EX);
+    $raw = stream_get_contents($fp);
+    $room = $raw ? json_decode($raw, true) : null;
+    if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
+    if ($room['hostId'] !== $playerId) { flock($fp, LOCK_UN); fclose($fp); fail('Solo l\'host può adottare un club rimasto senza presidente.', 403); }
+    $phase = $room['phase'] ?? 'lobby';
+    if (in_array($phase, ['done', 'terminated'], true)) { flock($fp, LOCK_UN); fclose($fp); fail('Non si può adottare un club in questa fase della stanza.', 409); }
+    $found = false;
+    foreach ($room['players'] as &$p) {
+        if ($p['id'] === $targetId) {
+            // bot=true da qui in poi: pronto/scaricato per costruzione (non blocca più
+            // 'allReady'/'allAcked' più sotto), mai più simulato come umano — hostBeginMatchdaySim
+            // (ui.js) lo esclude esplicitamente dal gruppo, lasciando il suo posto a un bot vero.
+            $p['bot'] = true;
+            $p['ready'] = true;
+            $p['acked'] = true;
+            $found = true;
+            break;
+        }
+    }
+    unset($p);
+    if (!$found) { flock($fp, LOCK_UN); fclose($fp); fail('Giocatore non trovato in questa stanza.', 404); }
+    $room['updatedAt'] = time();
+    ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($room)); fflush($fp);
+    flock($fp, LOCK_UN); fclose($fp);
+    log_activity($DIR, $code, 'adoptBot:' . $targetId);
+    echo json_encode(['ok' => true, 'room' => public_room($room)]);
+    exit;
+}
+
+if ($action === 'claimHost') {
+    $code = strtoupper(trim($body['code'] ?? ''));
+    $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    if ($code === '' || $playerId === '') fail('Richiesta non valida.');
+
+    $path = room_path($DIR, $code);
+    $fp = fopen($path, 'c+');
+    if (!$fp) fail('Stanza non trovata.', 404);
+    flock($fp, LOCK_EX);
+    $raw = stream_get_contents($fp);
+    $room = $raw ? json_decode($raw, true) : null;
+    if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
+    if (!in_array($playerId, array_column($room['players'], 'id'), true)) { flock($fp, LOCK_UN); fclose($fp); fail('Non fai parte di questa stanza.', 404); }
+    if ($room['hostId'] === $playerId) { flock($fp, LOCK_UN); fclose($fp); echo json_encode(['ok' => true, 'room' => public_room($room)]); exit; }
+    $hostStillHere = in_array($room['hostId'], array_column($room['players'], 'id'), true);
+    $inactiveLongEnough = (time() - ($room['updatedAt'] ?? 0)) > $HOST_INACTIVE_SECONDS;
+    if ($hostStillHere && !$inactiveLongEnough) {
+        flock($fp, LOCK_UN); fclose($fp);
+        fail('L\'host è ancora presente nella stanza: puoi proporti solo se sparisce (assente da più di ' . round($HOST_INACTIVE_SECONDS / 60) . ' minuti) o se ha già lasciato.', 409);
+    }
+    $room['hostId'] = $playerId;
+    $room['updatedAt'] = time();
+    ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($room)); fflush($fp);
+    flock($fp, LOCK_UN); fclose($fp);
+    log_activity($DIR, $code, 'claimHost:' . $playerId);
+    echo json_encode(['ok' => true, 'room' => public_room($room)]);
+    exit;
+}
+
+// Un giocatore di rosa arrivato da un'altra carriera (playerSnapshot di respondTrade): non ci
+// si fida della forma esatta (arriva dal browser di un altro giocatore, mai validato lato
+// server come lo è invece generato da sim.js), quindi si sanifica/limita ogni campo invece di
+// fidarsi ciecamente — stesso approccio "tollerante ma con dei limiti" già usato per `state`
+// nell'azione 'ready'. Ritorna null se manca l'essenziale (nome/ruolo).
+function clean_player_snapshot($p) {
+    if (!is_array($p)) return null;
+    $n = clean_name($p['n'] ?? '', 40);
+    $pos = in_array($p['pos'] ?? '', ['POR', 'DIF', 'CEN', 'ATT'], true) ? $p['pos'] : null;
+    if ($n === '' || !$pos) return null;
+    $ovr = isset($p['ovr']) ? (int) $p['ovr'] : 50;
+    $ovr = max(1, min(115, $ovr));
+    $age = isset($p['age']) ? (int) $p['age'] : 25;
+    $age = max(15, min(45, $age));
+    $wage = isset($p['wage']) ? (float) $p['wage'] : 0;
+    $wage = max(0, min(5e6, $wage));
+    $yrs = isset($p['yrs']) ? (int) $p['yrs'] : 3;
+    $yrs = max(1, min(6, $yrs));
+    $potential = isset($p['potential']) ? (int) $p['potential'] : $ovr;
+    $potential = max($ovr, min(115, $potential));
+    return [
+        'n' => $n, 'pos' => $pos, 'ovr' => $ovr, 'age' => $age, 'wage' => $wage, 'yrs' => $yrs,
+        'potential' => $potential,
+        'nat' => is_array($p['nat'] ?? null) ? ['code' => clean_name($p['nat']['code'] ?? '', 4), 'name' => clean_name($p['nat']['name'] ?? '', 30), 'flag' => ''] : null,
+        'seasonGoals' => 0, 'seasonAssists' => 0, 'seasonCleanSheets' => 0, 'seasonApps' => 0,
+    ];
+}
+
+if ($action === 'proposeTrade') {
+    $code = strtoupper(trim($body['code'] ?? ''));
+    $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    $targetId = is_string($body['targetId'] ?? null) ? $body['targetId'] : '';
+    $playerName = clean_name($body['playerName'] ?? '', 40);
+    $fee = isset($body['fee']) ? (float) $body['fee'] : -1;
+    if ($code === '' || $playerId === '' || $targetId === '' || $playerName === '') fail('Richiesta non valida.');
+    if ($targetId === $playerId) fail('Non puoi proporre una trattativa a te stesso.');
+    if ($fee < 0 || $fee > 2e9) fail('Offerta non valida.');
+
+    $path = room_path($DIR, $code);
+    $fp = fopen($path, 'c+');
+    if (!$fp) fail('Stanza non trovata.', 404);
+    flock($fp, LOCK_EX);
+    $raw = stream_get_contents($fp);
+    $room = $raw ? json_decode($raw, true) : null;
+    if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
+    $players = array_column($room['players'], null, 'id');
+    if (!isset($players[$playerId])) { flock($fp, LOCK_UN); fclose($fp); fail('Non fai parte di questa stanza.', 404); }
+    if (!isset($players[$targetId]) || !empty($players[$targetId]['bot'])) { flock($fp, LOCK_UN); fclose($fp); fail('Destinatario non trovato o non più in gioco.', 404); }
+    $phase = $room['phase'] ?? 'lobby';
+    if (!in_array($phase, ['session', 'readyForSim', 'lobby', 'allReadyLobby'], true)) { flock($fp, LOCK_UN); fclose($fp); fail('Le trattative si fanno solo in dirigenza, non a simulazione in corso.', 409); }
+    if (!isset($room['trades']) || !is_array($room['trades'])) $room['trades'] = [];
+    // Un tetto alle trattative pendenti per non-coppia (stesso proponente+destinatario) evita
+    // che un rifiuto ripetuto (o un giocatore molesto) faccia crescere la lista senza fine.
+    $pendingSamePair = 0;
+    foreach ($room['trades'] as $t) { if (($t['fromId'] ?? null) === $playerId && ($t['toId'] ?? null) === $targetId && in_array($t['status'] ?? '', ['pending', 'countered'], true)) $pendingSamePair++; }
+    if ($pendingSamePair >= 3) { flock($fp, LOCK_UN); fclose($fp); fail('Hai già troppe trattative in sospeso con questo giocatore: aspetta una risposta.', 409); }
+    $trade = [
+        'id' => 't_' . bin2hex(random_bytes(6)),
+        'fromId' => $playerId, 'fromClub' => $players[$playerId]['club'] ?? '?',
+        'toId' => $targetId, 'toClub' => $players[$targetId]['club'] ?? '?',
+        'playerName' => $playerName, 'fee' => $fee, 'counterFee' => null,
+        'status' => 'pending', 'playerSnapshot' => null,
+        'createdAt' => time(), 'updatedAt' => time(),
+    ];
+    $room['trades'][] = $trade;
+    if (count($room['trades']) > 80) $room['trades'] = array_slice($room['trades'], -80);
+    $room['updatedAt'] = time();
+    ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($room)); fflush($fp);
+    flock($fp, LOCK_UN); fclose($fp);
+    echo json_encode(['ok' => true, 'room' => public_room($room)]);
+    exit;
+}
+
+if ($action === 'respondTrade') {
+    $code = strtoupper(trim($body['code'] ?? ''));
+    $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    $tradeId = is_string($body['tradeId'] ?? null) ? $body['tradeId'] : '';
+    $response = is_string($body['response'] ?? null) ? $body['response'] : '';
+    if ($code === '' || $playerId === '' || $tradeId === '' || !in_array($response, ['accept', 'reject', 'counter', 'cancel'], true)) fail('Richiesta non valida.');
+
+    $path = room_path($DIR, $code);
+    $fp = fopen($path, 'c+');
+    if (!$fp) fail('Stanza non trovata.', 404);
+    flock($fp, LOCK_EX);
+    $raw = stream_get_contents($fp);
+    $room = $raw ? json_decode($raw, true) : null;
+    if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
+    if (!isset($room['trades']) || !is_array($room['trades'])) $room['trades'] = [];
+    $idx = null;
+    foreach ($room['trades'] as $i => $t) { if (($t['id'] ?? null) === $tradeId) { $idx = $i; break; } }
+    if ($idx === null) { flock($fp, LOCK_UN); fclose($fp); fail('Trattativa non trovata.', 404); }
+    $t = $room['trades'][$idx];
+    $isSeller = ($t['toId'] ?? null) === $playerId;
+    $isBuyer = ($t['fromId'] ?? null) === $playerId;
+    if (!$isSeller && !$isBuyer) { flock($fp, LOCK_UN); fclose($fp); fail('Questa trattativa non ti riguarda.', 403); }
+
+    if ($response === 'cancel') {
+        if (!$isBuyer || ($t['status'] ?? '') !== 'pending') { flock($fp, LOCK_UN); fclose($fp); fail('Puoi annullare solo una tua proposta ancora in sospeso.', 409); }
+        $room['trades'][$idx]['status'] = 'cancelled';
+    } elseif ($response === 'accept') {
+        // 'pending' si accetta solo dal venditore (allega il giocatore vero), 'countered' solo
+        // dal compratore (accetta il nuovo prezzo, il giocatore l'ha già allegato il venditore).
+        if ($t['status'] === 'pending' && $isSeller) {
+            $snap = clean_player_snapshot($body['playerSnapshot'] ?? null);
+            if (!$snap) { flock($fp, LOCK_UN); fclose($fp); fail('Giocatore non valido: assicurati che il nome corrisponda a uno della tua rosa.'); }
+            $room['trades'][$idx]['playerSnapshot'] = $snap;
+            $room['trades'][$idx]['status'] = 'accepted';
+        } elseif ($t['status'] === 'countered' && $isBuyer) {
+            // Lo snapshot è già stato allegato dal venditore al momento della controproposta
+            // (vedi 'counter' più sotto): qui il compratore chiude solo sul prezzo, non serve
+            // un secondo giro dal venditore per confermare la cessione.
+            if (empty($t['playerSnapshot'])) { flock($fp, LOCK_UN); fclose($fp); fail('Trattativa incompleta: manca il giocatore, chiedi al venditore di rifare la controproposta.', 409); }
+            $room['trades'][$idx]['status'] = 'accepted';
+            $room['trades'][$idx]['fee'] = $t['counterFee'] ?? $t['fee'];
+        } else {
+            flock($fp, LOCK_UN); fclose($fp); fail('Non puoi accettare questa trattativa in questo momento.', 409);
+        }
+    } elseif ($response === 'reject') {
+        if (!in_array($t['status'], ['pending', 'countered'], true)) { flock($fp, LOCK_UN); fclose($fp); fail('Questa trattativa non è più aperta.', 409); }
+        $room['trades'][$idx]['status'] = 'rejected';
+    } elseif ($response === 'counter') {
+        if (!$isSeller || $t['status'] !== 'pending') { flock($fp, LOCK_UN); fclose($fp); fail('Puoi controproporre solo una richiesta ricevuta e ancora in sospeso.', 409); }
+        $counterFee = isset($body['counterFee']) ? (float) $body['counterFee'] : -1;
+        if ($counterFee < 0 || $counterFee > 2e9) { flock($fp, LOCK_UN); fclose($fp); fail('Controproposta non valida.'); }
+        // Il venditore allega già qui il giocatore vero (come per un accept diretto): se il
+        // compratore accetta la controproposta, la cessione è già pronta, senza un secondo
+        // giro di conferma.
+        $snap = clean_player_snapshot($body['playerSnapshot'] ?? null);
+        if (!$snap) { flock($fp, LOCK_UN); fclose($fp); fail('Giocatore non valido: assicurati che il nome corrisponda a uno della tua rosa.'); }
+        $room['trades'][$idx]['playerSnapshot'] = $snap;
+        $room['trades'][$idx]['counterFee'] = $counterFee;
+        $room['trades'][$idx]['status'] = 'countered';
+    }
+    $room['trades'][$idx]['updatedAt'] = time();
+    $room['updatedAt'] = time();
+    ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($room)); fflush($fp);
+    flock($fp, LOCK_UN); fclose($fp);
     echo json_encode(['ok' => true, 'room' => public_room($room)]);
     exit;
 }
@@ -720,7 +963,13 @@ if ($action === 'leave') {
         echo json_encode(['ok' => true]);
         exit;
     }
-    if ($room['hostId'] === $playerId) $room['hostId'] = $room['players'][0]['id'];   // l'host passa a chi resta da più tempo
+    if ($room['hostId'] === $playerId) {
+        // L'host passa a chi resta da più tempo, ma mai a un club adottato come bot (nessuno
+        // davanti allo schermo da quella postazione) se c'è almeno un'alternativa umana.
+        $nextHost = null;
+        foreach ($room['players'] as $p) { if (empty($p['bot'])) { $nextHost = $p['id']; break; } }
+        $room['hostId'] = $nextHost ?? $room['players'][0]['id'];
+    }
     // Chi esce durante la sessione (dirigenza) non riporta gli altri in lobby: restano nella
     // stessa fase, solo rifanno "pronto" perché la composizione della stanza è cambiata. Chi
     // esce a simulazione già avviata non la interrompe (l'host la porta avanti comunque nel
@@ -732,11 +981,11 @@ if ($action === 'leave') {
         // fase invariata
     } elseif (in_array($prevPhase, ['session', 'readyForSim'], true)) {
         $room['phase'] = 'session';
-        foreach ($room['players'] as &$p) { $p['ready'] = false; }
+        foreach ($room['players'] as &$p) { if (empty($p['bot'])) $p['ready'] = false; }
         unset($p);
     } else {
         $room['phase'] = 'lobby';
-        foreach ($room['players'] as &$p) { $p['ready'] = false; }
+        foreach ($room['players'] as &$p) { if (empty($p['bot'])) $p['ready'] = false; }
         unset($p);
     }
     $room['updatedAt'] = time();

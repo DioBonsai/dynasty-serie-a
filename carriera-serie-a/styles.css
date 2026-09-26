@@ -26,6 +26,15 @@
   --sans:'Inter',system-ui,sans-serif;
 }
 *{box-sizing:border-box}
+/* Accessibilità: un anello di focus tematico e ben visibile su sfondo scuro per chi naviga
+   da tastiera (Tab), su OGNI elemento interattivo — bottoni, link, campi, select. Prima non
+   c'era nessuna regola globale (solo .dyn-field input ne aveva una propria): senza, l'unico
+   segnale di dove ci si trova con Tab era l'outline di default del browser, spesso invisibile
+   o poco leggibile su questo sfondo molto scuro. :focus-visible (non :focus) mostra l'anello
+   solo alla navigazione da tastiera, non al semplice click col mouse. */
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible{
+  outline:2px solid var(--gold); outline-offset:2px; border-radius:6px;
+}
 html,body{height:100%}
 body{
   margin:0; min-height:100%;

@@ -64,8 +64,12 @@
   }
 
   const ovrBadge = (ovr) => { const t = ovrTier(ovr); return `background:${t.bg};color:${t.c}`; };
+  // Potenziale nascosto (sim.js:genPotential/potentialRange): mai il numero vero, solo una
+  // fascia — così un giovane resta davvero una scommessa, non un dato già scoperto in rosa.
+  const potentialBadge = (p) => { const r = potentialRange(p); return r ? ` · potenziale ${r.lo}-${r.hi}` : ''; };
   const specOf = (spec) => MANAGER_SPECS.find((s) => s.key === spec) || MANAGER_SPECS[0];
   const dsSpecOf = (spec) => DS_SPECS.find((s) => s.key === spec) || DS_SPECS[0];
+  const fitnessSpecOf = (spec) => FITNESS_SPECS.find((s) => s.key === spec) || FITNESS_SPECS[0];
 
   /* ---------------- tutorial ----------------
      Un carosello di schermate (icona + titolo + testo), richiamabile dalla home prima di
@@ -470,8 +474,9 @@
     // l'ultimo risultato che hai giocato in evidenza (buildMatchdayNews), sfide fra presidenti
     // segnalate a parte invece di passare come una partita come le altre.
     const playersListHTML = `<div class="dyn-modal-actions" style="gap:6px">
-        ${room.players.map((p) => `<div class="ow-fin-row"><span>${p.club}${p.id === room.hostId ? ' 👑' : ''}<small style="display:block;color:var(--muted)">${p.name}</small></span><b class="${p.ready ? 'good' : ''}">${p.ready ? '✅ Pronto' : '⏳ In attesa'}</b>${isHost && p.id !== playerId ? `<button class="ow-x" data-kick="${p.id}" title="Espelli dalla stanza">✖</button>` : ''}</div>`).join('')}
-      </div>`;
+        ${room.players.map((p) => `<div class="ow-fin-row"><span>${p.club}${p.id === room.hostId ? ' 👑' : ''}${p.bot ? ' 🤖' : ''}<small style="display:block;color:var(--muted)">${p.name}</small></span><b class="${p.ready ? 'good' : ''}">${p.bot ? '🤖 Bot' : p.ready ? '✅ Pronto' : '⏳ In attesa'}</b>${isHost && p.id !== playerId && !p.bot ? `<button class="ow-x" data-kick="${p.id}" title="Espelli dalla stanza">✖</button><button class="ow-x" data-adopt="${p.id}" title="Non risponde più? Fai giocare il suo club alla IA per il resto della stanza">🤖</button>` : ''}</div>`).join('')}
+      </div>
+      ${!isHost ? `<button class="dyn-mini" id="mpClaimHostBtn" title="Solo se l'host sembra sparito da un po'">👑 L'host non risponde: prendi il comando</button>` : ''}`;
     const myNews = myGroup && myGroup.news ? myGroup.news.find((n) => me && n.club === me.club) : null;
     const newsHTML = myNews ? `<div class="ow-fin-row" style="margin-bottom:6px"><span>${myNews.vsHuman ? '🤝 Sfida fra presidenti vs ' + myNews.vsHumanClub : (myNews.home ? 'In casa vs ' : 'In trasferta vs ') + myNews.opp}</span><b class="${myNews.res === 'W' ? 'good' : myNews.res === 'L' ? 'bad' : ''}">${myNews.gf}-${myNews.ga}</b></div>` : '';
     // Classifica intera della TUA categoria (tutte le squadre, non solo gli umani della
@@ -484,6 +489,38 @@
         return `<tr class="${r.isHuman ? 'me' : ''} ${zone}"><td>${i + 1}. ${r.club}</td><td style="font-size:11px;color:var(--muted)">${r.mgr || '-'}</td><td class="num">${r.pts}</td><td class="num">${r.gd > 0 ? '+' : ''}${r.gd}</td></tr>`;
       }).join('')}</tbody></table>` : '<div class="ow-sub">In attesa che l\'host avvii la simulazione…</div>'}
       </div>`;
+    // Trattative dirette fra umani (room.trades, respondTrade/proposeTrade in room.php): niente
+    // rosa altrui da sfogliare (non esiste una vista per quello), il nome del giocatore lo si
+    // scopre altrove (chat, conoscenza della stanza) — qui solo la trattativa in sé. Ha senso
+    // solo mentre si è nella propria dirigenza (S deve essere DAVVERO la carriera di chi guarda,
+    // vedi mySaveActive), mai durante la simulazione o a round chiuso.
+    const mpSessForTrades = readMpSession();
+    const mySaveActive = !!(mpSessForTrades && mpSessForTrades.code === room.code && S && S._saveId && S._saveId === mpSessForTrades.saveId);
+    const showTrades = !inSimStage && !done && !terminated;
+    const trades = room.trades || [];
+    const otherHumans = room.players.filter((p) => p.id !== playerId && !p.bot);
+    const incoming = trades.filter((t) => t.toId === playerId && t.status === 'pending');
+    const counters = trades.filter((t) => t.toId === playerId && t.status === 'countered');
+    const myProposals = trades.filter((t) => t.fromId === playerId && (t.status === 'pending' || t.status === 'countered'));
+    const appliedIds = (S && S._appliedTrades) || [];
+    const toReceive = trades.filter((t) => t.fromId === playerId && t.status === 'accepted' && t.playerSnapshot && appliedIds.indexOf(t.id) === -1);
+    const toFinalizeSale = trades.filter((t) => t.toId === playerId && t.status === 'accepted' && t.playerSnapshot && appliedIds.indexOf(t.id) === -1);
+    const tradesHTML = !showTrades ? '' : `
+      <div class="ow-sec-title" style="margin-top:10px">🤝 Trattative di mercato</div>
+      ${!mySaveActive ? '<div class="ow-sub">Apri la tua carriera (torna in Dirigenza da un\'altra carriera, poi rientra qui) per proporre o rispondere a una trattativa.</div>' : `
+        ${toReceive.length ? toReceive.map((t) => `<div class="ow-fin-row" style="background:rgba(40,217,160,.10);border-radius:8px"><span>📥 ${escapeHtml(t.playerSnapshot.n)} da ${escapeHtml(t.toClub)}, accordo raggiunto</span><button class="dyn-mini" data-recv="${t.id}">Ricevi · ${fmtMoney(t.fee)}</button></div>`).join('') : ''}
+        ${toFinalizeSale.length ? toFinalizeSale.map((t) => `<div class="ow-fin-row" style="background:rgba(40,217,160,.10);border-radius:8px"><span>💷 Accordo raggiunto con ${escapeHtml(t.fromClub)} per ${escapeHtml(t.playerSnapshot.n)}</span><button class="dyn-mini" data-finalize="${t.id}">Conferma cessione · +${fmtMoney(t.fee)}</button></div>`).join('') : ''}
+        ${incoming.map((t) => `<div class="ow-fin-row" style="align-items:flex-start"><span>${escapeHtml(t.fromClub)} offre <b>${fmtMoney(t.fee)}</b> per <b>${escapeHtml(t.playerName)}</b></span><span style="display:flex;gap:4px"><button class="dyn-mini" data-tacc="${t.id}">Accetta</button><button class="dyn-mini" data-tcnt="${t.id}">🤝</button><button class="dyn-mini ow-reject" data-trej="${t.id}">Rifiuta</button></span></div>`).join('')}
+        ${counters.map((t) => `<div class="ow-fin-row"><span>Hai già controproposto ${fmtMoney(t.counterFee)} a ${escapeHtml(t.fromClub)} per ${escapeHtml(t.playerName)}: in attesa</span></div>`).join('')}
+        ${myProposals.map((t) => `<div class="ow-fin-row" style="align-items:flex-start"><span>${t.status === 'countered' ? `${escapeHtml(t.toClub)} contropropone <b>${fmtMoney(t.counterFee)}</b> per ${escapeHtml(t.playerName)}` : `In attesa: ${fmtMoney(t.fee)} a ${escapeHtml(t.toClub)} per ${escapeHtml(t.playerName)}`}</span><span style="display:flex;gap:4px">${t.status === 'countered' ? `<button class="dyn-mini" data-tacccnt="${t.id}">Accetta</button><button class="dyn-mini ow-reject" data-trej="${t.id}">Rifiuta</button>` : `<button class="dyn-mini ow-reject" data-tcancel="${t.id}">Annulla</button>`}</span></div>`).join('')}
+        ${otherHumans.length ? `
+        <div class="ow-fin-row" style="flex-wrap:wrap;gap:6px">
+          <select id="mpTradeTarget" style="flex:1;min-width:110px">${otherHumans.map((p) => `<option value="${p.id}">${escapeHtml(p.club)}</option>`).join('')}</select>
+          <input id="mpTradePlayer" type="text" maxlength="40" placeholder="Nome giocatore" style="flex:1;min-width:110px" />
+          <input id="mpTradeFee" type="number" min="0" step="10000" placeholder="Offerta €" style="width:110px" />
+          <button class="dyn-btn" id="mpTradeSend">Proponi</button>
+        </div>` : '<div class="ow-sub">Nessun altro club umano nella stanza al momento.</div>'}
+      `}`;
     // Annuncio fisso dell'host: a differenza della chat (che scorre e si perde), resta pinnato
     // finché l'host non lo cambia — regole della stanza, obiettivo condiviso della dynasty, ecc.
     const announceHTML = `
@@ -509,6 +546,7 @@
       <p class="ow-sub">${(DIVS[room.div] || {}).name || ''} · condividi il codice <b>${room.code}</b> con chi manca.</p>
       <p class="ow-sub" style="text-align:center">${stageLabel}</p>
       ${inSimStage ? liveTableHTML : playersListHTML}
+      ${tradesHTML}
       ${announceHTML}
       ${chatHTML}
       <div class="dyn-modal-actions">
@@ -547,6 +585,83 @@
     const announceBtn = $('mpAnnounceBtn');
     if (announceBtn) announceBtn.onclick = () => confirmAnnounce(room, playerId);
     document.querySelectorAll('#owOverlayModal [data-kick]').forEach((el) => el.addEventListener('click', () => confirmKickPlayer(room, playerId, el.dataset.kick)));
+    document.querySelectorAll('#owOverlayModal [data-adopt]').forEach((el) => el.addEventListener('click', () => confirmAdoptBot(room, playerId, el.dataset.adopt)));
+    const claimHostBtn = $('mpClaimHostBtn');
+    if (claimHostBtn) claimHostBtn.addEventListener('click', async () => {
+      try { const data = await mpApi('claimHost', { code: room.code, playerId }); toast('👑 Ora sei tu l\'host di questa stanza.', 'success'); renderLobby(data.room, playerId); }
+      catch (e) { toast(e.message || 'Impossibile prendere il comando della stanza.', 'error'); }
+    });
+    const tradeSendBtn = $('mpTradeSend');
+    if (tradeSendBtn) tradeSendBtn.onclick = async () => {
+      const targetId = $('mpTradeTarget').value;
+      const playerName = ($('mpTradePlayer').value || '').trim();
+      const fee = Math.max(0, Math.round(+($('mpTradeFee').value || 0)));
+      if (!playerName) { toast('Scrivi il nome del giocatore che vuoi offrire.', 'error'); return; }
+      try { const data = await mpApi('proposeTrade', { code: room.code, playerId, targetId, playerName, fee }); toast('Proposta inviata.', 'success'); renderLobby(data.room, playerId); }
+      catch (e) { toast(e.message || 'Impossibile inviare la proposta.', 'error'); }
+    };
+    // Accetta una richiesta ricevuta (io sono il venditore): il giocatore va cercato per nome
+    // nella MIA rosa vera (S.squad) — è l'unico posto dove esiste davvero, chi propone non lo
+    // vede. Se non lo trovo (nome scritto male, già venduto altrove) non posso accettare alla
+    // cieca: meglio avvisare che inviare una trattativa che il server rifiuterebbe comunque.
+    // Accettare/controproporre non tocca ancora la rosa: solo segnala l'accordo al server. La
+    // cessione vera (splice + credito) avviene con un secondo click esplicito su "Conferma
+    // cessione" (data-finalize, sotto) quando l'accordo è definitivo — stessa idea del
+    // compratore che clicca "Ricevi" (data-recv): mai una mutazione di rosa/budget silenziosa
+    // al solo arrivo di un poll.
+    document.querySelectorAll('#owOverlayModal [data-tacc]').forEach((el) => el.addEventListener('click', async () => {
+      const t = trades.find((x) => x.id === el.dataset.tacc); if (!t) return;
+      const p = S.squad.find((x) => x.n.toLowerCase() === t.playerName.toLowerCase());
+      if (!p) { toast('Non trovo "' + t.playerName + '" nella tua rosa: controlla il nome esatto, o rifiuta la proposta.', 'error'); return; }
+      try {
+        const data = await mpApi('respondTrade', { code: room.code, playerId, tradeId: t.id, response: 'accept', playerSnapshot: { n: p.n, pos: p.pos, ovr: p.ovr, age: p.age, wage: p.wage, yrs: p.yrs, potential: p.potential, nat: p.nat } });
+        toast('Accordo raggiunto con ' + t.fromClub + ': conferma la cessione qui sotto per finalizzarla.', 'success');
+        renderLobby(data.room, playerId);
+      } catch (e) { toast(e.message || 'Impossibile accettare la proposta.', 'error'); }
+    }));
+    document.querySelectorAll('#owOverlayModal [data-finalize]').forEach((el) => el.addEventListener('click', () => {
+      const t = trades.find((x) => x.id === el.dataset.finalize); if (!t || !t.playerSnapshot) return;
+      const i = S.squad.findIndex((p) => p.n.toLowerCase() === t.playerSnapshot.n.toLowerCase());
+      if (i < 0) { toast('Il giocatore non è più nella tua rosa (già venduto altrove?): la trattativa resta bloccata, contatta l\'host.', 'error'); return; }
+      const p = S.squad[i];
+      pushAlumnus(p); S.budget += t.fee; S.squad.splice(i, 1);
+      if (!S._appliedTrades) S._appliedTrades = [];
+      S._appliedTrades.push(t.id);
+      saveGame();
+      toast('Ceduto ' + p.n + ' a ' + t.fromClub + ' per ' + fmtMoney(t.fee) + '.', 'money');
+      renderLobby(room, playerId);
+    }));
+    document.querySelectorAll('#owOverlayModal [data-trej]').forEach((el) => el.addEventListener('click', async () => {
+      try { const data = await mpApi('respondTrade', { code: room.code, playerId, tradeId: el.dataset.trej, response: 'reject' }); renderLobby(data.room, playerId); }
+      catch (e) { toast(e.message || 'Impossibile rifiutare la proposta.', 'error'); }
+    }));
+    document.querySelectorAll('#owOverlayModal [data-tcancel]').forEach((el) => el.addEventListener('click', async () => {
+      try { const data = await mpApi('respondTrade', { code: room.code, playerId, tradeId: el.dataset.tcancel, response: 'cancel' }); renderLobby(data.room, playerId); }
+      catch (e) { toast(e.message || 'Impossibile annullare la proposta.', 'error'); }
+    }));
+    // Il compratore accetta la controproposta: il venditore ha già allegato il giocatore vero
+    // al momento di controproporre (room.php: 'counter' richiede uno snapshot esattamente come
+    // 'accept'), quindi qui basta chiudere sul prezzo — la cessione è già pronta, comparirà fra
+    // "da ricevere" (toReceive) al prossimo render.
+    document.querySelectorAll('#owOverlayModal [data-tacccnt]').forEach((el) => el.addEventListener('click', async () => {
+      try { const data = await mpApi('respondTrade', { code: room.code, playerId, tradeId: el.dataset.tacccnt, response: 'accept' }); toast('Controproposta accettata.', 'success'); renderLobby(data.room, playerId); }
+      catch (e) { toast(e.message || 'Impossibile accettare la controproposta.', 'error'); }
+    }));
+    document.querySelectorAll('#owOverlayModal [data-tcnt]').forEach((el) => el.addEventListener('click', () => confirmCounterTrade(room, playerId, trades.find((x) => x.id === el.dataset.tcnt))));
+    // Il giocatore arrivato con una trattativa accettata (toReceive sopra): un ultimo click
+    // esplicito prima di toccare la rosa, mai automatico al solo poll — stessa cautela di
+    // downloadMyResult, che pure richiede un click per applicare un cambiamento di stato.
+    document.querySelectorAll('#owOverlayModal [data-recv]').forEach((el) => el.addEventListener('click', () => {
+      const t = trades.find((x) => x.id === el.dataset.recv); if (!t || !t.playerSnapshot) return;
+      const snap = t.playerSnapshot;
+      S.squad.push({ ...snap, pid: newPid(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0, outWeeks: 0, suspMatches: 0 });
+      S.budget -= t.fee;
+      if (!S._appliedTrades) S._appliedTrades = [];
+      S._appliedTrades.push(t.id);
+      saveGame();
+      toast(snap.n + ' si aggrega alla rosa: -' + fmtMoney(t.fee) + '.', 'spend');
+      renderLobby(room, playerId);
+    }));
     const chatSendBtn = $('mpChatSend');
     const chatInput = $('mpChatInput');
     if (chatSendBtn) chatSendBtn.onclick = async () => {
@@ -811,6 +926,54 @@
     $('ovKickNo').onclick = () => renderLobby(room, playerId);
   }
 
+  // Controproposta su una trattativa in arrivo (io sono il venditore): stesso schema di
+  // confirmKickPlayer/confirmAdoptBot, un piccolo overlay al posto di un window.prompt() nativo
+  // (mai usato altrove in questo gioco). Il giocatore va allegato già qui (room.php lo
+  // richiede per passare a 'countered'), quindi si cerca subito nella rosa vera come per
+  // "Accetta".
+  function confirmCounterTrade(room, playerId, trade) {
+    if (!trade) return;
+    overlay(`
+      <h2>🤝 Controproponi</h2>
+      <p>${escapeHtml(trade.fromClub)} offre ${fmtMoney(trade.fee)} per ${escapeHtml(trade.playerName)}. Quanto vuoi chiedere invece?</p>
+      <div class="ow-fin-row"><input id="mpCounterFee" type="number" min="0" step="10000" value="${Math.round(trade.fee * 1.25)}" style="width:100%" /></div>
+      <div class="dyn-modal-actions">
+        <button class="dyn-btn dyn-btn-primary" id="ovCounterGo">Invia controproposta</button>
+        <button class="dyn-btn" id="ovCounterNo">Annulla</button>
+      </div>`);
+    $('ovCounterGo').onclick = async () => {
+      const p = S.squad.find((x) => x.n.toLowerCase() === trade.playerName.toLowerCase());
+      if (!p) { toast('Non trovo "' + trade.playerName + '" nella tua rosa: controlla il nome esatto, o rifiuta la proposta.', 'error'); renderLobby(room, playerId); return; }
+      const counterFee = Math.max(0, Math.round(+($('mpCounterFee').value || 0)));
+      try {
+        const data = await mpApi('respondTrade', { code: room.code, playerId, tradeId: trade.id, response: 'counter', counterFee, playerSnapshot: { n: p.n, pos: p.pos, ovr: p.ovr, age: p.age, wage: p.wage, yrs: p.yrs, potential: p.potential, nat: p.nat } });
+        toast('Controproposta inviata: ' + fmtMoney(counterFee) + '.', 'success');
+        renderLobby(data.room, playerId);
+      } catch (e) { toast(e.message || 'Impossibile inviare la controproposta.', 'error'); renderLobby(room, playerId); }
+    };
+    $('ovCounterNo').onclick = () => renderLobby(room, playerId);
+  }
+
+  // Adozione bot (room.php: action=adoptBot): per un giocatore che non risponde più da un po'
+  // (a differenza di "Espelli", il suo club NON sparisce dalla stanza — resta in gioco, ma
+  // guidato dalla IA per il resto della dynasty, invece di bloccare "tutti pronti"/"tutti hanno
+  // scaricato" all'infinito). Non reversibile, da qui la conferma esplicita come per kick.
+  function confirmAdoptBot(room, playerId, targetId) {
+    const target = room.players.find((p) => p.id === targetId);
+    overlay(`
+      <h2>🤖 Adotta come bot</h2>
+      <p>Se <b>${target ? target.club : 'questo giocatore'}</b>${target ? ' (' + target.name + ')' : ''} non risponde più, il suo club può continuare a giocare guidato dalla IA per il resto della stanza, invece di bloccare gli altri. Non si può annullare: se torna, può solo uscire e provare a rientrare come nuovo giocatore.</p>
+      <div class="dyn-modal-actions">
+        <button class="dyn-btn dyn-btn-primary" id="ovAdoptGo">Adotta come bot</button>
+        <button class="dyn-btn" id="ovAdoptNo">Annulla</button>
+      </div>`);
+    $('ovAdoptGo').onclick = async () => {
+      try { const data = await mpApi('adoptBot', { code: room.code, playerId, targetId }); toast((target ? target.club : 'Il club') + ' è ora controllato dalla IA.', 'success'); renderLobby(data.room, playerId); }
+      catch (e) { toast(e.message || 'Impossibile adottare il club.', 'error'); renderLobby(room, playerId); }
+    };
+    $('ovAdoptNo').onclick = () => renderLobby(room, playerId);
+  }
+
   // Albo d'oro della stanza: lo storico sintetico per playerId che room.php accumula ad ogni
   // submitResult (room.hallOfFame) — sopravvive ai round successivi, a differenza di
   // `results` che nextRound azzera, quindi è l'unico posto dove si vede l'intera dynasty
@@ -953,8 +1116,12 @@
   // backend con stato persistente).
   async function hostBeginMatchdaySim(room, playerId, force) {
     // Chi non ha ancora ripremuto Pronto in sessione resta fuori da questa stagione — se
-    // l'host forza l'avvio, si procede solo con chi ha davvero sottomesso una carriera.
-    const readyPlayers = room.players.filter((p) => p.ready && p.state);
+    // l'host forza l'avvio, si procede solo con chi ha davvero sottomesso una carriera. Chi è
+    // stato adottato come bot (adoptBot, room.php) è SEMPRE escluso qui, anche se il suo
+    // `state`/`ready` di prima dell'adozione sono ancora quelli: il suo posto in categoria lo
+    // riempie da solo un bot vero (setupHostSeason calcola botCount = squadre - umani), non ha
+    // più senso simularlo come fosse ancora un club umano.
+    const readyPlayers = room.players.filter((p) => p.ready && p.state && !p.bot);
     if (readyPlayers.length < 1) { toast('Nessuno è ancora pronto.', 'error'); return; }
     const btn = $('mpStartSimBtn') || $('mpForceSimBtn');
     if (btn) { btn.disabled = true; btn.textContent = 'Avvio in corso…'; }
@@ -1245,6 +1412,12 @@
   // Categoria di partenza scelta in fase di creazione (indice in DIVS, 0=Eccellenza).
   let startDiv = 0;
   let startDifficulty = 'medio';
+  // Durata della dynasty (solo singolo: le stanze multiplayer restano fisse a MAX_SEASONS,
+  // una scelta condivisa da tutto il gruppo non ha senso renderla individuale). 20 resta il
+  // default "canonico", 8/12 per chi vuole arrivare in fondo a una carriera senza il
+  // grande impegno di tempo delle 20 stagioni intere.
+  const SEASON_LENGTHS = [8, 12, 20];
+  let startSeasons = 20;
 
   // Stato dello stemma in fase di creazione del club (prima che esista S).
   let crestShape = CREST_DEFAULT.shape, crestColors = randCrestColors();
@@ -1281,6 +1454,15 @@
     }));
   }
 
+  function renderSeasonsPicker() {
+    const grid = $('seasonsPicker'); if (!grid) return;
+    grid.innerHTML = SEASON_LENGTHS.map((n) => `<button type="button" class="ow-div-pick ${startSeasons === n ? 'on' : ''}" data-seasons="${n}">${n} stagioni</button>`).join('');
+    grid.querySelectorAll('[data-seasons]').forEach((el) => el.addEventListener('click', () => {
+      startSeasons = +el.dataset.seasons;
+      grid.querySelectorAll('[data-seasons]').forEach((x) => x.classList.toggle('on', +x.dataset.seasons === startSeasons));
+    }));
+  }
+
   function renderTakeovers() {
     const grid = $('takeoverGrid');
     grid.innerHTML = takeovers.map((t, i) => `
@@ -1307,6 +1489,7 @@
   function boot() {
     renderDivPicker();
     renderDiffPicker();
+    renderSeasonsPicker();
     takeovers = genTakeovers(startDiv); renderTakeovers();
     if (!$('owClubName').value) $('owClubName').value = pick(POOLS[startDiv]).n;   // suggerimento a caso, modificabile
     updateCrestPreview();
@@ -1322,7 +1505,7 @@
     // sovrascrittura da chiedere.
     $('owStartBtn').addEventListener('click', () => {
       if (selTakeover < 0) { toast('Scegli prima una situazione di partenza.'); return; }
-      startDynasty(($('owName').value || '').trim() || 'Il Presidente', takeovers[selTakeover], ($('owClubName').value || '').trim(), startDiv, startDifficulty);
+      startDynasty(($('owName').value || '').trim() || 'Il Presidente', takeovers[selTakeover], ($('owClubName').value || '').trim(), startDiv, startDifficulty, startSeasons);
     });
     $('owHomeBtn').addEventListener('click', () => { saveGame(); location.href = 'index.html'; });
     renderSaveSlots();
@@ -1337,6 +1520,8 @@
     if (trophyCaseBtn) trophyCaseBtn.addEventListener('click', showTrophyCase);
     const leaderboardBtn = $('owGlobalLeaderboardBtn');
     if (leaderboardBtn) leaderboardBtn.addEventListener('click', showGlobalLeaderboard);
+    const notifBtn = $('owNotifBtn');
+    if (notifBtn) notifBtn.addEventListener('click', openReminders);
     const mpBtn = $('owMultiplayerBtn');
     if (mpBtn) mpBtn.addEventListener('click', openMultiplayerHub);
     const tutBtn = $('owTutorialBtn');
@@ -1495,6 +1680,15 @@
     return `<div class="ow-formation-picker">${Object.keys(FORMATIONS).map((k) => `<button type="button" class="ow-formation-pick ${previewFormation === k ? 'on' : ''}" data-formation="${k}">${FORMATIONS[k].label}</button>`).join('')}</div>`;
   }
 
+  // Istruzioni tattiche (pressing/ampiezza/ritmo): tre gruppi di pillole indipendenti dal
+  // modulo, stesso stile visivo di formationPickerHTML. `group` è press/width/tempo, `opts` è
+  // TACTIC_PRESS/WIDTH/TEMPO (data.js).
+  function tacticPickerHTML(title, group, opts) {
+    const cur = (S.tacticStyle || DEFAULT_TACTIC_STYLE)[group];
+    return `<div class="ow-sub" style="margin-top:8px">${title}</div>
+      <div class="ow-formation-picker">${Object.keys(opts).map((k) => `<button type="button" class="ow-formation-pick ${cur === k ? 'on' : ''}" data-tactic="${group}" data-tactic-val="${k}" title="${opts[k].desc}">${opts[k].icon} ${opts[k].label}</button>`).join('')}</div>`;
+  }
+
   // Sparkline SVG minimale (nessuna libreria): un'area + linea che mostra l'andamento
   // di una serie di valori stagione per stagione, usata nella bacheca di fine carriera.
   function sparklineSVG(values, color) {
@@ -1538,6 +1732,7 @@
   }
 
   function renderBoard() {
+    syncNotifDot();
     const d = divOf(), body = $('boardBody');
     // Carriera legata a una stanza multiplayer ancora aperta: niente "Inizia Stagione" qui
     // (la stagione la avvia l'host per tutti insieme), solo "Sono pronto" che torna alla
@@ -1558,6 +1753,12 @@
     }
     const fyCount = S.squad.filter(finalYear).length;
     if (!S.sponsorOpts && !S.sponsor) S.sponsorOpts = sponsorOffers();
+    if (!S.stadiumSponsorOpts && !S.stadiumSponsor) S.stadiumSponsorOpts = stadiumSponsorOffers();
+    if (!S.techSponsorOpts && !S.techSponsor) S.techSponsorOpts = techSponsorOffers();
+    // Il fondo d'investimento non si ripropone da solo ogni stagione come gli sponsor: è un
+    // impegno pluriennale serio (rischio di perdere il club), quindi le proposte restano finché
+    // non le accetti o le rifiuti esplicitamente, non vengono rigenerate a ogni render.
+    if (!S.investorDeal && !S.investorOpts) S.investorOpts = investorDealOffers();
     if (!S.mgrOpts) {
       S.mgrOpts = [genManager(0), genManager(3), genManager(6)];
       // Una tua ex leggenda può presentarsi fra i candidati (mai al posto di tutti e tre,
@@ -1566,6 +1767,7 @@
       if (legend) S.mgrOpts[rnd(S.mgrOpts.length)] = legend;
     }
     if (!S.sportingDirector && !S.dsOpts) S.dsOpts = [genSportingDirector(0), genSportingDirector(4)];
+    if (!S.fitnessCoach && !S.fitOpts) S.fitOpts = [genFitnessCoach(0), genFitnessCoach(4)];
     const bill = kickoffBill();
     const free = freeToSpend();
     const broke = S.budget < bill;
@@ -1585,8 +1787,8 @@
       return `
       <div class="ow-player${fy ? ' final' : ''}" data-pid="${p.pid}"><span class="ovr" style="${ovrBadge(p.ovr)}" title="${p.pid === S.captainPid ? 'Capitano: +1 OVR' : ''}">${p.pid === S.captainPid ? p.ovr + 1 : p.ovr}</span>
         <span class="postag postag-${p.pos}">${p.pos}</span>
-        <span class="nm">${flagOf(p)}${p.n}${p.pid === S.captainPid ? ' <span title="Capitano">©</span>' : ''}<small>età ${p.age}</small></span>
-        ${p.outWeeks > 0 ? `<span class="stat-tag inj" title="Infortunato">🚑 ${p.outWeeks}</span>` : p.suspMatches > 0 ? '<span class="stat-tag susp" title="Squalificato">🟥</span>' : ''}
+        <span class="nm">${flagOf(p)}${p.n}${p.pid === S.captainPid ? ' <span title="Capitano">©</span>' : ''}${hasChemistryPartner(p) ? ' <span title="Coppia d\'attacco affiatata: si cercano a memoria">🔗</span>' : ''}<small>età ${p.age}${potentialBadge(p)}</small></span>
+        ${p.outWeeks > 0 ? `<span class="stat-tag inj" title="Infortunato">🚑 ${p.outWeeks}</span>` : p.suspMatches > 0 ? '<span class="stat-tag susp" title="Squalificato">🟥</span>' : p.loanedOut ? '<span class="stat-tag" title="In prestito altrove fino a fine stagione">📤 prestito fuori</span>' : ''}
         ${p.loan ? '<span class="yy loan" title="Torna al suo club se non riscattato">prestito</span>' : `<span class="yy${fy ? ' fy' : ''}" title="Anni di contratto rimasti">${p.yrs}a</span>`}
         <span class="wg">${fmtYr(p.wage)}</span>
         ${fy ? `<button class="ow-renew" data-renew="${p.pid}" title="Offri un nuovo contratto">Rinnova</button>` : ''}
@@ -1610,11 +1812,13 @@
         <div class="ow-fin-row"><span>Stipendi giocatori (${S.squad.length} giocatori, pagati all'avvio)</span><b>${fmtMoney(wageBill())}</b></div>
         <div class="ow-fin-row"><span>Stipendio allenatore (pagato all'avvio)</span><b>${fmtMoney(S.manager.salary)}</b></div>
         ${S.sportingDirector ? `<div class="ow-fin-row"><span>Stipendio direttore sportivo (pagato all'avvio)</span><b>${fmtMoney(S.sportingDirector.salary)}</b></div>` : ''}
+        ${S.fitnessCoach ? `<div class="ow-fin-row"><span>Stipendio preparatore atletico (pagato all'avvio)</span><b>${fmtMoney(S.fitnessCoach.salary)}</b></div>` : ''}
         <div class="ow-fin-row total ${broke ? 'bad' : ''}"><span>Costo d'avvio</span><b>${fmtMoney(bill)}</b></div>
         <div class="ow-fin-row"><span>Ricavi di stagione (stima)</span><b>${fmtMoney(estRevenue)}</b></div>
         ${broke ? '<div class="ow-warn">⚠️ Ti mancano <b>' + fmtMoney(bill - S.budget) + '</b> per coprire il costo d\'avvio. Ricorda: gli spin spendono cassa anche se rifiuti il giocatore. Vendi giocatori (💷), prendi il bonus investitore o assumi un allenatore più economico prima dell\'inizio.</div>' : ''}
         ${!S.investorUsed ? `<button class="dyn-btn ow-investor" id="investorBtn">💼 Bonus investitore · +${fmtMoney(Math.round(d.investor * diffOf().sponsorMult / 1e4) * 1e4)}</button>` : ''}
         <label class="ow-sub" style="display:flex;align-items:center;gap:6px;margin-top:4px;cursor:pointer"><input type="checkbox" id="autoInvestorChk" ${S.autoInvestor ? 'checked' : ''} /> Prendilo sempre in automatico a inizio stagione, da qui in poi</label>
+        <label class="ow-sub" style="display:flex;align-items:center;gap:6px;margin-top:8px;cursor:pointer" title="Salta i mini-resoconti partita, il mercato di gennaio e il riassunto a inizio stagione; chi è a fine carriera resta sempre 'un'altra stagione'. Utile per arrivare in fondo alle 20 stagioni il più in fretta possibile."><input type="checkbox" id="turboModeChk" ${S.turboMode ? 'checked' : ''} /> ⏩ Modalità veloce: salta interruzioni non essenziali (gennaio incluso)</label>
       </div>
       ${S.offers && S.offers.length ? `
       <div class="ow-sec">
@@ -1630,7 +1834,19 @@
               <button class="dyn-mini ow-reject" data-rej="${o.pid}">Rifiuta</button></div>
           </div>`;
         }).join('')}
-      </div>` : ''}`;
+      </div>` : ''}
+      <div class="ow-sec">
+        <div class="ow-sec-title">🏦 Fondo d'investimento</div>
+        ${S.investorDeal ? `
+          <div class="ow-fin-row"><span>${S.investorDeal.name}</span><b>${fmtMoney(S.investorDeal.yearly)}/anno</b></div>
+          <div class="ow-sub">Obiettivo: raggiungere ${DIVS[S.investorDeal.targetDiv].name} entro la stagione ${S.investorDeal.deadlineSeason} (siamo alla ${S.season}), pena la cessione forzata del club. Centrandolo, bonus finale di ${fmtMoney(S.investorDeal.completionBonus)}.</div>
+        ` : (S.investorOpts && S.investorOpts.length) ? `
+          <div class="ow-sub">Un patto pluriennale: cassa subito + un top-up ogni stagione, in cambio di un obiettivo di categoria entro una scadenza. Non lo raggiungi in tempo? Cessione forzata del club.</div>
+          ${S.investorOpts.map((o, i) => `
+          <button class="ow-offer" data-inv="${i}"><span class="info"><b>${o.name}</b><small>Obiettivo: ${DIVS[o.targetDiv].name} entro la stagione ${o.deadlineSeason} · +${fmtMoney(o.yearly)}/anno · bonus finale ${fmtMoney(o.completionBonus)}</small></span><span class="money">+${fmtMoney(o.injection)} subito</span></button>`).join('')}
+          <button class="dyn-mini" id="investorDismissBtn" style="margin-top:6px">Non interessa, per ora</button>
+        ` : `<div class="ow-sub">Nessun fondo interessato al momento.</div>`}
+      </div>`;
 
     const xiPids = getPreviewXI();
     const rosaHTML = `
@@ -1653,6 +1869,17 @@
         `}
       </div>
       <div class="ow-sec">
+        <div class="ow-sec-title">🩺 Preparatore atletico</div>
+        ${S.fitnessCoach ? `
+          <div class="ow-mgr"><span class="ovr">${S.fitnessCoach.rating}</span><span class="nm">${flagOf(S.fitnessCoach)}${S.fitnessCoach.n}<small>${fmtMoney(S.fitnessCoach.salary)}/anno · ${fitnessSpecOf(S.fitnessCoach.spec).icon} ${fitnessSpecOf(S.fitnessCoach.spec).label}</small></span><span class="tag">In carica</span></div>
+          <div class="ow-sub" title="${fitnessSpecOf(S.fitnessCoach.spec).desc}">${fitnessSpecOf(S.fitnessCoach.spec).icon} ${fitnessSpecOf(S.fitnessCoach.spec).desc}</div>
+          <button class="dyn-mini ow-danger" id="fitFireBtn">Licenzia (buonuscita 30%)</button>
+        ` : `
+          <div class="ow-sub">Ruolo opzionale: lavora sul fisico della squadra (affaticamento, infortuni, tenuta della forma), non tocca il mercato.</div>
+          ${(S.fitOpts || []).map((m, i) => `<div class="ow-mgr cand"><span class="ovr">${m.rating}</span><span class="nm">${flagOf(m)}${m.n}<small>${fmtMoney(m.salary)}/anno · ${fitnessSpecOf(m.spec).icon} ${fitnessSpecOf(m.spec).label}</small></span><button class="dyn-mini ow-hire-fit" data-hirefit="${i}">Assumi</button></div>`).join('')}
+        `}
+      </div>
+      <div class="ow-sec">
         <div class="ow-sec-title">🔭 Settore giovanile</div>
         <div class="ow-scout-tier" title="${'+' + scout.bonus + ' OVR medio sugli spin · ' + Math.round(scout.prospectChance * 100) + '% di chance a stagione di un prospetto del vivaio · ' + Math.round(scout.gem * 100) + '% di chance di un vero colpo'}${nextScoutCost != null ? ' · il livello successivo (' + SCOUT_TIERS[scoutLv + 1].name + '): +' + SCOUT_TIERS[scoutLv + 1].bonus + ' OVR, ' + Math.round(SCOUT_TIERS[scoutLv + 1].prospectChance * 100) + '% prospetto, ' + Math.round(SCOUT_TIERS[scoutLv + 1].gem * 100) + '% colpo' : ''}">
           <div><div class="lv">${scout.name}</div><div class="ds">Spin migliori in media (+${scout.bonus} OVR) e più affidabili${scoutLv ? ', più chance di un prospetto gratis a inizio stagione' : ''}</div></div>
@@ -1665,7 +1892,7 @@
           <div class="ow-jan-head">
             <span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span>
             <span class="postag postag-${p.pos}">${p.pos}</span>
-            <span class="nm">${flagOf(p)}${p.n}<small>${POS_LABEL[p.pos]} · età ${p.age} · promessa del vivaio</small></span>
+            <span class="nm">${flagOf(p)}${p.n}<small>${POS_LABEL[p.pos]} · età ${p.age} · promessa del vivaio${potentialBadge(p)}</small></span>
           </div>
           <button class="dyn-btn dyn-btn-primary" data-scoutsign="${i}">Aggrega alla rosa · Gratis</button>
         </div>`).join('')}` : ''}
@@ -1698,6 +1925,13 @@
         ${pitchHTML(previewFormation, xiPids)}
         ${benchHTML(xiPids)}
         <button class="dyn-mini" id="resetXIBtn" style="margin-top:10px;width:100%">🔄 Formazione automatica</button>
+      </div>
+      <div class="ow-sec">
+        <div class="ow-sec-title">🧭 Istruzioni tattiche</div>
+        <div class="ow-sub">Si sommano al modulo, non lo sostituiscono: più aggressive = più gol fatti e subiti (e squadra più stanca), più prudenti il contrario.</div>
+        ${tacticPickerHTML('Pressing', 'press', TACTIC_PRESS)}
+        ${tacticPickerHTML('Ampiezza', 'width', TACTIC_WIDTH)}
+        ${tacticPickerHTML('Ritmo', 'tempo', TACTIC_TEMPO)}
       </div>`;
 
     const stadioHTML = `
@@ -1709,20 +1943,38 @@
         <div class="ow-tickets">${TICKETS.map((t, i) => `<button class="ow-ticket ${S.ticket === i ? 'on' : ''}" data-tk="${i}"><b>${t.label}</b><small>€${Math.round(d.ticket * t.mult)} medio · ${t.hint}</small></button>`).join('')}</div>
       </div>`;
 
-    const sponsorHTML = `
-      <div class="ow-sec">
-        <div class="ow-sec-title">🤝 Sponsorizzazione</div>
-        ${S.sponsor
-          ? `<div class="ow-fin-row"><span>${S.sponsor.name} (${S.sponsor.left} ann${S.sponsor.left === 1 ? 'o' : 'i'} rimasti${S.sponsor.sent ? ', ' + (S.sponsor.sent > 0 ? 'i tifosi approvano' : 'i tifosi disapprovano') : ''})</span><b>${fmtMoney(S.sponsor.perYear)}/anno</b></div>`
-          : `<div class="ow-sub">Nessuno sponsor di maglia. Scegli un accordo:</div>` + S.sponsorOpts.map((o, i) => `
-            <button class="ow-offer" data-sp="${i}"><span class="info"><b>${o.name}</b><small>${o.years} anni${o.sent ? (o.sent > 0 ? ' · i tifosi approvano' : ' · i tifosi disapprovano') : ''}</small></span><span class="money">${fmtMoney(o.perYear)}/anno</span></button>`).join('')}
+    // Un unico stampo per i tre slot (maglia/stadio/tecnico): mostra l'accordo attivo con le
+    // sue clausole, oppure la lista di offerte da scegliere. `key` è il campo su S, `dataAttr`
+    // il data-attribute usato dai bottoni per non far collidere i tre gruppi di offerte.
+    const sponsorSlotHTML = (title, key, optsKey, dataAttr, sentNote) => {
+      const active = S[key];
+      if (active) {
+        const clauseBits = [];
+        if (active.clauseWin) clauseBits.push('🏆 +' + fmtMoney(active.clauseWin) + ' se vinci il campionato o sei promosso');
+        if (active.clauseEuro) clauseBits.push('⭐ +' + fmtMoney(active.clauseEuro) + ' se ti qualifichi in Europa');
+        return `<div class="ow-sec">
+          <div class="ow-sec-title">${title}</div>
+          <div class="ow-fin-row"><span>${active.name} (${active.left} ann${active.left === 1 ? 'o' : 'i'} rimasti${sentNote && active.sent ? ', ' + (active.sent > 0 ? 'i tifosi approvano' : 'i tifosi disapprovano') : ''})</span><b>${fmtMoney(active.perYear)}/anno</b></div>
+          ${clauseBits.length ? `<div class="ow-sub">${clauseBits.join(' · ')}</div>` : ''}
+        </div>`;
+      }
+      const opts = S[optsKey] || [];
+      return `<div class="ow-sec">
+        <div class="ow-sec-title">${title}</div>
+        <div class="ow-sub">Nessun accordo attivo. Scegline uno (importo fisso + clausole):</div>
+        ${opts.map((o, i) => `
+        <button class="ow-offer" data-${dataAttr}="${i}"><span class="info"><b>${o.name}</b><small>${o.years} anni${sentNote && o.sent ? (o.sent > 0 ? ' · i tifosi approvano' : ' · i tifosi disapprovano') : ''} · 🏆 +${fmtMoney(o.clauseWin)} vittoria · ⭐ +${fmtMoney(o.clauseEuro)} Europa</small></span><span class="money">${fmtMoney(o.perYear)}/anno</span></button>`).join('')}
       </div>`;
+    };
+    const sponsorHTML = sponsorSlotHTML('👕 Sponsor di maglia', 'sponsor', 'sponsorOpts', 'sp', true)
+      + sponsorSlotHTML('🏟️ Sponsor di stadio', 'stadiumSponsor', 'stadiumSponsorOpts', 'stsp', false)
+      + sponsorSlotHTML('👟 Sponsor tecnico', 'techSponsor', 'techSponsorOpts', 'tesp', false);
 
     const TABS = [
       { key: 'finanze', label: '💰 Finanze', html: financeHTML, warn: broke || S.ownerRating < 35 || !!S.debtSeasons || !!(S.offers && S.offers.length) },
       { key: 'rosa', label: '👥 Rosa', html: rosaHTML, warn: S.squad.length < MIN_SQUAD || fyCount > 0 || !!(S.scoutProspects && S.scoutProspects.length) },
       { key: 'stadio', label: '🏟️ Stadio', html: stadioHTML, warn: false },
-      { key: 'sponsor', label: '🤝 Sponsor', html: sponsorHTML, warn: !S.sponsor },
+      { key: 'sponsor', label: '🤝 Sponsor', html: sponsorHTML, warn: !S.sponsor || !S.stadiumSponsor || !S.techSponsor },
     ];
     if (!TABS.some((t) => t.key === boardTab)) boardTab = 'finanze';
     const activeTab = TABS.find((t) => t.key === boardTab);
@@ -1734,7 +1986,7 @@
         <div class="cell free"><span>Libero da spendere</span><b class="${free < 0 ? 'bad' : ''}">${fmtMoney(free)}</b></div>
       </div>
       ${crestMarkup(S.crestShape, S.crestColors, 'ow-board-crest')}
-      <div class="dyn-top"><div class="dyn-top-title">Dirigenza</div><div class="dyn-top-sub">${S.owner} · ${S.club} · Stagione ${S.season} di ${MAX_SEASONS}</div></div>
+      <div class="dyn-top"><div class="dyn-top-title">Dirigenza</div><div class="dyn-top-sub">${S.owner} · ${S.club} · Stagione ${S.season} di ${S.maxSeasons || MAX_SEASONS}</div></div>
       ${ladderHTML()}
       <div class="ow-tabs">${TABS.map((t) => `<button class="ow-tab ${boardTab === t.key ? 'on' : ''}" data-tab="${t.key}">${t.label}${t.warn ? '<span class="dot"></span>' : ''}</button>`).join('')}</div>
       <div id="boardTabBody">${activeTab.html}</div>
@@ -1849,11 +2101,40 @@
       S.budget -= sev; S.sportingDirector = null; S.dsOpts = null;
       toast('Direttore sportivo licenziato. Buonuscita pagata: ' + fmtMoney(sev), 'spend'); renderBoard(); saveGame();
     };
-    body.querySelectorAll('.ow-offer').forEach((el) => el.addEventListener('click', () => {
+    body.querySelectorAll('.ow-hire-fit').forEach((el) => el.addEventListener('click', () => {
+      const m = (S.fitOpts || [])[+el.dataset.hirefit]; if (!m) return;
+      S.fitnessCoach = m; S.fitOpts = null;
+      toast(m.n + ' è il nuovo preparatore atletico.', 'success'); renderBoard(); saveGame();
+    }));
+    const fitFireBtn = $('fitFireBtn');
+    if (fitFireBtn) fitFireBtn.onclick = () => {
+      const sev = Math.round(S.fitnessCoach.salary * 0.3);
+      if (S.budget < sev) { toast('Non puoi permetterti la buonuscita.', 'error'); return; }
+      S.budget -= sev; S.fitnessCoach = null; S.fitOpts = null;
+      toast('Preparatore atletico licenziato. Buonuscita pagata: ' + fmtMoney(sev), 'spend'); renderBoard(); saveGame();
+    };
+    body.querySelectorAll('.ow-offer[data-sp]').forEach((el) => el.addEventListener('click', () => {
       const o = S.sponsorOpts[+el.dataset.sp]; if (!o) return;
       S.sponsor = o; S.sponsorOpts = null;
-      toast('Firmato con ' + o.name + ' per ' + fmtMoney(o.perYear) + ' all\'anno.', 'success'); renderBoard(); saveGame();
+      toast('Firmato con ' + o.name + ' (maglia) per ' + fmtMoney(o.perYear) + ' all\'anno.', 'success'); renderBoard(); saveGame();
     }));
+    body.querySelectorAll('.ow-offer[data-stsp]').forEach((el) => el.addEventListener('click', () => {
+      const o = S.stadiumSponsorOpts[+el.dataset.stsp]; if (!o) return;
+      S.stadiumSponsor = o; S.stadiumSponsorOpts = null;
+      toast('Firmato con ' + o.name + ' (stadio) per ' + fmtMoney(o.perYear) + ' all\'anno.', 'success'); renderBoard(); saveGame();
+    }));
+    body.querySelectorAll('.ow-offer[data-tesp]').forEach((el) => el.addEventListener('click', () => {
+      const o = S.techSponsorOpts[+el.dataset.tesp]; if (!o) return;
+      S.techSponsor = o; S.techSponsorOpts = null;
+      toast('Firmato con ' + o.name + ' (tecnico) per ' + fmtMoney(o.perYear) + ' all\'anno.', 'success'); renderBoard(); saveGame();
+    }));
+    body.querySelectorAll('.ow-offer[data-inv]').forEach((el) => el.addEventListener('click', () => {
+      const o = (S.investorOpts || [])[+el.dataset.inv]; if (!o) return;
+      S.investorDeal = o; S.investorOpts = null; S.budget += o.injection;
+      toast(o.name + ' investe: +' + fmtMoney(o.injection) + ' subito. Obiettivo: ' + DIVS[o.targetDiv].name + ' entro la stagione ' + o.deadlineSeason + '.', 'success'); renderBoard(); saveGame();
+    }));
+    const invDismiss = $('investorDismissBtn');
+    if (invDismiss) invDismiss.addEventListener('click', () => { S.investorOpts = null; renderBoard(); saveGame(); });
     const upg = $('upgradeBtn');
     if (upg) upg.addEventListener('click', () => {
       const nx = STADIUM[S.stadiumTier + 1]; if (!nx || S.budget < nx.cost) return;
@@ -1878,6 +2159,8 @@
     });
     const autoInvestorChk = $('autoInvestorChk');
     if (autoInvestorChk) autoInvestorChk.addEventListener('change', () => { S.autoInvestor = autoInvestorChk.checked; saveGame(); });
+    const turboModeChk = $('turboModeChk');
+    if (turboModeChk) turboModeChk.addEventListener('change', () => { S.turboMode = turboModeChk.checked; toast(S.turboMode ? '⏩ Modalità veloce attiva.' : 'Modalità veloce disattivata.'); saveGame(); });
     const scoutUpg = $('scoutUpgBtn');
     if (scoutUpg) scoutUpg.addEventListener('click', () => {
       const lvl = (S.scoutLevel || 0) + 1, cost = scoutUpgradeCost(lvl); if (S.budget < cost) return;
@@ -1889,6 +2172,7 @@
     body.querySelectorAll('[data-scoutsign]').forEach((el) => el.addEventListener('click', () => {
       const i = +el.dataset.scoutsign;
       const p = S.scoutProspects && S.scoutProspects[i]; if (!p) return;
+      p.homegrown = true;   // per l'achievement "Prodotto del vivaio" (sim.js, endSeason)
       S.squad.push(p);
       toast(p.n + ' entra in prima squadra dal settore giovanile.', 'success');
       S.scoutProspects = []; renderBoard(); saveGame();
@@ -1897,6 +2181,11 @@
     const sortBtn = $('squadSortBtn');
     if (sortBtn) sortBtn.addEventListener('click', () => { squadSortDesc = !squadSortDesc; renderBoard(); });
     body.querySelectorAll('[data-formation]').forEach((el) => el.addEventListener('click', () => { previewFormation = el.dataset.formation; S.formation = previewFormation; selectedPreviewPid = null; renderBoard(); saveGame(); }));
+    body.querySelectorAll('[data-tactic]').forEach((el) => el.addEventListener('click', () => {
+      if (!S.tacticStyle) S.tacticStyle = { ...DEFAULT_TACTIC_STYLE };
+      S.tacticStyle[el.dataset.tactic] = el.dataset.tacticVal;
+      renderBoard(); saveGame();
+    }));
     // Scambio titolare/panchina: primo tocco seleziona, secondo tocco su un altro giocatore
     // scambia i due (stesso giocatore due volte = deseleziona). Funziona anche titolare
     // con titolare, per riordinare la formazione a piacere.
@@ -2050,7 +2339,7 @@
         ${p.icon ? '<div class="real-badge icon-badge">🏆 LEGGENDA</div>' : p.real && p.fromClub ? `<div class="real-badge">🌟 GIOCATORE REALE · da ${p.fromClub}</div>` : ''}
         <div class="big" style="color:${ovrTier(p.ovr).c}">${p.ovr}</div>
         <div class="nm">${flagOf(p)}${p.n} <span class="postag postag-${p.pos}" style="vertical-align:middle">${p.pos}</span></div>
-        <div class="meta">${POS_LABEL[p.pos]} · età ${p.age} · chiede <b>${fmtYr(p.wage)}</b></div>
+        <div class="meta">${POS_LABEL[p.pos]} · età ${p.age} · chiede <b>${fmtYr(p.wage)}</b>${potentialBadge(p)}</div>
         <div class="meta">Hai <b>${fmtMoney(freeToSpend())}</b> liberi dopo gli stipendi</div>
         ${p.ovr >= d.avg + 7 ? '<div class="gem">⭐ Un colpo da titoli di giornale per questo livello</div>' : ''}
       </div>
@@ -2201,6 +2490,40 @@
     return inline ? `<span class="ow-eff-hint">${parts.join(' · ')}</span>` : parts.join(' · ');
   }
 
+  // Testo del mini-resoconto: 1-2 frasi costruite sui gol REALI di questa partita (min/nome,
+  // già in row.goalsFor/goalsAgainst), non un testo generico — l'ultimo gol segnato decide il
+  // tono del racconto.
+  function matchRecapText(row) {
+    const all = (row.goalsFor || []).map((g) => ({ ...g, us: true })).concat((row.goalsAgainst || []).map((g) => ({ ...g, us: false }))).sort((a, b) => a.min - b.min);
+    if (!all.length) return 'Una partita bloccata, senza reti, decisa sui dettagli fino al triplice fischio.';
+    const last = all[all.length - 1];
+    if (last.us) return row.gf > row.ga ? `Il punto pesante lo mette ${last.name} al ${last.min}': gestione del vantaggio fino alla fine.` : `${last.name} riacciuffa il pareggio al ${last.min}': un finale di quelli che restano sullo stomaco.`;
+    return row.ga > row.gf ? `${row.opp} passa in vantaggio con ${last.name} al ${last.min}' e non si volta più.` : `${row.opp} riagguanta il pareggio con ${last.name} al ${last.min}': un punto che pesa da entrambe le parti.`;
+  }
+
+  function openMatchRecapOverlay(row, ctx) {
+    const finish = () => { closeOverlay(); ctx._pause = false; checkSeasonMilestones(ctx); };
+    overlay(`
+      <div class="ow-event-modal">
+        <div class="ow-event-icon">${row.res === 'W' ? '🟢' : row.res === 'L' ? '🔴' : '⚪'}</div>
+        <h2>${row.gf}-${row.ga} vs ${row.opp}</h2>
+        <p>${matchRecapText(row)}</p>
+        <p class="ow-sub">Partita in bilico fino alla fine: come gestisci il gruppo in vista della prossima gara?</p>
+        <div class="dyn-modal-actions">
+          <button type="button" class="dyn-btn" data-recap="rest">😌 Consolida (turno di scarico)</button>
+          <button type="button" class="dyn-btn dyn-btn-primary" data-recap="normal">➡️ Si continua così</button>
+          <button type="button" class="dyn-btn" data-recap="push">🔥 Cavalca l'entusiasmo</button>
+        </div>
+      </div>`);
+    $('owOverlayModal').querySelectorAll('[data-recap]').forEach((btn) => btn.addEventListener('click', () => {
+      const choice = btn.dataset.recap;
+      if (choice === 'rest') { ctx._congestion = Math.max(0, (ctx._congestion || 0) - 1); toast('Turno di scarico: squadra un po\' più fresca per la prossima.', 'success'); }
+      else if (choice === 'push') { ctx.sent = clamp(ctx.sent + 3, 0, 100); ctx._congestion = (ctx._congestion || 0) + 1; toast('L\'entusiasmo cresce in curva, ma le gambe si fanno sentire.', 'money'); }
+      saveGame();
+      finish();
+    }));
+  }
+
   function openNarrativeEventOverlay(ev) {
     const hasChoices = Array.isArray(ev.choices) && ev.choices.length > 0;
     // `build` fissa UNA volta sola (all'apertura) i dettagli concreti dell'evento — es. quale
@@ -2243,7 +2566,7 @@
   // sul resto dell'elenco finché non ne resta nessuno, poi apre la Dirigenza normale.
   function openRetirementOverlay(players) {
     const p = players && players[0];
-    if (!p) { closeOverlay(); renderBoard(); return; }
+    if (!p) { closeOverlay(); if (S._seasonRecap) openSeasonRecapOverlay(S._seasonRecap); else renderBoard(); return; }
     overlay(`
       <h2>🎽 Fine carriera in vista</h2>
       <div class="ow-spin-card">
@@ -2271,6 +2594,22 @@
     };
   }
 
+  // Riassunto "cosa è cambiato" a inizio stagione (S._seasonRecap, costruito in advance()):
+  // rinnovi scaduti, giocatori chiaramente calati, rivali che si sono rinforzati — tutto in
+  // un'unica schermata prima della Dirigenza, invece di scoprirlo navigando le tab una per una.
+  function openSeasonRecapOverlay(recap) {
+    const rows = [];
+    if (recap.freedContracts && recap.freedContracts.length) rows.push(`<div class="ow-sec"><div class="ow-sec-title">📄 Rinnovi scaduti</div><div class="ow-sub">${recap.freedContracts.map(escapeHtml).join(', ')} ${recap.freedContracts.length === 1 ? 'è partito' : 'sono partiti'} a parametro zero.</div></div>`);
+    if (recap.decliningPlayers && recap.decliningPlayers.length) rows.push(`<div class="ow-sec"><div class="ow-sec-title">📉 In calo</div>${recap.decliningPlayers.map((p) => `<div class="ow-fin-row"><span>${escapeHtml(p.n)}</span><b class="bad">${p.delta}</b></div>`).join('')}</div>`);
+    if (recap.risingRivals && recap.risingRivals.length) rows.push(`<div class="ow-sec"><div class="ow-sec-title">📈 Rivali rinforzati</div>${recap.risingRivals.map((r) => `<div class="ow-fin-row"><span>${escapeHtml(r.n)}</span><b class="good">+${r.delta}</b></div>`).join('')}</div>`);
+    S._seasonRecap = null;
+    overlay(`<h2>🗞️ Cosa è cambiato</h2>
+      <div class="ow-sub" style="text-align:center">Prima di scendere in Dirigenza, un riepilogo dell'estate appena passata.</div>
+      ${rows.join('')}
+      <div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovRecapClose">Vai in Dirigenza</button></div>`);
+    $('ovRecapClose').onclick = () => { closeOverlay(); renderBoard(); };
+  }
+
   function openWinter() {
     S._pause = true;
     if (!S._janCands) S._janCands = [spinPlayer(false, undefined, 3), spinPlayer(false, undefined, 3), spinPlayer(false, undefined, 3)];
@@ -2295,7 +2634,7 @@
         <div class="ow-jan-head">
           <span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span>
           <span class="postag postag-${p.pos}">${p.pos}</span>
-          <span class="nm">${flagOf(p)}${p.n}<small>${POS_LABEL[p.pos]} · età ${p.age} · chiede ${fmtYr(p.wage)}</small></span>
+          <span class="nm">${flagOf(p)}${p.n}<small>${POS_LABEL[p.pos]} · età ${p.age} · chiede ${fmtYr(p.wage)}${potentialBadge(p)}</small></span>
           ${!S._janSwitchUsed ? `<button class="ow-jan-switch" data-jan-switch="${i}" title="Cambia questo giocatore (una sola volta)">🔄</button>` : ''}
         </div>
         <div class="ow-jan-actions">
@@ -2304,10 +2643,23 @@
         </div>
       </div>`;
     };
+    const outCands = S.squad.filter((p) => outgoingLoanEligible(p));
+    const outLoanHTML = outCands.length ? `
+      <div class="ow-sub" style="margin:10px 0 6px;text-align:left">📤 Prestiti in uscita: poco spazio finora, possono farsi le ossa altrove fino a fine stagione (tornano automaticamente la prossima).</div>
+      ${outCands.map((p) => `
+      <div class="ow-jan-card">
+        <div class="ow-jan-head">
+          <span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span>
+          <span class="postag postag-${p.pos}">${p.pos}</span>
+          <span class="nm">${flagOf(p)}${p.n}<small>${POS_LABEL[p.pos]} · età ${p.age} · ${p.seasonApps || 0} presenze finora</small></span>
+        </div>
+        <button class="dyn-mini" data-jan-loanout="${p.pid}">📤 Manda in prestito · +${fmtMoney(outgoingLoanFee(p))}</button>
+      </div>`).join('')}` : '';
     overlay(`
       <h2>❄️ Il mercato di gennaio</h2>
       <p>A metà strada. ${ord(currentPos())} in ${d.name}. Budget ${fmtMoney(S.budget)}.</p>
       ${cands.length ? cands.map(cardHTML).join('') : '<div class="ow-sub">Nessun altro candidato in questa finestra.</div>'}
+      ${outLoanHTML}
       <div class="ow-mgr"><span class="ovr" style="${ovrBadge(S.manager.rating)}">${S.manager.rating}</span><span class="nm">${flagOf(S.manager)}${S.manager.n}<small>${specOf(S.manager.spec).icon} ${specOf(S.manager.spec).label} · Allenatore in carica</small></span><span class="tag">In carica</span></div>
       <div class="ow-sub" style="margin:8px 0 6px;text-align:left">Esonera (30% di buonuscita) e nomina:</div>
       ${mgrCands.map((m, i) => `<div class="ow-mgr cand"><span class="ovr" style="${ovrBadge(m.rating)}">${m.rating}</span><span class="nm">${flagOf(m)}${m.n}${m.exPlayer ? ' <small title="Una tua ex leggenda">🎓</small>' : ''}<small>${fmtMoney(m.salary)}/anno, metà pagata subito · ${specOf(m.spec).icon} ${specOf(m.spec).label}${m.exPlayer ? ' · Ex giocatore del club' : ''}</small></span><button class="dyn-mini" data-wh="${i}" title="${specOf(m.spec).desc}">Assumi</button></div>`).join('')}
@@ -2329,6 +2681,13 @@
       S.budget -= cost; S.squad.push(p);
       S._janCands.splice(i, 1);
       toast(p.n + ' firma a titolo definitivo.', 'spend');
+      saveGame(); renderWinterOverlay();
+    }));
+    document.querySelectorAll('#owOverlayModal [data-jan-loanout]').forEach((el) => el.addEventListener('click', () => {
+      const p = S.squad.find((x) => x.pid === +el.dataset.janLoanout); if (!p || !outgoingLoanEligible(p)) return;
+      const fee = outgoingLoanFee(p);
+      p.loanedOut = true; S.budget += fee;
+      toast(p.n + ' va in prestito fino a fine stagione: +' + fmtMoney(fee) + '.', 'money');
       saveGame(); renderWinterOverlay();
     }));
     document.querySelectorAll('#owOverlayModal [data-jan-switch]').forEach((el) => el.addEventListener('click', () => {
@@ -2369,6 +2728,8 @@
     const e = S._end, d = divOf(), body = $('owSeasonEndBody');
     const banner = e.fate === 'forced' ? ['😡 I tifosi hanno parlato', 'Gradimento troppo basso. Sei costretto a dimetterti.']
       : e.fate === 'admin' ? ['🏦 Amministrazione controllata', 'Due stagioni in rosso. La banca chiede i conti.']
+      : e.fate === 'investor' ? ['📉 Obiettivo del fondo mancato', 'Scaduta la scadenza pattuita senza il traguardo di categoria: il fondo ti costringe a cedere il club.']
+      : e.investorCompleted ? ['🎯 Obiettivo del fondo raggiunto!', e.investorCompleted.name + ' incassa il patto: bonus finale di ' + fmtMoney(e.investorCompleted.completionBonus) + '.']
       : e.promoted ? ['🎉 PROMOZIONE', e.playoff && e.playoff.won ? 'Su tramite i playoff dopo un ' + ord(e.pos) + ' posto!' : e.title ? 'Campioni di ' + d.name + '!' : 'Promossi al ' + ord(e.pos) + ' posto!']
       : e.playoff && !e.playoff.won ? ['💔 Delusione playoff', 'Eliminati ' + (() => { const st = e.playoff.rounds[e.playoff.rounds.length - 1].stage.replace(' (aggregato)', ''); return st === 'Finale' ? 'in finale' : st === 'Semifinale' ? 'in semifinale' : 'ai quarti'; })() + ' playoff dopo un ' + ord(e.pos) + ' posto.']
       : e.relegated ? ['📉 Retrocessione', 'Giù al ' + ord(e.pos) + ' posto. I tifosi soffrono.']
@@ -2524,7 +2885,7 @@
       ${statsHTML}
       ${bestXiHTML}
       <button class="dyn-btn" id="owShareBtn">📤 Condividi la stagione</button>
-      <button class="dyn-btn dyn-btn-primary" id="owEndBtn">${e.fate ? 'Affronta le conseguenze' : S.season >= MAX_SEASONS ? 'Concludi la tua carriera' : 'Torna in sala del consiglio'}</button>`;
+      <button class="dyn-btn dyn-btn-primary" id="owEndBtn">${e.fate ? 'Affronta le conseguenze' : S.season >= (S.maxSeasons || MAX_SEASONS) ? 'Concludi la tua carriera' : 'Torna in sala del consiglio'}</button>`;
     $('owShareBtn').onclick = exportSeasonCard;
     if (e.promoted || e.title || e.trophies.length) celebrate(body.querySelector('.dyn-panel'));
     body.querySelectorAll('.ow-trophy-moment').forEach((bm) => { fireConfetti(bm); setTimeout(() => fireConfetti(bm), 550); });
@@ -2536,7 +2897,8 @@
     $('owEndBtn').onclick = () => {
       if (e.fate === 'forced') { endDynasty('forced', 0); return; }
       if (e.fate === 'admin') { endDynasty('admin', 0); return; }
-      if (S.season >= MAX_SEASONS) { endDynasty('retired', 0); return; }
+      if (e.fate === 'investor') { endDynasty('investor', 0); return; }
+      if (S.season >= (S.maxSeasons || MAX_SEASONS)) { endDynasty('retired', 0); return; }
       advance();
     };
     show('owSeasonEndScreen');
@@ -2546,10 +2908,11 @@
     const body = $('owEndBody'), how = S._how, worth = computeWorth();
     const heads = {
       sold: ['💷 VENDUTO', S.owner + ' vende ' + S.club + ' per ' + fmtMoney(S._sale) + ' dopo ' + (S.season) + ' stagion' + (S.season === 1 ? 'e' : 'i') + '.'],
-      retired: ['🎖️ Venti stagioni', S.owner + ' lascia ' + S.club + ' dopo le ' + MAX_SEASONS + ' stagioni complete.'],
+      retired: ['🎖️ Fine dynasty', S.owner + ' lascia ' + S.club + ' dopo le ' + (S.maxSeasons || MAX_SEASONS) + ' stagioni complete.'],
       resigned: ['Ti sei dimesso', S.owner + ' si dimette da presidente di ' + S.club + '.'],
       forced: ['😡 Cacciato', 'I tifosi hanno cacciato ' + S.owner + ' da ' + S.club + '.'],
       admin: ['🏦 Amministrazione controllata', S.club + ' ha finito i soldi sotto la tua gestione.'],
+      investor: ['📉 Cessione forzata', 'Il fondo d\'investimento ha ceduto ' + S.club + ' dopo l\'obiettivo mancato.'],
     };
     const h = heads[how] || heads.retired;
     const honours = [];
@@ -2614,6 +2977,36 @@
     show('owEndScreen');
   }
 
+  // Promemoria: raccoglie in un unico posto le cose che meritano attenzione ma che altrimenti
+  // si scoprono solo navigando le tab una per una (contratti in scadenza, infortunati/
+  // squalificati che rientrano a breve, offerte di mercato o del fondo d'investimento ancora
+  // da decidere). Nessuno stato nuovo: legge solo campi già esistenti su S.
+  function buildReminders() {
+    if (!S || !S.squad) return [];
+    const items = [];
+    const expiring = S.squad.filter((p) => !p.loan && finalYear(p));
+    if (expiring.length) items.push({ icon: '📄', text: (expiring.length === 1 ? expiring[0].n + ' è' : expiring.length + ' giocatori sono') + ' in scadenza di contratto: rinnova o li perdi a parametro zero.' });
+    const soonBack = S.squad.filter((p) => p.outWeeks > 0 && p.outWeeks <= 2);
+    if (soonBack.length) items.push({ icon: '🚑', text: soonBack.map((p) => p.n + ' (' + p.outWeeks + ' settiman' + (p.outWeeks === 1 ? 'a' : 'e') + ')').join(', ') + ' torna' + (soonBack.length === 1 ? '' : 'no') + ' a breve dall\'infortunio.' });
+    const suspended = S.squad.filter((p) => p.suspMatches > 0);
+    if (suspended.length) items.push({ icon: '🟥', text: suspended.map((p) => p.n).join(', ') + ' salta' + (suspended.length === 1 ? '' : 'no') + ' la prossima per squalifica.' });
+    if (S.offers && S.offers.length) items.push({ icon: '📨', text: S.offers.length + ' offert' + (S.offers.length === 1 ? 'a' : 'e') + ' di mercato in sospeso per i tuoi giocatori.' });
+    if (S.investorOpts && S.investorOpts.length && !S.investorDeal) items.push({ icon: '🏦', text: 'Un fondo d\'investimento aspetta una risposta in Finanze.' });
+    if (S.scoutProspects && S.scoutProspects.length) items.push({ icon: '🔭', text: 'Il settore giovanile ha una promessa pronta da aggregare alla rosa, in Rosa.' });
+    return items;
+  }
+  function syncNotifDot() {
+    const dot = $('owNotifDot'); if (!dot) return;
+    dot.style.display = (S && S.squad && buildReminders().length) ? '' : 'none';
+  }
+  function openReminders() {
+    const items = buildReminders();
+    overlay(`<h2>🔔 Promemoria</h2>
+      ${items.length ? items.map((r) => `<div class="ow-fin-row" style="align-items:flex-start"><span style="flex:0 0 auto">${r.icon}</span><span style="text-align:left">${r.text}</span></div>`).join('') : '<div class="ow-sub" style="text-align:center">Tutto sotto controllo, nessun promemoria al momento.</div>'}
+      <div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovClose">Chiudi</button></div>`);
+    $('ovClose').onclick = closeOverlay;
+  }
+
   // Classifica globale condivisa (leaderboard.php lato server): un invio a fine carriera
   // (facoltativo) e una lista consultabile in ogni momento dal topbar. Fallisce in
   // silenzio-ma-avvisato se il server non risponde (es. in locale, dove il PHP non gira).
@@ -2638,43 +3031,69 @@
   // stata giocata la carriera — un pareggio semplice ha meno merito di uno in Estremo.
   const DIFF_COLOR = { facile: 'var(--good)', medio: 'var(--muted)', difficile: 'var(--gold)', estremo: 'var(--bad)' };
 
+  // Filtri della classifica globale (stato di modulo, non persistito: si azzerano riaprendola):
+  // un solo punteggio composito con un moltiplicatore per difficoltà (leaderboard.php) resta
+  // comunque un confronto sporco fra una run "Estremo" e una "Facile" — qui si può restringere
+  // a una sola difficoltà, o a una sola categoria di arrivo, invece di vedere solo la top 10
+  // assoluta. `lbEntries` tiene tutte le voci scaricate una volta sola: cambiare filtro
+  // ri-renderizza SENZA un nuovo fetch.
+  let lbEntries = [];
+  let lbFilterDiff = 'all';
+  let lbFilterDiv = 'all';
+
+  const diffOfEntry = (key) => DIFFICULTIES.find((d) => d.key === key) || { label: 'Media', key: 'medio' };
+  const diffBadge = (key) => { const d = diffOfEntry(key); return `<span style="display:inline-block;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:800;border:1px solid ${DIFF_COLOR[d.key] || 'var(--line)'};color:${DIFF_COLOR[d.key] || 'var(--muted)'}">${d.label}</span>`; };
+
+  function renderLeaderboardBody() {
+    const filtered = lbEntries.filter((e) => (lbFilterDiff === 'all' || e.difficulty === lbFilterDiff) && (lbFilterDiv === 'all' || e.div === +lbFilterDiv));
+    const top10 = filtered.slice(0, 10);
+    const medal = ['🥇', '🥈', '🥉'];
+    // Podio per i primi 3: il 1° al centro e più grande, come un vero podio, ordinato con
+    // CSS `order` (nel markup restano comunque nell'ordine di merito, screen reader inclusi).
+    const podium = top10.slice(0, 3).map((e, i) => `
+      <div style="order:${i === 0 ? 2 : i === 1 ? 1 : 3};flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:${i === 0 ? '14px 6px 10px' : '8px 6px'};border-radius:12px;background:${i === 0 ? 'rgba(255,210,74,.14)' : 'rgba(255,255,255,.04)'};border:1px solid ${i === 0 ? 'var(--gold)' : 'var(--line)'}">
+        <div style="font-size:${i === 0 ? '34px' : '24px'};line-height:1">${medal[i]}</div>
+        <div style="font-weight:900;font-size:${i === 0 ? '14px' : '12px'};text-align:center;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">${escapeHtml(e.club)}</div>
+        <div style="font-size:10px;color:var(--muted);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">${escapeHtml(e.owner)}</div>
+        ${diffBadge(e.difficulty)}
+        <div style="font-weight:900;color:var(--gold);font-size:${i === 0 ? '17px' : '14px'};font-variant-numeric:tabular-nums">${Math.round(e.score).toLocaleString('it-IT')}</div>
+      </div>`).join('');
+    const restRows = top10.slice(3).map((e, i) => `
+      <div class="ow-fin-row" style="align-items:center">
+        <span style="display:flex;align-items:center;gap:8px;min-width:0">
+          <span style="flex:0 0 auto;width:22px;text-align:center;color:var(--muted);font-weight:800">${i + 4}</span>
+          <span style="min-width:0"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(e.club)}</b>
+            <small style="display:flex;gap:6px;align-items:center;color:var(--muted);margin-top:2px">${escapeHtml(e.owner)} · ${(DIVS[e.div] || {}).name || ''} · 🏆 ${e.trophies} ${diffBadge(e.difficulty)}</small>
+          </span>
+        </span>
+        <b class="good" style="flex:0 0 auto;font-variant-numeric:tabular-nums">${Math.round(e.score).toLocaleString('it-IT')}</b>
+      </div>`).join('');
+    const diffPills = ['all'].concat(DIFFICULTIES.map((d) => d.key)).map((k) => `<button type="button" class="ow-filter-pill ${lbFilterDiff === k ? 'on' : ''}" data-lbdiff="${k}">${k === 'all' ? 'Tutte' : diffOfEntry(k).label}</button>`).join('');
+    const divPills = ['all'].concat(DIVS.map((d, i) => i)).map((k) => `<button type="button" class="ow-filter-pill ${lbFilterDiv === String(k) ? 'on' : ''}" data-lbdiv="${k}">${k === 'all' ? 'Tutte' : DIVS[k].name}</button>`).join('');
+    overlay(`<h2>🌍 Classifica presidenti</h2>
+      <div class="ow-sub" style="text-align:center">Le migliori 10 carriere condivise da chi gioca, filtrabili per difficoltà e categoria raggiunta</div>
+      <div class="ow-sub" style="margin:8px 0 2px">Difficoltà</div>
+      <div class="ow-squad-filters">${diffPills}</div>
+      <div class="ow-sub" style="margin:8px 0 2px">Categoria</div>
+      <div class="ow-squad-filters">${divPills}</div>
+      ${podium ? `<div style="display:flex;align-items:flex-end;gap:8px;margin:14px 0 6px">${podium}</div>` : ''}
+      <div style="max-height:38vh;overflow:auto;margin:10px -6px 4px;display:flex;flex-direction:column;gap:2px">${restRows || (podium ? '' : `<div class="ow-sub" style="margin:14px 0">${lbEntries.length ? 'Nessuna carriera in questo filtro.' : 'Ancora nessuna carriera condivisa: sii il primo a fine partita.'}</div>`)}</div>
+      <div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovClose">Chiudi</button></div>`);
+    $('ovClose').onclick = closeOverlay;
+    document.querySelectorAll('#owOverlayModal [data-lbdiff]').forEach((el) => el.addEventListener('click', () => { lbFilterDiff = el.dataset.lbdiff; renderLeaderboardBody(); }));
+    document.querySelectorAll('#owOverlayModal [data-lbdiv]').forEach((el) => el.addEventListener('click', () => { lbFilterDiv = el.dataset.lbdiv; renderLeaderboardBody(); }));
+  }
+
   async function showGlobalLeaderboard() {
+    lbFilterDiff = 'all'; lbFilterDiv = 'all';
     overlay(`<h2>🌍 Classifica presidenti</h2><div class="ow-sub" style="text-align:center">Caricamento…</div><div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovClose">Chiudi</button></div>`);
     $('ovClose').onclick = closeOverlay;
     try {
       const res = await fetch('leaderboard.php');
       const data = await res.json();
       if (!data || !data.ok) throw new Error('bad response');
-      const top10 = (data.entries || []).slice(0, 10);
-      const diffOfEntry = (key) => DIFFICULTIES.find((d) => d.key === key) || { label: 'Media', key: 'medio' };
-      const diffBadge = (key) => { const d = diffOfEntry(key); return `<span style="display:inline-block;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:800;border:1px solid ${DIFF_COLOR[d.key] || 'var(--line)'};color:${DIFF_COLOR[d.key] || 'var(--muted)'}">${d.label}</span>`; };
-      const medal = ['🥇', '🥈', '🥉'];
-      // Podio per i primi 3: il 1° al centro e più grande, come un vero podio, ordinato con
-      // CSS `order` (nel markup restano comunque nell'ordine di merito, screen reader inclusi).
-      const podium = top10.slice(0, 3).map((e, i) => `
-        <div style="order:${i === 0 ? 2 : i === 1 ? 1 : 3};flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:${i === 0 ? '14px 6px 10px' : '8px 6px'};border-radius:12px;background:${i === 0 ? 'rgba(255,210,74,.14)' : 'rgba(255,255,255,.04)'};border:1px solid ${i === 0 ? 'var(--gold)' : 'var(--line)'}">
-          <div style="font-size:${i === 0 ? '34px' : '24px'};line-height:1">${medal[i]}</div>
-          <div style="font-weight:900;font-size:${i === 0 ? '14px' : '12px'};text-align:center;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">${escapeHtml(e.club)}</div>
-          <div style="font-size:10px;color:var(--muted);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">${escapeHtml(e.owner)}</div>
-          ${diffBadge(e.difficulty)}
-          <div style="font-weight:900;color:var(--gold);font-size:${i === 0 ? '17px' : '14px'};font-variant-numeric:tabular-nums">${Math.round(e.score).toLocaleString('it-IT')}</div>
-        </div>`).join('');
-      const restRows = top10.slice(3).map((e, i) => `
-        <div class="ow-fin-row" style="align-items:center">
-          <span style="display:flex;align-items:center;gap:8px;min-width:0">
-            <span style="flex:0 0 auto;width:22px;text-align:center;color:var(--muted);font-weight:800">${i + 4}</span>
-            <span style="min-width:0"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(e.club)}</b>
-              <small style="display:flex;gap:6px;align-items:center;color:var(--muted);margin-top:2px">${escapeHtml(e.owner)} · ${(DIVS[e.div] || {}).name || ''} · 🏆 ${e.trophies} ${diffBadge(e.difficulty)}</small>
-            </span>
-          </span>
-          <b class="good" style="flex:0 0 auto;font-variant-numeric:tabular-nums">${Math.round(e.score).toLocaleString('it-IT')}</b>
-        </div>`).join('');
-      overlay(`<h2>🌍 Classifica presidenti</h2>
-        <div class="ow-sub" style="text-align:center">Le migliori 10 carriere condivise da chi gioca</div>
-        ${podium ? `<div style="display:flex;align-items:flex-end;gap:8px;margin:14px 0 6px">${podium}</div>` : ''}
-        <div style="max-height:44vh;overflow:auto;margin:10px -6px 4px;display:flex;flex-direction:column;gap:2px">${restRows || (podium ? '' : '<div class="ow-sub" style="margin:14px 0">Ancora nessuna carriera condivisa: sii il primo a fine partita.</div>')}</div>
-        <div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovClose">Chiudi</button></div>`);
-      $('ovClose').onclick = closeOverlay;
+      lbEntries = data.entries || [];
+      renderLeaderboardBody();
     } catch (err) {
       overlay(`<h2>🌍 Classifica presidenti</h2><div class="ow-sub" style="text-align:center">Non riesco a caricarla al momento. Riprova più tardi.</div><div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovClose">Chiudi</button></div>`);
       $('ovClose').onclick = closeOverlay;
@@ -2693,7 +3112,8 @@
   }
 
   function renderHud() {
-    $('hudSeason').textContent = S.season + '/' + MAX_SEASONS;
+    syncNotifDot();
+    $('hudSeason').textContent = S.season + '/' + (S.maxSeasons || MAX_SEASONS);
     $('hudPlayed').textContent = S.played + '/' + gp();
     const pos = S.table ? (S.table.findIndex((t) => t.me) + 1) : 0;
     $('hudPos').textContent = pos ? ord(pos) : '-';
@@ -2770,7 +3190,7 @@
       </div>` : '';
     const eventsHTML = (m.events && m.events.length) ? `<div class="mrow-scorers">${m.events.map((ev) => `<div class="sc them">${ev.kind === 'inj' ? '🚑' : '🟥'} ${flagOf(ev)}${ev.n} ${ev.kind === 'inj' ? (ev.type === 'traumatic' ? 'infortunio serio, fuori ' : 'problema muscolare, fuori ') + ev.weeks + ' partit' + (ev.weeks === 1 ? 'a' : 'e') : 'squalificato per la prossima'}</div>`).join('')}</div>` : '';
     row.innerHTML = `<div class="mrow-mw">G${m.mw}</div>
-      <div class="mrow-main"><div class="mrow-fix"><span class="ha ${m.home ? 'home' : 'away'}">${m.home ? 'C' : 'T'}</span> vs ${m.opp}${m.derby ? ` <span class="mrow-derby" title="Bilancio testa a testa in questa rivalità, da quando la segui">🔥 DERBY${m.derbyRecord ? ' (' + m.derbyRecord.w + 'V ' + m.derbyRecord.d + 'N ' + m.derbyRecord.l + 'P)' : ''}</span>` : ''}</div>${scorersHTML}${eventsHTML}</div>
+      <div class="mrow-main"><div class="mrow-fix"><span class="ha ${m.home ? 'home' : 'away'}">${m.home ? 'C' : 'T'}</span> vs ${m.opp}${m.oppPersonality && CLUB_PERSONALITIES[m.oppPersonality] ? ` <span title="${CLUB_PERSONALITIES[m.oppPersonality].desc}">${CLUB_PERSONALITIES[m.oppPersonality].icon}</span>` : ''}${m.derby ? ` <span class="mrow-derby" title="Bilancio testa a testa in questa rivalità, da quando la segui">🔥 DERBY${m.derbyRecord ? ' (' + m.derbyRecord.w + 'V ' + m.derbyRecord.d + 'N ' + m.derbyRecord.l + 'P)' : ''}</span>` : ''}</div>${scorersHTML}${eventsHTML}</div>
       <div class="mrow-res ${m.res}">${m.gf}-${m.ga}</div>`;
     $('owLog').prepend(row);
   }

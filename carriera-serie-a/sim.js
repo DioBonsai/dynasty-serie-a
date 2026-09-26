@@ -97,7 +97,7 @@
   const flagOf = (p) => {
     if (!p.nat) return '';
     const spec = FLAG_SPECS[p.nat.code];
-    if (spec) return `<span class="flag-wrap" title="${p.nat.name}">${flagSVG(spec)}</span> `;
+    if (spec) return `<span class="flag-wrap" title="${p.nat.name}" role="img" aria-label="${p.nat.name}">${flagSVG(spec)}</span> `;
     return p.nat.flag ? p.nat.flag + ' ' : '';
   };
 
@@ -223,7 +223,10 @@
       // Allenatore "preparatore di ferro": uno staff medico-atletico migliore tiene la rosa
       // più sana, sia sul fronte infortuni sia su quello cartellini.
       const mgrMedic = ctx.manager && ctx.manager.spec === 'medic' ? 0.7 : 1;
-      const injMult = diffOf(null, ctx).injuryMult * mgrMedic;
+      const fitnessPrevention = ctx.fitnessCoach && ctx.fitnessCoach.spec === 'injury_prevention' ? 0.72 : 1;
+      // Pressing/ritmo alti (tacticDeltas.fatigue) tirano un filo di più il fisico: un rischio
+      // in più di infortunio, coerente con l'idea di una tattica più dispendiosa da sostenere.
+      const injMult = diffOf(null, ctx).injuryMult * mgrMedic * fitnessPrevention * (1 + Math.max(0, tacticDeltas(ctx).fatigue) * 0.5);
       const recidivism = p._muscleRisk > 0 ? 0.02 * p._muscleRisk : 0;
       const injChance = ((p.age >= 32 ? 0.03 : p.age >= 28 ? 0.02 : 0.013) + recidivism) * injMult;
       let injuredNow = false;
@@ -247,7 +250,10 @@
 
   function pickMatchLineup(squad, ctx = S) {
     tickAbsences(ctx);
-    const available = squad.filter((p) => !(p.outWeeks > 0) && !(p.suspMatches > 0));
+    // Chi è in prestito in uscita (p.loanedOut, mercato di gennaio) gioca altrove per il resto
+    // della stagione: resta nella tua rosa (torna automaticamente alla stagione successiva) ma
+    // non è mai selezionabile qui.
+    const available = squad.filter((p) => !(p.outWeeks > 0) && !(p.suspMatches > 0) && !p.loanedOut);
     const pool = available.length >= Math.min(11, squad.length) ? available : squad;   // rosa decimata: si gioca comunque con chi c'è
     const availPids = new Set(pool.map((p) => p.pid));
     const target = Math.min(11, pool.length);
@@ -292,6 +298,30 @@
   // Chi ha giocato quella partita (titolare o subentrato) guadagna una presenza.
   function registerAppearances(lineup, ctx = S) {
     ctx.squad.forEach((p) => { if (lineup.starters.has(p.pid) || lineup.subs.has(p.pid)) p.seasonApps = (p.seasonApps || 0) + 1; });
+    // Coppie d'attacco affiatate: ogni volta che due attaccanti sono TITOLARI insieme, il loro
+    // contatore di "partite insieme" (ctx.chem, per coppia di pid) sale di uno. Oltre
+    // CHEMISTRY_GAMES partite fianco a fianco, l'intesa è fatta e pickAssister la premia con un
+    // bonus reciproco quando uno dei due assiste il gol dell'altro (vedi pairChemistry).
+    const attStarters = ctx.squad.filter((p) => p.pos === 'ATT' && lineup.starters.has(p.pid));
+    if (attStarters.length >= 2) {
+      if (!ctx.chem) ctx.chem = {};
+      for (let i = 0; i < attStarters.length; i++) for (let j = i + 1; j < attStarters.length; j++) {
+        const key = [attStarters[i].pid, attStarters[j].pid].sort((a, b) => a - b).join('-');
+        ctx.chem[key] = (ctx.chem[key] || 0) + 1;
+      }
+    }
+  }
+
+  const CHEMISTRY_GAMES = 8;
+  function pairChemistry(pid1, pid2, ctx = S) {
+    if (!ctx.chem || pid1 == null || pid2 == null) return 0;
+    return ctx.chem[[pid1, pid2].sort((a, b) => a - b).join('-')] || 0;
+  }
+  // Un attaccante ha almeno un partner affiatato: usato solo per il badge in Rosa (ui.js),
+  // non tocca la simulazione (quella legge pairChemistry() direttamente, coppia per coppia).
+  function hasChemistryPartner(p, ctx = S) {
+    if (p.pos !== 'ATT') return false;
+    return ctx.squad.some((o) => o.pid !== p.pid && o.pos === 'ATT' && pairChemistry(p.pid, o.pid, ctx) >= CHEMISTRY_GAMES);
   }
 
   // Un subentrato pesa una frazione di un titolare (meno minuti in campo), e chi non ha
@@ -315,13 +345,18 @@
 
   const assistWeight = (p, lineup) => (POS_ASSIST_WEIGHT[p.pos] || 1) * Math.pow(Math.max(p.ovr, 30) / 50, 1.4) * lineupFactor(p, lineup) * (p.formSeason || 1);
 
+  // Coppia d'attacco affiatata (pairChemistry >= CHEMISTRY_GAMES): un bonus concreto, non
+  // solo cosmetico, sulla chance che l'uno assista il gol dell'altro — la stessa idea di due
+  // punte che si cercano a memoria dopo tante partite fianco a fianco.
+  const chemistryWeight = (scorerPid, p, lineup, ctx) => assistWeight(p, lineup) * (pairChemistry(scorerPid, p.pid, ctx) >= CHEMISTRY_GAMES ? 1.35 : 1);
+
   function pickAssister(scorerPid, lineup, ctx = S) {
     const pool = ctx.squad.filter((p) => p.pid !== scorerPid);
     if (!pool.length) return null;
-    const total = pool.reduce((a, p) => a + assistWeight(p, lineup), 0);
+    const total = pool.reduce((a, p) => a + chemistryWeight(scorerPid, p, lineup, ctx), 0);
     if (total <= 0) return null;
     let r = Math.random() * total;
-    for (const p of pool) { const w = assistWeight(p, lineup); r -= w; if (r <= 0 && w > 0) return p; }
+    for (const p of pool) { const w = chemistryWeight(scorerPid, p, lineup, ctx); r -= w; if (r <= 0 && w > 0) return p; }
     return null;
   }
 
@@ -360,13 +395,39 @@
   // quello di qualunque spin, fermo a 99 — deve restare eccezionale, un traguardo che si
   // costruisce stagione dopo stagione, non la norma per chiunque abbia una buona annata):
   // frena solo la CRESCITA, non i cali, e si fa via via più ripida avvicinandosi al tetto.
+  // Potenziale nascosto: un tetto di crescita personale, fissato UNA volta (age/ovr del
+  // momento in cui il giocatore entra in rosa, mai ricalcolato dopo) e mai mostrato per
+  // intero in UI — solo una fascia con un margine di incertezza (vedi potentialRange), così
+  // "scommettere" su un giovane resta una scommessa vera, non un numero già scoperto. Oltre i
+  // 23 anni non c'è headroom da segnalare: il potenziale coincide con l'overall attuale (non
+  // compare più come fascia in UI, vedi potentialRange). Non tutti i giovani sono predestinati:
+  // la distribuzione gaussiana lascia una quota reale di "bust" vicini al loro overall attuale.
+  function genPotential(ovr, age) {
+    if (age > 23) return ovr;
+    const headroomBase = age <= 19 ? 16 : age <= 21 ? 11 : 6;
+    const headroom = Math.max(0, gaussInt(headroomBase, 6));
+    return clamp(ovr + headroom, ovr, 108);
+  }
+  // Fascia mostrata in UI: il vero potenziale (p.potential) resta nascosto, si vede solo un
+  // intervallo di ±5 intorno ad esso — mai sotto l'overall attuale, mai sopra il tetto assoluto.
+  function potentialRange(p) {
+    if (p.age > 23 || p.potential == null || p.potential <= p.ovr) return null;
+    const lo = clamp(p.potential - 5, p.ovr, 108);
+    const hi = clamp(p.potential + 5, lo, 108);
+    return { lo, hi };
+  }
+
   function growthDamp(ovr) {
     if (ovr < 95) return 1;
     const t = clamp((ovr - 95) / 15, 0, 1);
     return clamp(1 - t * t * 0.9, 0.12, 1);
   }
   function seasonOvrDelta(p, ctx = S) {
-    const ratio = seasonPerformanceRatio(p, ctx);
+    // Chi è stato mandato in prestito in uscita a gennaio non ha praticamente presenze QUI
+    // (seasonPerformanceRatio lo giudicherebbe malissimo, come se fosse rimasto fuori rosa):
+    // al suo posto una resa plausibile per chi sta giocando con continuità altrove, un filo
+    // sopra la norma (il prestito serve proprio a dargli minuti che qui non avrebbe avuto).
+    const ratio = p.loanedOut ? 1.05 + Math.random() * 0.35 : seasonPerformanceRatio(p, ctx);
     // sopra 1 = stagione da incorniciare, sotto 1 = deludente; pesa di più verso l'alto
     // (le esplosioni improvvise fanno più notizia dei cali) ma resta un contributo, non
     // può bastare da solo a spingere qualcuno al tetto di crescita: quello richiede anche
@@ -378,6 +439,14 @@
     // Allenatore "costruttore di giovani": un filo di crescita in più, ma solo quando
     // c'è già crescita da spingere (non tampona un calo).
     if (delta > 0 && p.age <= 23 && ctx.manager && ctx.manager.spec === 'builder') delta += 1;
+    // Capitano-mentore: un capitano navigato (età e distanza anagrafica vere, non solo il
+    // gallone) accelera un filo la crescita dei più giovani in rosa — stesso principio del
+    // "costruttore di giovani" in panchina, ma sul campo. Non tampona un calo, solo spinge una
+    // crescita già in corso, ed è indipendente dal bonus dell'allenatore (si sommano).
+    if (delta > 0 && p.age <= 21 && ctx.captainPid && ctx.captainPid !== p.pid) {
+      const cap = ctx.squad.find((x) => x.pid === ctx.captainPid);
+      if (cap && cap.age - p.age >= 6) delta += 0.6;
+    }
     // Range -5/+7 in una singola stagione: +7 resta possibile solo per un giovane che ha
     // fatto una stagione da incorniciare, un rendimento buono ma non eccezionale (o un
     // giocatore più avanti con l'età) si ferma più in basso, sui +3/+5. Anche i cali sono
@@ -556,10 +625,14 @@
   // subito dopo questa) lo spinge di nuovo su — una vera striscia positiva/negativa nasce da
   // sé, partita dopo partita, invece di restare un unico numero per tutta la stagione.
   function regressPlayerForm(lineup, ctx = S) {
+    // Preparatore "di punta": la forma regredisce più lentamente verso la media, quindi chi è
+    // in un buon momento lo mantiene più a lungo (e viceversa, un momento no scivola via più
+    // lentamente) — un filo di più continuità, in entrambe le direzioni.
+    const rate = ctx.fitnessCoach && ctx.fitnessCoach.spec === 'peak_form' ? 0.055 : 0.08;
     ctx.squad.forEach((p) => {
       if (!(lineup.starters.has(p.pid) || lineup.subs.has(p.pid))) return;
       const cur = p.formSeason || 1;
-      p.formSeason = clamp(cur + (1 - cur) * 0.08, 0.45, 1.9);
+      p.formSeason = clamp(cur + (1 - cur) * rate, 0.45, 1.9);
     });
   }
 
@@ -629,7 +702,8 @@
       S.scoutProspects = Array.from({ length: count }, () => {
         const nat = pickNationality(S.div);
         const ovr = clamp(gaussInt(d.avg - 2, 5), 40, 92);
-        return { n: genName(nat), nat, ovr, age: 16 + rnd(5), wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 };
+        const age = 16 + rnd(5);
+        return { n: genName(nat), nat, ovr, age, wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0, potential: genPotential(ovr, age) };
       });
     }
   }
@@ -690,7 +764,7 @@
       const ovr = src.league === 'euro' ? rp.ovr : qToRealOvr(rp.pos, rp.q, src.league);
       if (minOvr != null && (ovr < minOvr || ovr > maxOvr)) continue;
       const nat = rp.nat ? natByCode(rp.nat) : (src.league === 'euro' ? pickNationality(4) : pickNationality(S.div));
-      return { n: rp.n, nat, ovr, age: rp.age != null ? rp.age : genAge(26, 4.5, 19, 34), wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: rp.pos, seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0, real: true, fromClub: club };
+      { const age = rp.age != null ? rp.age : genAge(26, 4.5, 19, 34); return { n: rp.n, nat, ovr, age, wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: rp.pos, seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0, real: true, fromClub: club, potential: genPotential(ovr, age) }; }
     }
     return null;
   }
@@ -751,18 +825,33 @@
     }
     const age = premium && Math.random() < 0.35 ? 16 + rnd(6) : genAge(24, 5, 17, 36);
     const nat = pickNationality(S.div);
-    return { n: genName(nat), nat, ovr, age, wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: role || randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 };
+    return { n: genName(nat), nat, ovr, age, wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: role || randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0, potential: genPotential(ovr, age) };
   }
 
   // Svincolati: nessun costo di cartellino, rating scarso per il livello, stipendi modesti.
   // Servono a portare un club in difficoltà al minimo di 16 giocatori, non a vincere partite.
-  const freeAgent = (role) => { const d = divOf(); const ovr = clamp(d.avg - 13 + rnd(6), 40, 99); const nat = pickNationality(S.div); return { n: genName(nat), nat, ovr, age: genAge(27, 5.5, 18, 37), wage: roundWage(wageFor(ovr) * 0.7), yrs: 1 + rnd(2), pid: newPid(), pos: role || randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 }; };
+  const freeAgent = (role) => { const d = divOf(); const ovr = clamp(d.avg - 13 + rnd(6), 40, 99); const age = genAge(27, 5.5, 18, 37); const nat = pickNationality(S.div); return { n: genName(nat), nat, ovr, age, wage: roundWage(wageFor(ovr) * 0.7), yrs: 1 + rnd(2), pid: newPid(), pos: role || randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0, potential: genPotential(ovr, age) }; };
 
   const playerValue = (p) => p.wage * 52 * (p.ovr >= 85 ? 9 : p.ovr >= 78 ? 7 : p.ovr >= 68 ? 5 : 3.5) * (p.age <= 23 ? 1.4 : p.age >= 31 ? 0.6 : 1);
 
   // Prezzo per trattenere in rosa a titolo definitivo un giocatore preso in prestito a
   // gennaio: più caro del semplice prestito, in linea col cartellino del mercato di gennaio.
   const loanBuybackFee = (p) => Math.round(playerValue(p) * 0.75);
+
+  // Prestito in USCITA (mercato di gennaio): un giovane di talento che sta prendendo poco
+  // minutaggio da te può andare a farsi le ossa altrove per il resto della stagione. Eleggibile
+  // solo se giovane e chiaramente poco impiegato finora (non un modo per parcheggiare chiunque):
+  // la soglia di presenze è relativa alle giornate già giocate, così a inizio stagione (0
+  // presenze per chiunque) non sarebbe comunque proponibile finché il mercato di gennaio non
+  // arriva davvero, quando ctx.played riflette mezza stagione vera.
+  function outgoingLoanEligible(p, ctx = S) {
+    if (p.loan || p.loanedOut || p.age > 23 || (p.outWeeks > 0) || (p.suspMatches > 0)) return false;
+    const played = Math.max(1, ctx.played || 0);
+    return (p.seasonApps || 0) <= Math.round(played * 0.35);
+  }
+  // Il club che lo accoglie paga una piccola indennità di prestito: una frazione contenuta del
+  // suo valore, coerente con un prestito (non una cessione) di un giovane non ancora affermato.
+  const outgoingLoanFee = (p) => Math.round(playerValue(p) * 0.12 / 1e4) * 1e4;
 
   const wageBill = (ctx = S) => ctx.squad.reduce((a, p) => a + p.wage, 0) * 52;
 
@@ -834,7 +923,16 @@
     if (S.marketSeenA == null) S.marketSeenA = S.div >= 5;
     if (S.market === undefined) S.market = null;
     if (!S.formation || !FORMATION_TACTICS[S.formation]) S.formation = '433';
-    S.squad.forEach((p) => { if (p.yrs == null) p.yrs = 2 + rnd(2); if (p.pid == null) p.pid = newPid(); if (!p.pos) p.pos = randPos(); if (p.seasonGoals == null) p.seasonGoals = 0; if (p.seasonAssists == null) p.seasonAssists = 0; if (p.seasonCleanSheets == null) p.seasonCleanSheets = 0; if (p.seasonApps == null) p.seasonApps = 0; if (p.careerGoals == null) p.careerGoals = 0; if (p.careerAssists == null) p.careerAssists = 0; if (p.careerCleanSheets == null) p.careerCleanSheets = 0; if (p.careerApps == null) p.careerApps = 0; if (p.joinedSeason == null) p.joinedSeason = S.season; if (!p.nat) p.nat = pickNationality(S.div); if (p.outWeeks == null) p.outWeeks = 0; if (p.suspMatches == null) p.suspMatches = 0; });
+    if (!S.tacticStyle) S.tacticStyle = { ...DEFAULT_TACTIC_STYLE };
+    else { if (!TACTIC_PRESS[S.tacticStyle.press]) S.tacticStyle.press = 'medio'; if (!TACTIC_WIDTH[S.tacticStyle.width]) S.tacticStyle.width = 'bilanciata'; if (!TACTIC_TEMPO[S.tacticStyle.tempo]) S.tacticStyle.tempo = 'normale'; }
+    if (S.fitnessCoach === undefined) S.fitnessCoach = null;
+    if (S.stadiumSponsor === undefined) S.stadiumSponsor = null;
+    if (S.techSponsor === undefined) S.techSponsor = null;
+    if (S.investorDeal === undefined) S.investorDeal = null;
+    if (S.turboMode == null) S.turboMode = false;
+    if (S.maxSeasons == null) S.maxSeasons = MAX_SEASONS;
+    S.squad.forEach((p) => { if (p.loanedOut == null) p.loanedOut = false; });
+    S.squad.forEach((p) => { if (p.yrs == null) p.yrs = 2 + rnd(2); if (p.pid == null) p.pid = newPid(); if (!p.pos) p.pos = randPos(); if (p.seasonGoals == null) p.seasonGoals = 0; if (p.seasonAssists == null) p.seasonAssists = 0; if (p.seasonCleanSheets == null) p.seasonCleanSheets = 0; if (p.seasonApps == null) p.seasonApps = 0; if (p.careerGoals == null) p.careerGoals = 0; if (p.careerAssists == null) p.careerAssists = 0; if (p.careerCleanSheets == null) p.careerCleanSheets = 0; if (p.careerApps == null) p.careerApps = 0; if (p.joinedSeason == null) p.joinedSeason = S.season; if (!p.nat) p.nat = pickNationality(S.div); if (p.outWeeks == null) p.outWeeks = 0; if (p.suspMatches == null) p.suspMatches = 0; if (p.potential == null) p.potential = genPotential(p.ovr, p.age); });
     if (S.manager && !S.manager.nat) S.manager.nat = S.manager.real ? natByCode(REAL_MANAGERS.find((m) => m.n === S.manager.n)?.nat) || pickNationality(S.div) : pickNationality(S.div);
     if (S.manager && !S.manager.spec) {
       const rm = S.manager.real ? REAL_MANAGERS.find((m) => m.n === S.manager.n) : null;
@@ -919,7 +1017,7 @@
 
   // Ciò che resta davvero da spendere una volta coperti stipendi + allenatore (+ direttore
   // sportivo, se assunto: opzionale, 0 se non c'è) della stagione.
-  const kickoffBill = (ctx = S) => wageBill(ctx) + ctx.manager.salary + (ctx.sportingDirector ? ctx.sportingDirector.salary : 0);
+  const kickoffBill = (ctx = S) => wageBill(ctx) + ctx.manager.salary + (ctx.sportingDirector ? ctx.sportingDirector.salary : 0) + (ctx.fitnessCoach ? ctx.fitnessCoach.salary : 0);
 
   const freeToSpend = () => S.budget - kickoffBill();
 
@@ -938,14 +1036,37 @@
       const near = REAL_DS.filter((m) => Math.abs(m.rating - r) <= 8);
       if (near.length) {
         const m = pick(near);
-        const salary = Math.round(dsSalaryFor(m.rating, ctx) * (m.spec === 'all_rounder' ? 0.85 : 1) / 1e3) * 1e3;
-        return { n: m.n, rating: m.rating, salary, nat: natByCode(m.nat), real: true, spec: m.spec };
+        const rating = clamp(m.rating + mgrRepDelta(m.n, ctx), 40, 97);
+        const salary = Math.round(dsSalaryFor(rating, ctx) * (m.spec === 'all_rounder' ? 0.85 : 1) / 1e3) * 1e3;
+        return { n: m.n, rating, salary, nat: natByCode(m.nat), real: true, spec: m.spec };
       }
     }
     const nat = pickNationality(ctx.div);
     const spec = pick(DS_SPECS).key;
     const salary = Math.round(dsSalaryFor(r, ctx) * (spec === 'all_rounder' ? 0.85 : 1) / 1e3) * 1e3;
     return { n: genName(nat), rating: r, salary, nat, spec };
+  }
+
+  // Preparatore atletico: generato come il direttore sportivo (terzo ruolo di staff,
+  // opzionale), niente candidati "reali" per questo ruolo (a differenza di manager/DS non ha
+  // un pool di nomi noti in data.js — resta un tecnico dello staff, mai un volto pubblico).
+  function genFitnessCoach(bonus, ctx = S) {
+    const r = clamp(divOf(ctx).mgrBase - 8 + rnd(14) + (bonus || 0), 40, 88);
+    const nat = pickNationality(ctx.div);
+    const spec = pick(FITNESS_SPECS).key;
+    return { n: genName(nat), rating: r, salary: Math.round(dsSalaryFor(r, ctx) * 0.8 / 1e3) * 1e3, nat, spec };
+  }
+
+  // Reputazione persistente di un allenatore/DS "vero" (REAL_MANAGERS/REAL_DS): cresce o cala
+  // stagione dopo stagione in base a come va il club che sta guidando in quel momento (vedi
+  // evolveRivalStrengths), così due partite diverse della stessa carriera possono offrire lo
+  // stesso nome noto con un rating diverso — non più statico come il dato di partenza in
+  // data.js. Il delta è indipendente per carriera (vive in ctx._mgrRep, mai in data.js).
+  const mgrRepDelta = (name, ctx = S) => (ctx._mgrRep && ctx._mgrRep[name]) || 0;
+  function bumpMgrRep(name, delta, ctx = S) {
+    if (!name || !delta) return;
+    if (!ctx._mgrRep) ctx._mgrRep = {};
+    ctx._mgrRep[name] = clamp(Math.round(((ctx._mgrRep[name] || 0) + delta) * 10) / 10, -10, 10);
   }
 
   // Un candidato su circa 2 è un allenatore vero, se ce n'è uno con un rating abbastanza
@@ -957,7 +1078,11 @@
     // data.js), non una a caso: coerente con la sua fama, non solo col nome.
     if (Math.random() < 0.4) {
       const near = REAL_MANAGERS.filter((m) => Math.abs(m.rating - r) <= 8);
-      if (near.length) { const m = pick(near); return { n: m.n, rating: m.rating, salary: mgrSalaryFor(m.rating, ctx), nat: natByCode(m.nat), real: true, spec: m.spec || pick(MANAGER_SPECS).key }; }
+      if (near.length) {
+        const m = pick(near);
+        const rating = clamp(m.rating + mgrRepDelta(m.n, ctx), 40, 97);
+        return { n: m.n, rating, salary: mgrSalaryFor(rating, ctx), nat: natByCode(m.nat), real: true, spec: m.spec || pick(MANAGER_SPECS).key };
+      }
     }
     const nat = pickNationality(ctx.div);
     return { n: genName(nat), rating: r, salary: mgrSalaryFor(r, ctx), nat, spec: pick(MANAGER_SPECS).key };
@@ -1002,10 +1127,20 @@
     + (ctx.manager && ctx.manager.spec === 'tactician' ? 1.2 : 0)
     + (ctx.manager && ctx.manager.spec === 'motivator' && ctx.sent < 40 ? 1.5 : 0);
 
+  // Le clausole (bonus vittoria/qualificazione europea) sono una quota del monte annuo
+  // dell'accordo, non una cifra fissa: uno sponsor più ricco paga anche clausole più ricche.
+  // `winMult`/`euroMult` variano leggermente da un'offerta all'altra così due proposte con
+  // lo stesso importo fisso possono comunque convenire in modo diverso a seconda di quanto
+  // realisticamente pensi di arrivare in Europa o vincere qualcosa quest'anno.
+  const sponsorClauses = (perYear) => ({
+    clauseWin: Math.round(perYear * (0.7 + Math.random() * 0.5) / 1e4) * 1e4,
+    clauseEuro: Math.round(perYear * (0.35 + Math.random() * 0.3) / 1e4) * 1e4,
+  });
+
   function sponsorOffers() {
     const d = divOf();
     const base = (d.prize * 0.3 + capOf() * 9) * 1.3 * diffOf().sponsorMult;   // +30% su tutti gli accordi sponsor (aumentato di un ulteriore 8% circa), poi scalato per difficoltà
-    const mk = (tag, mult, yrs, sent) => ({ name: pick(SPONSOR_BRANDS[tag]), tag, perYear: Math.round(base * mult * (0.85 + Math.random() * 0.3) / 1e4) * 1e4, years: yrs, left: yrs, sent });
+    const mk = (tag, mult, yrs, sent) => { const perYear = Math.round(base * mult * (0.85 + Math.random() * 0.3) / 1e4) * 1e4; return { name: pick(SPONSOR_BRANDS[tag]), tag, perYear, years: yrs, left: yrs, sent, ...sponsorClauses(perYear) }; };
     // Sempre QUATTRO offerte, con un peso economico più alto di prima: più scelta e
     // più soldi in ballo. Dalla Serie B in su un mega-sponsor globale sostituisce lo
     // sponsor di comunità, con un accordo regionale a fare da via di mezzo in entrambi
@@ -1013,6 +1148,45 @@
     return S.div >= 4
       ? [mk('standard', 1.5, 3, 0), mk('regional', 1.9, 3, 0), mk('betting', 2.3, 2, -2), mk('global', 3.0, 4, 0)]
       : [mk('community', 0.9, 3, 2), mk('regional', 1.2, 3, 0), mk('standard', 1.5, 2, 0), mk('betting', 2.0, 2, -2)];
+  }
+
+  // Sponsor di stadio (naming rights) e sponsor tecnico (fornitore): stesso schema
+  // dell'accordo di maglia (importo fisso annuo + clausole vittoria/Europa) ma pesi economici
+  // più bassi, coerenti con contratti secondari rispetto allo sponsor principale.
+  function stadiumSponsorOffers() {
+    const base = (divOf().prize * 0.16 + capOf() * 5) * diffOf().sponsorMult;
+    const mk = (mult, yrs) => { const perYear = Math.round(base * mult * (0.85 + Math.random() * 0.3) / 1e4) * 1e4; return { name: pick(SPONSOR_BRANDS.stadium), perYear, years: yrs, left: yrs, sent: 0, ...sponsorClauses(perYear) }; };
+    return [mk(1.0, 3), mk(1.4, 4), mk(1.8, 2)];
+  }
+  function techSponsorOffers() {
+    const base = (divOf().prize * 0.12 + capOf() * 4) * diffOf().sponsorMult;
+    const mk = (mult, yrs) => { const perYear = Math.round(base * mult * (0.85 + Math.random() * 0.3) / 1e4) * 1e4; return { name: pick(SPONSOR_BRANDS.tech), perYear, years: yrs, left: yrs, sent: 0, ...sponsorClauses(perYear) }; };
+    return [mk(1.0, 3), mk(1.35, 3), mk(1.7, 2)];
+  }
+
+  // Un fondo propone un'iniezione di capitale + un top-up ogni stagione, in cambio di un
+  // obiettivo di categoria da centrare entro N stagioni: mancarlo significa cessione forzata
+  // del club (vedi endSeason/endDynasty, how='investor'), centrarlo un bonus finale in più.
+  // Due profili di rischio fissi (cauto/aggressivo) invece di uno solo, per lasciare scegliere
+  // quanto rischiare; nessuna offerta se sei già in Serie A (non c'è categoria più alta) o se
+  // hai già un fondo attivo.
+  function investorDealOffers(ctx = S) {
+    if (ctx.div >= DIVS.length - 1) return [];
+    const base = divOf(ctx).investor * diffOf(null, ctx).sponsorMult;
+    const mk = (name, steps, seasons, injMult, yrMult) => {
+      const targetDiv = clamp(ctx.div + steps, 0, DIVS.length - 1);
+      return {
+        name, targetDiv, deadlineSeason: ctx.season + seasons,
+        injection: Math.round(base * injMult / 1e4) * 1e4,
+        yearly: Math.round(base * yrMult / 1e4) * 1e4,
+        completionBonus: Math.round(base * injMult * 1.8 / 1e4) * 1e4,
+      };
+    };
+    const steps = ctx.div >= DIVS.length - 2 ? 1 : 2;   // a un passo dalla Serie A l'obiettivo è quella, altrimenti due categorie sopra
+    return [
+      mk(pick(INVESTOR_FUNDS), Math.max(1, steps - 1), 5, 1.1, 0.18),
+      mk(pick(INVESTOR_FUNDS), steps, 3, 2.2, 0.32),
+    ];
   }
 
   /* ---------------- forza della rosa + aspettative ---------------- */
@@ -1034,6 +1208,24 @@
   // con una difesa fragile ti regala qualche gol in più).
   const randomFmt = () => { const t = FORMATION_TACTICS[pick(Object.keys(FORMATION_TACTICS))]; return { atk: t.atk, def: t.def }; };
 
+  // Personalità di club (CLUB_PERSONALITIES, data.js): assegnata una volta sola sull'oggetto
+  // club di POOLS (persiste stagione dopo stagione, non si ripesca mai), non sul singolo
+  // oggetto avversario ricreato a ogni startSeason — così "quel club" resta fisica/tecnica/
+  // giovane per tutta la carriera, un'identità vera e non un'etichetta usa e getta.
+  function personalityFor(club) {
+    if (!club._personality) club._personality = pick(Object.keys(CLUB_PERSONALITIES));
+    return club._personality;
+  }
+  // Quanto la personalità dell'avversario "legge" le tue istruzioni tattiche attuali: 0 se non
+  // ti punisce, un piccolo malus condiviso (più gol concessi, meno segnati) se sì — applicato
+  // in simMatch sommandolo/sottraendolo a opp.fmt, mai al modulo scelto (FORMATION_TACTICS),
+  // che resta un fattore indipendente.
+  function personalityCounter(opp, ctx = S) {
+    const def = opp && CLUB_PERSONALITIES[opp.personality];
+    if (!def || !def.punishes(ctx.tacticStyle || DEFAULT_TACTIC_STYLE)) return 0;
+    return 0.06;
+  }
+
   // Quanto la rosa disponibile (non infortunati/squalificati) copre DAVVERO il modulo scelto:
   // ogni titolare che manca in un ruolo (es. un 4-2-4 con un solo vero attaccante) va coperto
   // da qualcuno fuori posto, un prezzo in campo — non solo l'inquadratura sbagliata a bordo
@@ -1053,7 +1245,18 @@
   // Quante settimane cariche di fila (coppa+campionato nella stessa settimana, vedi
   // maybeCupRound) la squadra si porta dietro: 0.35 a settimana, fino a un tetto di 3
   // settimane (-1.05) — un preparatore di ferro (spec `medic`) la dimezza.
-  const fatigueMalus = (ctx = S) => (ctx._congestion || 0) * 0.35 * (ctx.manager && ctx.manager.spec === 'medic' ? 0.5 : 1);
+  const fatigueMalus = (ctx = S) => (ctx._congestion || 0) * 0.35 * (ctx.manager && ctx.manager.spec === 'medic' ? 0.5 : 1) * (ctx.fitnessCoach && ctx.fitnessCoach.spec === 'recovery' ? 0.6 : 1);
+
+  // Istruzioni tattiche (TACTIC_PRESS/WIDTH/TEMPO, data.js): tre leve indipendenti dal modulo,
+  // stessa convenzione atk/def di FORMATION_TACTICS. Si sommano ai delta del modulo in
+  // rollMatchScore, mai li sostituiscono.
+  function tacticDeltas(ctx = S) {
+    const t = ctx.tacticStyle || DEFAULT_TACTIC_STYLE;
+    const press = TACTIC_PRESS[t.press] || TACTIC_PRESS.medio;
+    const width = TACTIC_WIDTH[t.width] || TACTIC_WIDTH.bilanciata;
+    const tempo = TACTIC_TEMPO[t.tempo] || TACTIC_TEMPO.normale;
+    return { atk: press.atk + width.atk + tempo.atk, def: press.def + width.def + tempo.def, fatigue: press.fatigue + tempo.fatigue };
+  }
 
   const teamEff = (ctx = S) => squadStr(ctx) + mgrBonus(ctx) + (ctx.form || 0) - promoStreakMalus(ctx) - formationFitMalus(ctx) - fatigueMalus(ctx) + diffOf(null, ctx).teamEffDelta + captainBonus(ctx);
 
@@ -1256,7 +1459,7 @@
     });
   }
 
-  function startDynasty(owner, t, customClub, div, difficulty) {
+  function startDynasty(owner, t, customClub, div, difficulty, seasons) {
     div = div || 0;
     // Niente clearSave() qui: con gli slot multipli, iniziare una nuova carriera non deve
     // toccare quella (eventualmente) ancora in memoria — resta al suo posto nell'indice
@@ -1275,16 +1478,17 @@
       budget: Math.round(t.budget * diffOf(diffKey).budgetMult * (1 + legacyBonus)), fanbase: Math.round(t.fanbase * 100) / 100,
       stadiumTier: t.stadiumTier, stadiumSpent: 0.6e6 + (t.stadiumTier ? STADIUM[1].cost : 0), ticket: 1,
       squad, manager: (function () { const r = clamp(DIVS[div].mgrBase - 2 + rnd(8), 45, 92); const nat = pickNationality(div); return { n: genName(nat), rating: r, salary: mgrSalaryFor(r), nat, spec: pick(MANAGER_SPECS).key }; })(),
-      sponsor: null, sent: 55, ownerRating: 62, prestige: 0, debtSeasons: 0,
+      sponsor: null, stadiumSponsor: null, techSponsor: null, investorDeal: null, sent: 55, ownerRating: 62, prestige: 0, debtSeasons: 0,
       euro: false, euroComp: null, form: 0, spinsBought: 0, promoStreak: 0, premiumRoleUsed: false, stdRoleUsed: false,
       trophies: { titles: [0, 0, 0, 0, 0, 0], nat: 0, ucl: 0, uel: 0, conf: 0, total: 0 },
       history: [], over: false, peakWorth: 0,
-      achievements: [], startDiv: div, noRelegStreak: 0, sportingDirector: null,
+      achievements: [], startDiv: div, noRelegStreak: 0, sportingDirector: null, fitnessCoach: null,
       pidNext: 1, offers: [], alumni: [],
       crestShape: crestShape, crestColors: crestColors.slice(),
       scoutLevel: 0, scoutProspects: [], scoutProspectSeason: 0,
       market: null, marketSeenB: div >= 4, marketSeenA: div >= 5,
-      formation: '433',
+      formation: '433', tacticStyle: { ...DEFAULT_TACTIC_STYLE }, turboMode: false,
+      maxSeasons: [8, 12, 20].includes(seasons) ? seasons : MAX_SEASONS,
     };
     normSquad();
     S.peakWorth = computeWorth();
@@ -1302,7 +1506,8 @@
     const sentFactor = 1 + (S.sent - 50) / 220;
     const att = Math.min(capOf(), Math.max(600, d.demand * S.fanbase * sentFactor * t.demand * (ec ? ec.attBoost : 1)));
     const merch = d.demand * S.fanbase * d.ticket * 5 * 0.8;
-    return Math.round(att * d.ticket * t.mult * (gp() / 2) + merch + d.prize + (S.sponsor ? S.sponsor.perYear : 0) + (ec ? ec.entry : 0) - (d.admin + S.stadiumSpent * 0.03));
+    const sponsorEst = (S.sponsor ? S.sponsor.perYear : 0) + (S.stadiumSponsor ? S.stadiumSponsor.perYear : 0) + (S.techSponsor ? S.techSponsor.perYear : 0) + (S.investorDeal ? S.investorDeal.yearly : 0);
+    return Math.round(att * d.ticket * t.mult * (gp() / 2) + merch + d.prize + sponsorEst + (ec ? ec.entry : 0) - (d.admin + S.stadiumSpent * 0.03));
   }
 
   /* ---------------- stagione ---------------- */
@@ -1391,6 +1596,7 @@
       p.careerCleanSheets = (p.careerCleanSheets || 0) + (p.seasonCleanSheets || 0);
       p.careerApps = (p.careerApps || 0) + (p.seasonApps || 0);
       p.seasonGoals = 0; p.seasonAssists = 0; p.seasonCleanSheets = 0; p.seasonApps = 0; p.formSeason = clamp(1 + gaussInt(0, 28) / 100, 0.45, 1.9); p.outWeeks = 0; p.suspMatches = 0;
+      p.loanedOut = false;   // chi era in prestito in uscita torna a disposizione da questa stagione
     });
     ctx.cupMoney = 0; ctx.euroMoney = ctx.euro ? EURO_COMPS[ctx.euroComp].entry : 0;   // montepremi di partecipazione alla coppa europea
     // Forma stagionale di ogni rivale: la forza di base (o.s) resta quella "storica" del club,
@@ -1406,7 +1612,7 @@
     } else {
       const usedMgrNames = new Set(ctx.manager && ctx.manager.n ? [ctx.manager.n] : []);
       const mgrRegistry = ctx._mgrByClub || (ctx._mgrByClub = {});
-      ctx.opps = rivals(ctx).map((o) => ({ name: o.n, s: o.s, effS: clamp(o.s + gaussInt(0, 8), 30, 99), rrPts: 0, rrGF: 0, rrGA: 0, vsPts: 0, vsGF: 0, vsGA: 0, mgr: managerForClub(o.n, 0, ctx, usedMgrNames, mgrRegistry), fmt: randomFmt() }));
+      ctx.opps = rivals(ctx).map((o) => ({ name: o.n, s: o.s, effS: clamp(o.s + gaussInt(0, 8), 30, 99), rrPts: 0, rrGF: 0, rrGA: 0, vsPts: 0, vsGF: 0, vsGA: 0, mgr: managerForClub(o.n, 0, ctx, usedMgrNames, mgrRegistry), fmt: randomFmt(), personality: personalityFor(o) }));
       simRivalRoundRobin(ctx.opps, RIVAL_DRAW_BOOST[ctx.div]);
       const fx = [];
       ctx.opps.forEach((o, i) => { fx.push({ opp: i, home: true }); fx.push({ opp: i, home: false }); });
@@ -1481,8 +1687,9 @@
     // un piccolo extra quando l'aggressività è estrema — una reazione tattica minima ma
     // reale, non un'intelligenza artificiale vera che sceglie un contro-modulo.
     const counterPenalty = fb.atk >= 0.14 ? (fb.atk - 0.10) * 0.6 : 0;
-    const gfMean = clamp(1.32 + fb.atk + opf.def + d * coeff, 0.15, 4.4);
-    const gaMean = clamp(1.32 + fb.def + counterPenalty + opf.atk - d * coeff, 0.15, 4.4);
+    const td = tacticDeltas(ctx);
+    const gfMean = clamp(1.32 + fb.atk + td.atk + opf.def + d * coeff, 0.15, 4.4);
+    const gaMean = clamp(1.32 + fb.def + td.def + counterPenalty + opf.atk - d * coeff, 0.15, 4.4);
     return twoHalfScore(gfMean, gaMean);
   }
 
@@ -1569,7 +1776,12 @@
     if (forcedScore) { gf = forcedScore.gf; ga = forcedScore.ga; }
     else {
       const d = teamEff(ctx) - opp.effS + (fx.home ? 2.4 * homeAdvantage(ctx) : -1.1);
-      ({ gf, ga } = rollMatchScore(d, ctx, opp.fmt));
+      // La personalità dell'avversario (CLUB_PERSONALITIES) può leggere le TUE istruzioni
+      // tattiche di questa partita: se ti punisce, un piccolo affondo sulla sua formazione
+      // effettiva (più pericolosa in attacco, meno regalata in difesa), mai sul modulo scelto.
+      const sting = personalityCounter(opp, ctx);
+      const oppFmt = sting ? { atk: opp.fmt.atk + sting, def: opp.fmt.def - sting } : opp.fmt;
+      ({ gf, ga } = rollMatchScore(d, ctx, oppFmt));
     }
     ctx.played++; ctx.gf += gf; ctx.ga += ga;
     const res = gf > ga ? 'W' : gf < ga ? 'L' : 'D';
@@ -1596,7 +1808,7 @@
       if (res === 'W') rec.w++; else if (res === 'D') rec.d++; else rec.l++;
       derbyRecord = Object.assign({}, rec);
     }
-    const row = { mw: fx.mw, opp: opp.name, home: fx.home, gf, ga, res, goalsFor, goalsAgainst, events: lineup.events, derby, derbyRecord };
+    const row = { mw: fx.mw, opp: opp.name, oppPersonality: opp.personality, home: fx.home, gf, ga, res, goalsFor, goalsAgainst, events: lineup.events, derby, derbyRecord };
     ctx.results.push(row);
     // Durante "Simula fino a fine stagione" (BULK_SIM) saltiamo la scrittura DOM partita per
     // partita (fino a 46 volte in un colpo solo): computeTable() aggiorna comunque lo stato
@@ -1620,14 +1832,40 @@
     // come il mercato di gennaio, il resto (mercato invernale/fine stagione) riprende solo
     // alla chiusura del popup, in checkSeasonMilestones().
     if (local && !BULK_SIM && maybeNarrativeEvent(ctx)) return;
+    if (local && !BULK_SIM && maybeMatchRecap(ctx, row)) return;
     checkSeasonMilestones(ctx);
+  }
+
+  // Un mini-resoconto post-partita con una vera decisione, non solo il risultato: solo per le
+  // gare di campionato in bilico (scarto di al più un gol, incluso il pareggio), e non ogni
+  // volta (altrimenti diventerebbe un clic in più ad ogni giornata "normale" — la maggioranza
+  // delle gare restano un semplice risultato in log, come sempre). La scelta (openMatchRecapOverlay,
+  // ui.js) è un compromesso rispetto a un vero'intervento al 70': incidere sul risultato già
+  // deciso non avrebbe senso, quindi incide sulla gestione del gruppo in vista della PROSSIMA
+  // gara (umore tifosi/affaticamento, ctx.sent/ctx._congestion) — una conseguenza vera, non
+  // solo testo di colore.
+  function maybeMatchRecap(ctx, row) {
+    if (ctx.turboMode) return false;
+    if (Math.abs(row.gf - row.ga) > 1) return false;
+    if (Math.random() >= 0.4) return false;
+    ctx._pause = true;
+    openMatchRecapOverlay(row, ctx);
+    return true;
   }
 
   // Cosa succede subito dopo una partita, una volta che non c'è più nessun popup ad
   // attendere una risposta: apertura del mercato di gennaio a metà stagione, o fine
   // stagione. Richiamata sia in coda a simMatch sia dalla chiusura di un evento narrativo.
   function checkSeasonMilestones(ctx = S) {
-    if (ctx.played === (gp(ctx) >> 1) && !ctx.winterDone) { if (ctx === S) openWinter(); else ctx.winterDone = true; return; }
+    if (ctx.played === (gp(ctx) >> 1) && !ctx.winterDone) {
+      // Modalità veloce: il mercato di gennaio si salta senza fermarsi (nessun prestito/
+      // acquisto, nessun cambio d'allenatore a stagione in corso) — per chi vuole solo
+      // arrivare in fondo alle 20 stagioni senza gestire ogni singola finestra.
+      if (ctx === S && !ctx.turboMode) { openWinter(); return; }
+      ctx.winterDone = true;
+      if (ctx === S) return checkSeasonMilestones(ctx);
+      return;
+    }
     if (ctx.played >= gp(ctx)) {
       // Per un club remoto (host multiplayer, dentro stepHostMatchday) la chiusura stagione
       // resta differita a finishHostSeason/resolveMultiplayerTrophies (ui.js, quando l'host
@@ -1669,11 +1907,11 @@
     const eligible = NARRATIVE_EVENTS.filter((e) => !e.requires || e.requires(ctx));
     if (!eligible.length) return false;
     const ev = pick(eligible);
-    // Niente popup per un club "remoto" simulato in blocco dall'host multiplayer — ma l'evento
-    // non sparisce nel nulla: si auto-risolve con un esito semplice e resta nel resoconto di
-    // fine stagione (vedi autoResolveNarrativeEvent), così la dynasty condivisa non perde del
-    // tutto la "voce" degli imprevisti che la rende viva in singolo.
-    if (ctx !== S) { autoResolveNarrativeEvent(ev, ctx); return false; }
+    // Niente popup per un club "remoto" simulato in blocco dall'host multiplayer, e nemmeno in
+    // Modalità veloce (S.turboMode): stesso trattamento, auto-risolto con la scelta più
+    // prudente (autoResolveNarrativeEvent) e annotato comunque nel resoconto di fine stagione,
+    // solo senza fermare la simulazione per un click.
+    if (ctx !== S || ctx.turboMode) { autoResolveNarrativeEvent(ev, ctx); return false; }
     ctx._pause = true;
     openNarrativeEventOverlay(ev);
     return true;
@@ -2156,7 +2394,7 @@
         // già pronto in ctx._playoffState, si continua il resoconto di fine stagione da qui.
         playoff = { rounds: ctx._playoffState.rounds, won: ctx._playoffState.won };
         ctx._playoffState = null;
-      } else if (local) {
+      } else if (local && !ctx.turboMode) {
         ctx._playoffState = { pos, rounds: [], queue: flattenPlayoffQueue(buildPlayoffPlan(ctx, pos, d, lo, hi)), done: false, won: false, legAcc: null };
         ctx._pause = true;
         toast('🏟️ Ti sei qualificato per i playoff! Gioca la tua prima gara quando vuoi.', 'success');
@@ -2194,13 +2432,8 @@
     // Il merchandising scala con la TIFOSERIA, non con lo stadio: una tifoseria in
     // rapida crescita vende maglie che entrino o no nello stadio.
     const merch = Math.round(d.demand * ctx.fanbase * d.ticket * 5 * (0.8 + winPct * 0.5) / 1e3) * 1e3;
-    const sponsorMoney = ctx.sponsor ? ctx.sponsor.perYear : 0;
-    const prize = Math.round(d.prize + (d.teams - pos) * d.perPlace + (promoted ? d.promoBonus : 0) + (title ? d.titleBonus : 0));
-    const euroTitleBonus = euroWon ? EURO_COMPS[ctx.euroComp].titleBonus : 0;
-    const upkeep = Math.round(d.admin + ctx.stadiumSpent * 0.03);
-    const net = matchday + merch + sponsorMoney + prize + ctx.cupMoney + ctx.euroMoney + euroTitleBonus - upkeep;
-    ctx.budget += net;
-    // ----- qualificazione europea di quest'anno (determina la coppa della prossima stagione) -----
+    // ----- qualificazione europea di quest'anno (determina la coppa della prossima stagione):
+    // calcolata già qui, PRIMA delle clausole sponsor/investitore che la usano subito sotto.
     // Vincere la Champions o l'Europa League garantisce un posto in Champions l'anno dopo
     // anche senza chiudere fra le prime 4 in campionato (come nel calcio vero, la coppa
     // vinta vale come pass diretto). Vincere la Conference League vale un posto in Europa
@@ -2217,6 +2450,23 @@
       else if (natWon) qualTier = 'uel';
       else if (pos === 7) qualTier = 'conf';
     }
+    // Tre accordi sponsor indipendenti (maglia/stadio/tecnico), ciascuno col suo importo fisso
+    // PIÙ le sue clausole: vittoria di un trofeo di campionato (promozione o titolo) e
+    // qualificazione europea, quando presenti nell'accordo.
+    const sponsorClauseMoney = (sp) => !sp ? 0 : sp.perYear + ((promoted || title) ? (sp.clauseWin || 0) : 0) + (qualTier ? (sp.clauseEuro || 0) : 0);
+    const kitMoney = sponsorClauseMoney(ctx.sponsor);
+    const stadiumSponsorMoney = sponsorClauseMoney(ctx.stadiumSponsor);
+    const techSponsorMoney = sponsorClauseMoney(ctx.techSponsor);
+    const sponsorMoney = kitMoney + stadiumSponsorMoney + techSponsorMoney;
+    // Il fondo d'investimento (se attivo) versa il suo top-up annuo qui, insieme al resto
+    // dell'incasso di fine stagione: l'obiettivo/scadenza si valuta più sotto, con `fate`.
+    const investorMoney = ctx.investorDeal ? ctx.investorDeal.yearly : 0;
+    const investorDealName = ctx.investorDeal ? ctx.investorDeal.name : null;   // il patto può completarsi (e sparire da ctx) più sotto, prima che lo statement lo mostri
+    const prize = Math.round(d.prize + (d.teams - pos) * d.perPlace + (promoted ? d.promoBonus : 0) + (title ? d.titleBonus : 0));
+    const euroTitleBonus = euroWon ? EURO_COMPS[ctx.euroComp].titleBonus : 0;
+    const upkeep = Math.round(d.admin + ctx.stadiumSpent * 0.03);
+    const net = matchday + merch + sponsorMoney + investorMoney + prize + ctx.cupMoney + ctx.euroMoney + euroTitleBonus - upkeep;
+    ctx.budget += net;
     // ----- trofei + prestigio -----
     const trophies = [];
     if (title) { trophies.push(d.name + ' - Titolo'); ctx.trophies.titles[ctx.div]++; ctx.trophies.total++; ctx.prestige += TROPHY_WORTH[ctx.div]; }
@@ -2270,6 +2520,15 @@
     if (ctx.ownerRating < 25) fate = 'forced';
     else if (ctx.budget < 0) { ctx.debtSeasons = (ctx.debtSeasons || 0) + 1; if (ctx.debtSeasons >= 2) fate = 'admin'; }
     else ctx.debtSeasons = 0;
+    // ----- fondo d'investimento: obiettivo di categoria centrato o scaduto -----
+    // Centrarlo vale SEMPRE (anche nella stessa stagione in cui si sfiora un altro destino),
+    // il bonus è già guadagnato sul campo; mancare la scadenza invece cede il passo solo se
+    // non è già scattato un destino più grave (esonero/amministrazione controllata).
+    let investorCompleted = null;
+    if (ctx.investorDeal) {
+      if (ctx.div >= ctx.investorDeal.targetDiv) { investorCompleted = ctx.investorDeal; ctx.budget += investorCompleted.completionBonus; ctx.investorDeal = null; }
+      else if (!fate && ctx.season >= ctx.investorDeal.deadlineSeason) fate = 'investor';
+    }
     const worth = computeWorth(ctx); ctx.peakWorth = Math.max(ctx.peakWorth, worth);
     ctx.euroCompNext = qualTier;
     // ----- crescita/calo di ogni giocatore, in base a età e prestazione della stagione
@@ -2307,12 +2566,18 @@
     const statement = [
       ['Incasso stadio (' + att.toLocaleString('it-IT') + ' medi)', matchday],
       ['Merchandising (tifoseria ' + ctx.fanbase.toFixed(2) + ')', merch],
-      ['Sponsorizzazione', sponsorMoney],
+    ];
+    if (ctx.sponsor) statement.push(['Sponsor di maglia (' + ctx.sponsor.name + ')', kitMoney]);
+    if (ctx.stadiumSponsor) statement.push(['Sponsor di stadio (' + ctx.stadiumSponsor.name + ')', stadiumSponsorMoney]);
+    if (ctx.techSponsor) statement.push(['Sponsor tecnico (' + ctx.techSponsor.name + ')', techSponsorMoney]);
+    if (investorMoney) statement.push(['Fondo d\'investimento (' + investorDealName + ')', investorMoney]);
+    if (investorCompleted) statement.push(['🎯 Bonus obiettivo raggiunto (' + investorCompleted.name + ')', investorCompleted.completionBonus]);
+    statement.push(
       ['Montepremi + diritti TV', prize],
       ['Percorso in Coppa Italia', ctx.cupMoney],
-    ];
+    );
     if (ctx.euroMoney + euroTitleBonus > 0) statement.push([EURO_COMPS[ctx.euroComp].name + ' ' + EURO_COMPS[ctx.euroComp].flag, ctx.euroMoney + euroTitleBonus]);
-    statement.push(['Costi di gestione', -upkeep], ['Stipendi + allenatore' + (ctx.sportingDirector ? ' + direttore sportivo' : '') + ' (pagati all\'avvio)', 0]);
+    statement.push(['Costi di gestione', -upkeep], ['Stipendi + allenatore' + (ctx.sportingDirector ? ' + direttore sportivo' : '') + (ctx.fitnessCoach ? ' + preparatore atletico' : '') + ' (pagati all\'avvio)', 0]);
     const treble = title && natWon && euroWon && ctx.euroComp === 'ucl';
     // ----- traguardi di carriera (ACHIEVEMENTS, data.js) -----
     if (title && ctx.div === 5) unlockAchievement(ctx, 'scudetto');
@@ -2322,8 +2587,23 @@
     ctx.noRelegStreak = relegated ? 0 : (ctx.noRelegStreak || 0) + 1;
     if (ctx.noRelegStreak >= 10) unlockAchievement(ctx, 'no_releg_10');
     if (ctx.squad.filter((p) => p.real || p.icon).length >= 3) unlockAchievement(ctx, 'legend_squad');
+    // ----- nuovi traguardi (ACHIEVEMENTS, data.js): sfide di stile oltre al semplice
+    // arrivare in alto, pensate per dare un motivo di rigiocare con vincoli diversi. -----
+    if (promoted || title) {
+      const avgAge = ctx.squad.length ? ctx.squad.reduce((a, p) => a + p.age, 0) / ctx.squad.length : 99;
+      if (avgAge < 23) unlockAchievement(ctx, 'youth_movement');
+      if (squadStr(ctx) < d.avg) unlockAchievement(ctx, 'frugal_champion');
+    }
+    const seasonDraws = ctx.pts - ctx.wins * 3;
+    const seasonLosses = ctx.played - ctx.wins - seasonDraws;
+    if (ctx.played >= 10 && seasonLosses === 0) unlockAchievement(ctx, 'perfect_season');
+    if (ctx.pts >= 100) unlockAchievement(ctx, 'century_club');
+    if (ctx.gf >= 80) unlockAchievement(ctx, 'goal_machine');
+    if (ctx.played >= 30 && ctx.ga < 20) unlockAchievement(ctx, 'iron_defense');
+    if (investorCompleted) unlockAchievement(ctx, 'investor_trust');
+    if (ctx.squad.some((p) => p.homegrown && p.ovr >= 85)) unlockAchievement(ctx, 'homegrown_hero');
     ctx._end = {
-      pos, exp, promoted, relegated, title, natWon, euroWon, euroCompWon: ctx.euroComp, trophies, fate, playoff, fbDelta, euroQual: qualTier, treble,
+      pos, exp, promoted, relegated, title, natWon, euroWon, euroCompWon: ctx.euroComp, trophies, fate, playoff, fbDelta, euroQual: qualTier, treble, investorCompleted,
       newAchievements: (ctx._newAchievements || []).slice(),
       att, statement,
       net, sentItems, ratingDelta, worth,
@@ -2432,6 +2712,12 @@
       else if (posN > d.teams * 0.7) drift = -0.2;
       if (!drift) return;
       club.s = clamp(Math.round((club.s + drift) * 10) / 10, d.avg - 20, d.avg + 22);
+      // L'allenatore attualmente registrato per questo club (ctx._mgrByClub, persiste stagione
+      // dopo stagione) segue lo stesso drift: un anno da vertice alza un po' la sua reputazione,
+      // una retrocessione la abbassa — si vede la prossima volta che quel nome ricompare fra i
+      // candidati (managerForClub in genManager/genSportingDirector), in QUALSIASI club.
+      const mgr = ctx._mgrByClub && ctx._mgrByClub[club.n];
+      if (mgr && mgr.real) bumpMgrRep(mgr.n, drift * 1.4, ctx);
     });
   }
 
@@ -2439,8 +2725,18 @@
     if (!isClubCtx(ctx)) ctx = S;
     const local = ctx === S;
     const e = ctx._end;
+    // Snapshot "prima" dei rivali della categoria appena chiusa, per poter dire dopo chi si è
+    // rinforzato di più (vedi ctx._seasonRecap più sotto) — evolveRivalStrengths muta club.s
+    // sul posto, senza questo non ci sarebbe un "prima" con cui confrontarlo.
+    const rivalsBefore = {};
+    (POOLS[ctx.div] || []).forEach((c) => { rivalsBefore[c.n] = c.s; });
     evolveRivalStrengths(ctx);
     simulatePyramidMovement(ctx);
+    // Chi si è rinforzato di più nella categoria appena lasciata (0.5+ di forza guadagnata):
+    // fa parte del riassunto "cosa è cambiato" mostrato a inizio stagione (renderBoard, ui.js).
+    const risingRivals = (POOLS[ctx.div] || [])
+      .map((c) => ({ n: c.n, delta: Math.round((c.s - (rivalsBefore[c.n] != null ? rivalsBefore[c.n] : c.s)) * 10) / 10 }))
+      .filter((r) => r.delta >= 0.5).sort((a, b) => b.delta - a.delta).slice(0, 3);
     if (e.promoted) unlockAchievement(ctx, 'first_promo');
     if (e.promoted) ctx.div = Math.min(DIVS.length - 1, ctx.div + 1);
     if (e.relegated) ctx.div = Math.max(0, ctx.div - 1);
@@ -2460,8 +2756,10 @@
     if (e.promoted) { ctx.squad.forEach((p) => p.wage = roundWage(p.wage * 1.25)); if (local) toast('Aumenti da promozione: il monte ingaggi della rosa sale del 25%.'); }
     else if (e.relegated) { ctx.squad.forEach((p) => p.wage = roundWage(p.wage * 0.85)); }
     else if (ctx.div === 5) { ctx.squad.forEach((p) => p.wage = roundWage(p.wage * 1.08)); }
-    // il contratto sponsor scende
-    if (ctx.sponsor) { ctx.sponsor.left--; ctx.sent = clamp(ctx.sent + (ctx.sponsor.sent || 0), 0, 100); if (ctx.sponsor.left <= 0) { if (local) toast('L\'accordo con ' + ctx.sponsor.name + ' scade.'); ctx.sponsor = null; } }
+    // il contratto sponsor scende (i tre accordi sono indipendenti: ognuno scade per conto suo)
+    if (ctx.sponsor) { ctx.sponsor.left--; ctx.sent = clamp(ctx.sent + (ctx.sponsor.sent || 0), 0, 100); if (ctx.sponsor.left <= 0) { if (local) toast('L\'accordo di maglia con ' + ctx.sponsor.name + ' scade.'); ctx.sponsor = null; } }
+    if (ctx.stadiumSponsor) { ctx.stadiumSponsor.left--; if (ctx.stadiumSponsor.left <= 0) { if (local) toast('L\'accordo di stadio con ' + ctx.stadiumSponsor.name + ' scade.'); ctx.stadiumSponsor = null; } }
+    if (ctx.techSponsor) { ctx.techSponsor.left--; if (ctx.techSponsor.left <= 0) { if (local) toast('L\'accordo tecnico con ' + ctx.techSponsor.name + ' scade.'); ctx.techSponsor = null; } }
     // Età e overall sono già stati aggiornati a fine stagione (endSeason), per poterli
     // mostrare nelle statistiche. Chi ha superato i 35 non se ne va più in automatico: per un
     // ctx "remoto" (multiplayer, nessuna interazione possibile) si ritira comunque qui, ma per
@@ -2472,6 +2770,10 @@
       ctx.squad.filter((p) => p._retiring).forEach((p) => pushAlumnus(p, ctx, true));
       ctx.squad = ctx.squad.filter((p) => !p._retiring);
     }
+    // Giocatori chiaramente calati (-3 o più): "cosa è cambiato" (ctx._seasonRecap) li segnala
+    // prima che il delta venga cancellato dalla riga subito sotto — così a inizio stagione si
+    // scopre subito chi ha perso smalto, senza dover andare a spulciare rosa per rosa.
+    const decliningPlayers = ctx.squad.filter((p) => (p._ovrDelta || 0) <= -3).map((p) => ({ n: p.n, delta: p._ovrDelta }));
     ctx.squad.forEach((p) => { delete p._ovrDelta; if (!local) delete p._retiring; });
     // I prestiti restano in rosa (con l'etichetta "prestito" e il bottone 💰 Riscatta al
     // posto di quello di vendita, vedi renderBoard): il presidente decide con calma in
@@ -2485,9 +2787,20 @@
     ctx.season++;
     ctx.mgrOpts = null; ctx.sponsorOpts = null; ctx.investorUsed = false; ctx.spinsBought = 0; ctx.premiumRoleUsed = false; ctx.stdRoleUsed = false; ctx._end = null;
     ctx.offers = genOffers(ctx);   // i club rivali fanno offerte per i tuoi giocatori migliori quest'estate
+    // Riassunto "cosa è cambiato" a inizio stagione: null se non c'è nulla di rilevante da
+    // dire (niente rinnovi scaduti, nessuno calato vistosamente, nessun rivale rinforzato) —
+    // in quel caso si salta dritti in Dirigenza come sempre, invece di un popup vuoto.
+    ctx._seasonRecap = (decliningPlayers.length || risingRivals.length || freed.length)
+      ? { decliningPlayers, risingRivals, freedContracts: freed.slice() } : null;
     if (local) {
+      // Modalità veloce: chi è a fine carriera resta "un'altra stagione" in automatico (stesso
+      // esito di default già offerto per primo nel popup normale) invece di fermarsi a
+      // chiedere, e il riassunto di inizio stagione si salta a dritto in Dirigenza.
       const pendingRetirees = ctx.squad.filter((p) => p._retiring);
-      if (pendingRetirees.length) openRetirementOverlay(pendingRetirees); else renderBoard();
+      if (pendingRetirees.length && ctx.turboMode) pendingRetirees.forEach((p) => { p._retiring = false; });
+      if (pendingRetirees.length && !ctx.turboMode) openRetirementOverlay(pendingRetirees);
+      else if (ctx._seasonRecap && !ctx.turboMode) openSeasonRecapOverlay(ctx._seasonRecap);
+      else renderBoard();
     }
   }
 
@@ -2563,7 +2876,7 @@
     const mgrRegistry = {};
     humanCtxs.forEach((h) => { if (h._mgrByClub) Object.assign(mgrRegistry, h._mgrByClub); });
     const bots = POOLS[div].filter((c) => !humanNames.has(c.n)).slice(0, botCount)
-      .map((o) => ({ name: o.n, s: o.s, effS: clamp(o.s + gaussInt(0, 8), 30, 99), rrPts: 0, rrGF: 0, rrGA: 0, vsPts: 0, vsGF: 0, vsGA: 0, mgr: managerForClub(o.n, 0, humanCtxs[0], usedMgrNames, mgrRegistry), fmt: randomFmt() }));
+      .map((o) => ({ name: o.n, s: o.s, effS: clamp(o.s + gaussInt(0, 8), 30, 99), rrPts: 0, rrGF: 0, rrGA: 0, vsPts: 0, vsGF: 0, vsGA: 0, mgr: managerForClub(o.n, 0, humanCtxs[0], usedMgrNames, mgrRegistry), fmt: randomFmt(), personality: personalityFor(o) }));
     simRivalRoundRobin(bots, RIVAL_DRAW_BOOST[div]);
     humanCtxs.forEach((h) => { h._mgrByClub = mgrRegistry; });
     const { opps, fixtures } = buildMultiplayerFixtures(humanCtxs, bots);
@@ -2713,7 +3026,7 @@
 
   /* ---------------- fine carriera ---------------- */
   function endDynasty(how, saleMoney) {
-    if (how === 'retired' && S.season >= MAX_SEASONS) unlockAchievement(S, 'dynasty_complete');
+    if (how === 'retired' && S.season >= (S.maxSeasons || MAX_SEASONS)) unlockAchievement(S, 'dynasty_complete');
     saveLegacy(S);
     S.over = true; clearSave();
     S._how = how; S._sale = saleMoney || 0;

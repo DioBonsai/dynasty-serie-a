@@ -17,10 +17,18 @@
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
+require_once __DIR__ . '/storage.php';
+
+// Se pdo_sqlite è disponibile, la lista vive in questo unico file SQLite (tabella blob_store,
+// chiave 'leaderboard') invece che nel .json qui sotto — che resta comunque il fallback
+// automatico (mai eliminato) se l'estensione non c'è. Vedi storage.php per i dettagli.
+$SQLITE_FILE = __DIR__ . '/data.sqlite';
 $DATA_FILE = __DIR__ . '/leaderboard_data.json';
 $RATE_FILE = __DIR__ . '/leaderboard_rate.json';
 $MAX_ENTRIES = 100;      // quante carriere restano salvate (le migliori per punteggio)
-$RETURN_TOP = 10;        // quante ne restituisce la GET
+$RETURN_TOP = 50;        // quante ne restituisce la GET (il client filtra per difficoltà/categoria
+                         // lato suo, vedi showGlobalLeaderboard in ui.js — deve avere abbastanza
+                         // scelta oltre alla sola top 10 assoluta, non solo le migliori in assoluto)
 $RATE_LIMIT_SECONDS = 300; // un invio ogni 5 minuti per IP
 
 function fail($msg, $code = 400) {
@@ -66,7 +74,7 @@ function clean_name($v, $maxLen) {
 $method = $_SERVER['REQUEST_METHOD'];
 
 if ($method === 'GET') {
-    $entries = read_json_file($DATA_FILE, []);
+    $entries = storage_read_all($SQLITE_FILE, $DATA_FILE, 'leaderboard', []);
     usort($entries, function ($a, $b) { return ($b['score'] ?? 0) <=> ($a['score'] ?? 0); });
     echo json_encode(['ok' => true, 'entries' => array_slice($entries, 0, $RETURN_TOP)]);
     exit;
@@ -124,12 +132,12 @@ $entry = [
     'ts' => $now,
 ];
 
-$entries = read_json_file($DATA_FILE, []);
+$entries = storage_read_all($SQLITE_FILE, $DATA_FILE, 'leaderboard', []);
 $entries[] = $entry;
 usort($entries, function ($a, $b) { return ($b['score'] ?? 0) <=> ($a['score'] ?? 0); });
 $entries = array_slice($entries, 0, $MAX_ENTRIES);
 
-if (!write_json_file_locked($DATA_FILE, $entries)) fail('Impossibile salvare al momento.', 500);
+if (!storage_write_all($SQLITE_FILE, $DATA_FILE, 'leaderboard', $entries)) fail('Impossibile salvare al momento.', 500);
 
 $rates[$ipHash] = $now;
 write_json_file_locked($RATE_FILE, $rates);

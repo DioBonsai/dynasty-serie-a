@@ -22,6 +22,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,600;0,700;0,900;1,600;1,800&family=Inter:wght@400;500;600;700;800;900&display=swap" />
 <link rel="stylesheet" href="styles.css?v=17" />
+<script src="errors.js?v=66"></script>
 </head>
 <body class="dyn">
 
@@ -32,9 +33,10 @@
     <span>Presidente</span>
   </button>
   <div class="dyn-topbar-right">
-    <button id="owGlobalLeaderboardBtn" class="dyn-icon-btn" type="button" title="Classifica presidenti">🌍</button>
-    <button id="owTrophyCaseBtn" class="dyn-icon-btn" type="button" title="Bacheca trofei">🏆</button>
-    <button id="owSoundBtn" class="dyn-icon-btn" type="button" title="Audio">🔊</button>
+    <button id="owNotifBtn" class="dyn-icon-btn" type="button" title="Promemoria" aria-label="Promemoria" style="position:relative">🔔<span id="owNotifDot" aria-hidden="true" style="position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:50%;background:var(--bad);box-shadow:0 0 0 2px var(--panel2);display:none"></span></button>
+    <button id="owGlobalLeaderboardBtn" class="dyn-icon-btn" type="button" title="Classifica presidenti" aria-label="Classifica presidenti">🌍</button>
+    <button id="owTrophyCaseBtn" class="dyn-icon-btn" type="button" title="Bacheca trofei" aria-label="Bacheca trofei">🏆</button>
+    <button id="owSoundBtn" class="dyn-icon-btn" type="button" title="Audio" aria-label="Attiva o disattiva l'audio">🔊</button>
   </div>
 </div>
 
@@ -75,6 +77,8 @@
     <div id="divPicker" class="ow-div-picker"></div>
     <div class="dyn-aggr-label" style="text-align:center;margin:6px 0 8px">Scegli la difficoltà</div>
     <div id="diffPicker" class="ow-diff-picker"></div>
+    <div class="dyn-aggr-label" style="text-align:center;margin:6px 0 8px">Quante stagioni dura la dynasty?</div>
+    <div id="seasonsPicker" class="ow-div-picker"></div>
     <div class="dyn-aggr-label" style="text-align:center;margin:6px 0 8px">Scegli la tua situazione di partenza</div>
     <div id="takeoverGrid" class="ow-takeovers"></div>
     <button id="owRerollBtn" class="dyn-btn" style="margin-top:2px">🔄 Nuove condizioni di partenza</button>
@@ -137,6 +141,7 @@
 
 <script src="sfx.js?v=66"></script>
 <script src="data.js?v=66"></script>
+<script src="rosters.js?v=66"></script>
 <script src="sim.js?v=66"></script>
 <script src="ui.js?v=66"></script>
 <script>
