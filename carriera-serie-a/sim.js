@@ -934,6 +934,9 @@
     if (S.investorDeal === undefined) S.investorDeal = null;
     if (S.turboMode == null) S.turboMode = false;
     if (S.maxSeasons == null) S.maxSeasons = MAX_SEASONS;
+    if (S.stadiumName === undefined) S.stadiumName = null;
+    if (S.stadiumRecordAtt == null) S.stadiumRecordAtt = 0;
+    if (S.stadiumRecordSeason === undefined) S.stadiumRecordSeason = null;
     S.squad.forEach((p) => { if (p.loanedOut == null) p.loanedOut = false; });
     S.squad.forEach((p) => { if (p.yrs == null) p.yrs = 2 + rnd(2); if (p.pid == null) p.pid = newPid(); if (!p.pos) p.pos = randPos(); if (p.seasonGoals == null) p.seasonGoals = 0; if (p.seasonAssists == null) p.seasonAssists = 0; if (p.seasonCleanSheets == null) p.seasonCleanSheets = 0; if (p.seasonApps == null) p.seasonApps = 0; if (p.careerGoals == null) p.careerGoals = 0; if (p.careerAssists == null) p.careerAssists = 0; if (p.careerCleanSheets == null) p.careerCleanSheets = 0; if (p.careerApps == null) p.careerApps = 0; if (p.joinedSeason == null) p.joinedSeason = S.season; if (!p.nat) p.nat = pickNationality(S.div); if (p.outWeeks == null) p.outWeeks = 0; if (p.suspMatches == null) p.suspMatches = 0; if (p.potential == null) p.potential = genPotential(p.ovr, p.age); });
     if (S.manager && !S.manager.nat) S.manager.nat = S.manager.real ? natByCode(REAL_MANAGERS.find((m) => m.n === S.manager.n)?.nat) || pickNationality(S.div) : pickNationality(S.div);
@@ -1524,11 +1527,29 @@
       market: null, marketSeenB: div >= 4, marketSeenA: div >= 5,
       formation: '433', tacticStyle: { ...DEFAULT_TACTIC_STYLE }, turboMode: false,
       maxSeasons: [8, 12, 20].includes(seasons) ? seasons : MAX_SEASONS,
+      stadiumName: null, stadiumRecordAtt: 0, stadiumRecordSeason: null,
     };
     normSquad();
     S.peakWorth = computeWorth();
     renderBoard();
     if (legacyBonus > 0 && typeof toast === 'function') toast('👑 Eredità del tuo passato da presidente: budget di partenza +' + Math.round(legacyBonus * 100) + '%.', 'success');
+  }
+
+  // Il nome "storico" (scelto dal presidente) resta sempre salvato in S.stadiumName, ma se è
+  // attivo uno sponsor di stadio (naming rights) è LUI a decidere come si chiama davvero
+  // finché l'accordo dura — esattamente come nel calcio vero, dove il nome sullo stadio cambia
+  // con lo sponsor senza che il club ne scelga uno nuovo da zero. Torna al nome storico da solo
+  // quando l'accordo scade (S.stadiumSponsor torna null altrove, niente da fare qui).
+  const stadiumDisplayName = (ctx = S) => (ctx.stadiumSponsor ? ctx.stadiumSponsor.name + ' Arena' : (ctx.stadiumName || ('Stadio ' + ctx.club)));
+
+  // Affluenza/incasso attesi per UNA fascia di prezzo specifica (non necessariamente quella
+  // scelta ora): stessa formula di estSeasonRevenue/endSeason, usata per confrontare le 4
+  // fasce fra loro prima di scegliere, invece di scoprirlo solo a fine stagione.
+  function estAttendanceFor(ticketIdx, ctx = S) {
+    const d = divOf(ctx), t = TICKETS[ticketIdx], ec = ctx.euro ? EURO_COMPS[ctx.euroComp] : null;
+    const sentFactor = 1 + (ctx.sent - 50) / 220 + sponsorPerkValue('demandBonus', ctx);
+    const att = Math.min(capOf(ctx), Math.max(600, d.demand * ctx.fanbase * sentFactor * t.demand * (ec ? ec.attBoost : 1)));
+    return { att: Math.round(att), pct: clamp(att / capOf(ctx), 0, 1), revenuePerGame: Math.round(att * d.ticket * t.mult) };
   }
 
   // Stima mostrata in Dirigenza PRIMA che la stagione inizi: allineata alla stessa formula di
@@ -2465,6 +2486,9 @@
     // prezzo, un'esperienza matchday migliore che va oltre il solo risultato in campo.
     const demand = d.demand * ctx.fanbase * (1 + winPct * 0.35 + (ctx.sent - 50) / 220 + sponsorPerkValue('demandBonus', ctx)) * t.demand * (ecPlaying ? ecPlaying.attBoost : 1);
     const att = Math.round(Math.min(capOf(ctx), Math.max(600, demand)));
+    // Record d'affluenza: la media più alta mai registrata in una stagione (non una singola
+    // giornata, coerente con `att` che è già una media di stagione) — mostrato in Stadio.
+    if (att > (ctx.stadiumRecordAtt || 0)) { ctx.stadiumRecordAtt = att; ctx.stadiumRecordSeason = ctx.season; }
     const matchday = Math.round(att * d.ticket * t.mult * (G / 2));
     // Il merchandising scala con la TIFOSERIA, non con lo stadio: una tifoseria in
     // rapida crescita vende maglie che entrino o no nello stadio.

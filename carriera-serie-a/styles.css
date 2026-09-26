@@ -452,6 +452,8 @@ body{
 .ow-ticket.on{ border-color:var(--dyn); background:rgba(201,144,47,.13); }
 .ow-ticket b{ font-size:13px; font-weight:900; display:block; }
 .ow-ticket small{ font-size:10.5px; color:var(--muted); font-weight:600; line-height:1.35; display:block; margin-top:2px; }
+.ow-ticket small.ow-ticket-est{ color:var(--gold); font-weight:700; margin-top:4px; }
+.ow-stadium-visual{ display:flex; justify-content:center; margin:4px 0 12px; }
 
 .ow-spins{ display:grid; grid-template-columns:3fr 1fr; gap:8px; margin-bottom:8px; }
 .ow-spins.one{ grid-template-columns:1fr; }

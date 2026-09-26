@@ -31,6 +31,34 @@
       <path d="M60 40 L67 60 L88 61 L71 74 L77 95 L60 83 L43 95 L49 74 L32 61 L53 60 Z" fill="url(#${gradId})"/>`;
   }
 
+  // Illustrazione dello stadio: la "ciotola" (ellissi concentriche attorno al campo) guadagna
+  // un anello ogni 2 livelli di ampliamento (STADIUM in data.js ne ha 9), fino a un tetto di 4
+  // — cresce visibilmente con la capienza invece di restare sempre lo stesso disegno. A destra
+  // un gauge a ciambella mostra l'affluenza attesa alla fascia di prezzo scelta ORA (fillPct,
+  // 0-1): oro per il pubblico atteso, grigio per i posti che resterebbero vuoti.
+  function stadiumSVG(tier, fillPct) {
+    const rings = clamp(1 + Math.floor(tier / 2), 1, 4);
+    let bowl = '';
+    for (let i = rings - 1; i >= 0; i--) {
+      const rx = 62 + i * 15, ry = 38 + i * 9;
+      bowl += `<ellipse cx="70" cy="72" rx="${rx}" ry="${ry}" fill="none" stroke="rgba(255,255,255,${0.28 - i * 0.05})" stroke-width="9"/>`;
+    }
+    bowl += `<ellipse cx="70" cy="72" rx="40" ry="24" fill="#2a7d3f" stroke="rgba(255,255,255,.5)" stroke-width="1.5"/>`;
+    bowl += `<line x1="70" y1="48" x2="70" y2="96" stroke="rgba(255,255,255,.5)" stroke-width="1"/>`;
+    bowl += `<circle cx="70" cy="72" r="7" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1"/>`;
+    const r = 30, circ = 2 * Math.PI * r;
+    const filled = circ * clamp(fillPct, 0, 1), empty = circ - filled;
+    const pct = Math.round(clamp(fillPct, 0, 1) * 100);
+    const gauge = `
+      <g transform="translate(230,72)">
+        <circle r="${r}" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="10"/>
+        <circle r="${r}" fill="none" stroke="var(--gold)" stroke-width="10" stroke-dasharray="${filled.toFixed(1)} ${empty.toFixed(1)}" stroke-linecap="round" transform="rotate(-90)"/>
+        <text text-anchor="middle" dy="5" font-size="18" font-weight="900" fill="var(--txt)" font-family="var(--sans)">${pct}%</text>
+      </g>
+      <text x="230" y="118" text-anchor="middle" font-size="9.5" font-weight="700" fill="var(--muted)" font-family="var(--sans)">affluenza attesa</text>`;
+    return `<svg viewBox="0 0 300 140" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;max-height:150px" role="img" aria-label="Stadio, ${rings} anelli, affluenza attesa ${pct}%">${bowl}${gauge}</svg>`;
+  }
+
   function crestMarkup(shape, colors, cls) {
     const id = 'cg' + (crestUid++);
     const c = colors && colors.length === 2 ? colors : CREST_DEFAULT.colors;
@@ -1992,13 +2020,26 @@
         ${tacticPickerHTML('Ritmo', 'tempo', TACTIC_TEMPO)}
       </div>`;
 
+    const curEst = estAttendanceFor(S.ticket);
+    const homeAdvPct = Math.round((homeAdvantage() - 1) * 100);
     const stadioHTML = `
       <div class="ow-sec">
-        <div class="ow-sec-title">🏟️ Stadio + biglietti</div>
+        <div class="ow-sec-title">🏟️ ${escapeHtml(stadiumDisplayName())}</div>
+        ${S.stadiumSponsor ? `<div class="ow-sub">Nome da naming right dello sponsor di stadio, finché l'accordo dura. Il nome storico resta salvato sotto.</div>` : ''}
+        <div class="ow-stadium-visual">${stadiumSVG(S.stadiumTier, curEst.pct)}</div>
         <div class="ow-fin-row"><span>Capienza</span><b>${capOf().toLocaleString('it-IT')} posti</b></div>
+        <div class="ow-fin-row"><span>Affluenza attesa a questo prezzo</span><b>${curEst.att.toLocaleString('it-IT')} (${Math.round(curEst.pct * 100)}%)</b></div>
+        <div class="ow-fin-row" title="Capienza e umore dei tifosi: un fattore campo più alto aiuta soprattutto nelle partite in casa più equilibrate."><span>🏠 Fattore campo</span><b class="${homeAdvPct >= 0 ? 'good' : 'bad'}">${homeAdvPct >= 0 ? '+' : ''}${homeAdvPct}%</b></div>
+        ${S.stadiumRecordAtt ? `<div class="ow-fin-row"><span>🏆 Record d'affluenza</span><b>${S.stadiumRecordAtt.toLocaleString('it-IT')} <small style="color:var(--muted);font-weight:700">(stagione ${S.stadiumRecordSeason})</small></b></div>` : ''}
         ${next ? (() => { const cost = stadiumUpgradeCost(next); const discounted = cost < next.cost; return `<button class="dyn-btn ow-upg" id="upgradeBtn" ${(debtEmbargo || S.budget < cost) ? 'disabled' : ''} title="${debtEmbargo ? 'Bloccato: club in rosso' : discounted ? 'Sconto dello sponsor di stadio già applicato' : ''}">Amplia a ${next.cap.toLocaleString('it-IT')} posti · ${discounted ? `<s style="opacity:.6">${fmtMoney(next.cost)}</s> ` : ''}${fmtMoney(cost)}</button>`; })() : '<div class="ow-sub">Lo stadio è alla sua dimensione massima.</div>'}
         <div class="ow-sub" style="margin-top:10px">Prezzi biglietti (i tifosi reagiscono, la domanda cambia):</div>
-        <div class="ow-tickets">${TICKETS.map((t, i) => `<button class="ow-ticket ${S.ticket === i ? 'on' : ''}" data-tk="${i}"><b>${t.label}</b><small>€${Math.round(d.ticket * t.mult)} medio · ${t.hint}</small></button>`).join('')}</div>
+        <div class="ow-tickets">${TICKETS.map((t, i) => { const est = estAttendanceFor(i); return `<button class="ow-ticket ${S.ticket === i ? 'on' : ''}" data-tk="${i}"><b>${t.label}</b><small>€${Math.round(d.ticket * t.mult)} medio · ${t.hint}</small><small class="ow-ticket-est">~${est.att.toLocaleString('it-IT')} spett. (${Math.round(est.pct * 100)}%) · ${fmtMoney(est.revenuePerGame)}/gara</small></button>`; }).join('')}</div>
+      </div>
+      <div class="ow-sec">
+        <div class="ow-sec-title">✏️ Nome storico dello stadio</div>
+        <div class="ow-sub">Usato quando non hai un accordo di naming right attivo con uno sponsor di stadio.</div>
+        <div class="ow-fin-row"><input id="stadiumNameInput" type="text" maxlength="40" value="${escapeHtml(S.stadiumName || ('Stadio ' + S.club))}" placeholder="Stadio ${escapeHtml(S.club)}" style="width:100%" /></div>
+        <button class="dyn-mini" id="stadiumNameSaveBtn" style="margin-top:6px">Salva nome</button>
       </div>`;
 
     // Un unico stampo per i tre slot (maglia/stadio/tecnico): mostra l'accordo attivo con le
@@ -2206,6 +2247,12 @@
       });
     });
     body.querySelectorAll('.ow-ticket').forEach((el) => el.addEventListener('click', () => { S.ticket = +el.dataset.tk; renderBoard(); saveGame(); if (DynSound) DynSound.tap(); }));
+    const stadiumNameSaveBtn = $('stadiumNameSaveBtn');
+    if (stadiumNameSaveBtn) stadiumNameSaveBtn.addEventListener('click', () => {
+      const val = ($('stadiumNameInput').value || '').trim().slice(0, 40);
+      S.stadiumName = val || null;
+      toast('Nome dello stadio aggiornato.', 'success'); renderBoard(); saveGame();
+    });
     const std = $('spinStdBtn'), prem = $('spinPremBtn'), premRole = $('spinPremRoleBtn'), stdRole = $('spinStdRoleBtn');
     if (std) std.addEventListener('click', () => doSpin(false));
     if (prem) prem.addEventListener('click', () => doSpin(true));
