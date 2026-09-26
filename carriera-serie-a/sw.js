@@ -3,7 +3,7 @@
    Cache-first sui file statici versionati (?v=), network-first su index.html così un
    deploy nuovo si vede subito (coerente con i meta no-cache già in index.html) e resta
    comunque disponibile offline se la rete manca. */
-const CACHE = 'presidente-serie-a-v7';
+const CACHE = 'presidente-serie-a-v8';
 const SHELL = [
   './',
   './index.html',
@@ -35,8 +35,12 @@ self.addEventListener('fetch', (ev) => {
   if (req.method !== 'GET') return;
   const isHTML = req.mode === 'navigate' || (req.headers.get('accept') || '').includes('text/html');
   if (isHTML) {
+    // cache:'no-store' bypassa del tutto la cache HTTP del browser: senza, Altervista non
+    // manda un header Cache-Control reale e fetch() può comunque restituire una copia vecchia
+    // anche se qui "proviamo" ad andare in rete, lasciando l'app installata bloccata su una
+    // versione superata finché non si reinstalla a mano.
     ev.respondWith(
-      fetch(req).then((res) => { caches.open(CACHE).then((c) => c.put(req, res.clone())); return res; })
+      fetch(req, { cache: 'no-store' }).then((res) => { caches.open(CACHE).then((c) => c.put(req, res.clone())); return res; })
         .catch(() => caches.match(req).then((c) => c || caches.match('./index.html')))
     );
     return;

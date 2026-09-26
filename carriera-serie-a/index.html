@@ -152,7 +152,25 @@
   // Service worker: rende il gioco installabile ("aggiungi a Home") e disponibile offline
   // dopo la prima visita. Nessun impatto sul deploy: index.html resta sempre network-first.
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+    // Quando un service worker nuovo prende il controllo (dopo un deploy), la pagina già
+    // aperta sta ancora eseguendo il JS vecchio: senza questo reload automatico, su un'app
+    // installata l'utente vedrebbe l'aggiornamento solo chiudendola e riaprendola più volte.
+    let swRefreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (swRefreshing) return;
+      swRefreshing = true;
+      window.location.reload();
+    });
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').then((reg) => {
+        // Il browser controlla da solo se sw.js è cambiato al massimo una volta al giorno:
+        // un'app installata che resta aperta per settimane potrebbe non ricontrollare mai.
+        // Ogni volta che torna in primo piano chiediamo esplicitamente un controllo subito.
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') reg.update().catch(() => {});
+        });
+      }).catch(() => {});
+    });
   }
 
   // Pulsante "Installa l'app": senza, l'unico modo per installarla è il menu del browser
