@@ -52,6 +52,7 @@
     <button type="button" id="owTutorialBtn" class="dyn-mini" style="margin:0 auto 10px;display:block">📖 Come si gioca (tutorial)</button>
     <button type="button" id="owMultiplayerBtn" class="dyn-mini" style="margin:0 auto 10px;display:block">👥 Gioca con gli amici</button>
     <button type="button" id="owInstallBtn" class="dyn-mini hidden" style="margin:0 auto 10px;display:block">📲 Installa l'app</button>
+    <button type="button" id="owForceUpdateBtn" class="dyn-mini" style="margin:0 auto 10px;display:block">🔄 Forza aggiornamento del gioco</button>
     <div id="hotseatWrap"></div>
     <div id="saveSlotsWrap"></div>
     <label class="dyn-field">
@@ -142,11 +143,11 @@
 
 <div id="owToast" class="dyn-toast hidden"></div>
 
-<script src="sfx.js?v=66"></script>
-<script src="data.js?v=66"></script>
-<script src="rosters.js?v=66"></script>
-<script src="sim.js?v=66"></script>
-<script src="ui.js?v=66"></script>
+<script src="sfx.js?v=67"></script>
+<script src="data.js?v=67"></script>
+<script src="rosters.js?v=67"></script>
+<script src="sim.js?v=67"></script>
+<script src="ui.js?v=67"></script>
 <script>
   // Service worker: rende il gioco installabile ("aggiungi a Home") e disponibile offline
   // dopo la prima visita. Nessun impatto sul deploy: index.html resta sempre network-first.
@@ -171,6 +172,28 @@
       }).catch(() => {});
     });
   }
+
+  // Pulsante "Forza aggiornamento": scorciatoia per i casi (soprattutto app installate su
+  // Android) in cui il service worker resta bloccato su una versione vecchia più a lungo del
+  // previsto. Cancella service worker e cache locali e ricarica da zero, senza dover passare
+  // dalle impostazioni del browser.
+  (function () {
+    const btn = document.getElementById('owForceUpdateBtn');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      try {
+        if ('serviceWorker' in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map((r) => r.unregister()));
+        }
+        if ('caches' in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map((k) => caches.delete(k)));
+        }
+      } catch (e) {}
+      window.location.href = window.location.pathname + '?fresh=' + Date.now();
+    });
+  })();
 
   // Pulsante "Installa l'app": senza, l'unico modo per installarla è il menu del browser
   // (spesso nascosto/non ovvio da telefono). Se il browser è già stato aperto una volta prima
