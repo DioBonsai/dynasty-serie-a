@@ -90,12 +90,18 @@ body{
 
 /* ---------- setup ---------- */
 .dyn-setup{ text-align:center; padding-top:30px; }
-/* Logo fisso del gioco (icon.webp, lo stesso dell'icona app/favicon): mai lo stemma del club,
-   quello resta dinamico (scelto dal presidente, vedi #crestPreviewWrap qui sotto) — questo è
-   il marchio del gioco stesso, sempre uguale, per dargli un'identità riconoscibile anche sul
-   sito e non solo come icona una volta installato. */
+/* Logo fisso del gioco: mai lo stemma del club, quello resta dinamico (scelto dal presidente,
+   vedi #crestPreviewWrap qui sotto) — questo è il marchio del gioco stesso, sempre uguale, per
+   dargli un'identità riconoscibile anche sul sito e non solo come icona una volta installato.
+   Due varianti: icon.webp (la stessa icona dell'app, verticale) su schermi stretti/telefono,
+   logo-desktop.webp (più orizzontale, con più dettaglio) su schermi larghi/PC. */
 .dyn-brand{ display:flex; flex-direction:column; align-items:center; gap:8px; margin-bottom:22px; }
 .dyn-brand-mark{ width:140px; height:140px; filter:drop-shadow(0 8px 20px rgba(201,144,47,.35)); }
+.dyn-brand-mark-desktop{ display:none; }
+@media(min-width:700px){
+  .dyn-brand-mark-mobile{ display:none; }
+  .dyn-brand-mark-desktop{ display:block; width:220px; height:220px; }
+}
 .setup-crest{ width:76px; height:88px; margin:0 auto 18px; display:block; filter:drop-shadow(0 8px 18px rgba(201,144,47,.25)); }
 .ow-club-crest-preview{ width:64px; height:74px; filter:drop-shadow(0 6px 14px rgba(201,144,47,.22)); }
 .dyn-kicker{ color:var(--dyn); font-weight:800; letter-spacing:.24em; text-transform:uppercase; font-size:11.5px; }
