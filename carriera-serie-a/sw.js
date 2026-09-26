@@ -3,7 +3,7 @@
    Cache-first sui file statici versionati (?v=), network-first su index.html così un
    deploy nuovo si vede subito (coerente con i meta no-cache già in index.html) e resta
    comunque disponibile offline se la rete manca. */
-const CACHE = 'presidente-serie-a-v8';
+const CACHE = 'presidente-serie-a-v9';
 const SHELL = [
   './',
   './index.html',
@@ -15,7 +15,7 @@ const SHELL = [
   './ui.js',
   './sfx.js',
   './manifest.json',
-  './icon.svg',
+  './icon.webp',
 ];
 
 self.addEventListener('install', (ev) => {
