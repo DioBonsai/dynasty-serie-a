@@ -2508,15 +2508,10 @@
     const totalCleanSheets = (p.careerCleanSheets || 0) + (p.seasonCleanSheets || 0);
     const tenureRow = `<div class="ow-fin-row"><span>In squadra da</span><b>${seasons} stagion${seasons === 1 ? 'e' : 'i'}</b></div>`;
     const statRows = isGK
-      ? `<div class="ow-fin-row"><span>Presenze stagionali</span><b>🎽 ${p.seasonApps || 0}</b></div>
-         <div class="ow-fin-row"><span>Clean sheet stagionali</span><b>🧤 ${p.seasonCleanSheets || 0}</b></div>
-         ${tenureRow}
+      ? `${tenureRow}
          <div class="ow-fin-row"><span>Presenze totali</span><b>🎽 ${totalApps}</b></div>
          <div class="ow-fin-row"><span>Clean sheet totali</span><b>🧤 ${totalCleanSheets}</b></div>`
-      : `<div class="ow-fin-row"><span>Presenze stagionali</span><b>🎽 ${p.seasonApps || 0}</b></div>
-         <div class="ow-fin-row"><span>Gol stagionali</span><b>⚽ ${p.seasonGoals || 0}</b></div>
-         <div class="ow-fin-row"><span>Assist stagionali</span><b>👟 ${p.seasonAssists || 0}</b></div>
-         ${tenureRow}
+      : `${tenureRow}
          <div class="ow-fin-row"><span>Presenze totali</span><b>🎽 ${totalApps}</b></div>
          <div class="ow-fin-row"><span>Gol totali</span><b>⚽ ${totalGoals}</b></div>
          <div class="ow-fin-row"><span>Assist totali</span><b>👟 ${totalAssists}</b></div>`;
