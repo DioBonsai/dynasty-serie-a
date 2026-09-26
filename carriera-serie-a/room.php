@@ -839,6 +839,13 @@ if ($action === 'proposeTrade') {
     if ($code === '' || $playerId === '' || $targetId === '' || $playerName === '') fail('Richiesta non valida.');
     if ($targetId === $playerId) fail('Non puoi proporre una trattativa a te stesso.');
     if ($fee < 0 || $fee > 2e9) fail('Offerta non valida.');
+    // Scambio giocatore-per-giocatore (opzionale, in aggiunta o al posto del cash): a differenza
+    // del giocatore RICHIESTO (playerName, che solo il venditore può verificare/allegare —
+    // arriva alla risposta), quello OFFERTO in cambio è già nella rosa del proponente: può
+    // allegarne subito lo snapshot vero, non serve aspettare nessuno.
+    $offerPlayerName = clean_name($body['offerPlayerName'] ?? '', 40);
+    $offerPlayerSnapshot = $offerPlayerName !== '' ? clean_player_snapshot($body['offerPlayerSnapshot'] ?? null) : null;
+    if ($offerPlayerName !== '' && !$offerPlayerSnapshot) fail('Il giocatore che offri in cambio non è valido.');
 
     $path = room_path($DIR, $code);
     $fp = fopen($path, 'c+');
@@ -863,6 +870,8 @@ if ($action === 'proposeTrade') {
         'fromId' => $playerId, 'fromClub' => $players[$playerId]['club'] ?? '?',
         'toId' => $targetId, 'toClub' => $players[$targetId]['club'] ?? '?',
         'playerName' => $playerName, 'fee' => $fee, 'counterFee' => null,
+        'offerPlayerName' => $offerPlayerName !== '' ? $offerPlayerName : null,
+        'offerPlayerSnapshot' => $offerPlayerSnapshot,
         'status' => 'pending', 'playerSnapshot' => null,
         'createdAt' => time(), 'updatedAt' => time(),
     ];

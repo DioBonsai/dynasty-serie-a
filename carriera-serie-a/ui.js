@@ -505,19 +505,30 @@
     const appliedIds = (S && S._appliedTrades) || [];
     const toReceive = trades.filter((t) => t.fromId === playerId && t.status === 'accepted' && t.playerSnapshot && appliedIds.indexOf(t.id) === -1);
     const toFinalizeSale = trades.filter((t) => t.toId === playerId && t.status === 'accepted' && t.playerSnapshot && appliedIds.indexOf(t.id) === -1);
+    // Cosa c'è davvero sul piatto: solo cash, solo scambio, o entrambi — una frase sola invece
+    // di ripetere la stessa logica in ogni riga (in arrivo, controproposte, mie proposte...).
+    const tradeOfferLabel = (t, feeAmount) => {
+      const parts = [];
+      if (t.offerPlayerName) parts.push('<b>' + escapeHtml(t.offerPlayerName) + '</b>');
+      if (feeAmount > 0 || !t.offerPlayerName) parts.push('<b>' + fmtMoney(feeAmount) + '</b>');
+      return parts.join(' + ');
+    };
     const tradesHTML = !showTrades ? '' : `
       <div class="ow-sec-title" style="margin-top:10px">🤝 Trattative di mercato</div>
       ${!mySaveActive ? '<div class="ow-sub">Apri la tua carriera (torna in Dirigenza da un\'altra carriera, poi rientra qui) per proporre o rispondere a una trattativa.</div>' : `
-        ${toReceive.length ? toReceive.map((t) => `<div class="ow-fin-row" style="background:rgba(40,217,160,.10);border-radius:8px"><span>📥 ${escapeHtml(t.playerSnapshot.n)} da ${escapeHtml(t.toClub)}, accordo raggiunto</span><button class="dyn-mini" data-recv="${t.id}">Ricevi · ${fmtMoney(t.fee)}</button></div>`).join('') : ''}
-        ${toFinalizeSale.length ? toFinalizeSale.map((t) => `<div class="ow-fin-row" style="background:rgba(40,217,160,.10);border-radius:8px"><span>💷 Accordo raggiunto con ${escapeHtml(t.fromClub)} per ${escapeHtml(t.playerSnapshot.n)}</span><button class="dyn-mini" data-finalize="${t.id}">Conferma cessione · +${fmtMoney(t.fee)}</button></div>`).join('') : ''}
-        ${incoming.map((t) => `<div class="ow-fin-row" style="align-items:flex-start"><span>${escapeHtml(t.fromClub)} offre <b>${fmtMoney(t.fee)}</b> per <b>${escapeHtml(t.playerName)}</b></span><span style="display:flex;gap:4px"><button class="dyn-mini" data-tacc="${t.id}">Accetta</button><button class="dyn-mini" data-tcnt="${t.id}">🤝</button><button class="dyn-mini ow-reject" data-trej="${t.id}">Rifiuta</button></span></div>`).join('')}
-        ${counters.map((t) => `<div class="ow-fin-row"><span>Hai già controproposto ${fmtMoney(t.counterFee)} a ${escapeHtml(t.fromClub)} per ${escapeHtml(t.playerName)}: in attesa</span></div>`).join('')}
-        ${myProposals.map((t) => `<div class="ow-fin-row" style="align-items:flex-start"><span>${t.status === 'countered' ? `${escapeHtml(t.toClub)} contropropone <b>${fmtMoney(t.counterFee)}</b> per ${escapeHtml(t.playerName)}` : `In attesa: ${fmtMoney(t.fee)} a ${escapeHtml(t.toClub)} per ${escapeHtml(t.playerName)}`}</span><span style="display:flex;gap:4px">${t.status === 'countered' ? `<button class="dyn-mini" data-tacccnt="${t.id}">Accetta</button><button class="dyn-mini ow-reject" data-trej="${t.id}">Rifiuta</button>` : `<button class="dyn-mini ow-reject" data-tcancel="${t.id}">Annulla</button>`}</span></div>`).join('')}
+        ${toReceive.length ? toReceive.map((t) => `<div class="ow-fin-row" style="background:rgba(40,217,160,.10);border-radius:8px"><span>📥 ${escapeHtml(t.playerSnapshot.n)} da ${escapeHtml(t.toClub)}${t.offerPlayerName ? ' (in cambio di ' + escapeHtml(t.offerPlayerName) + ')' : ''}, accordo raggiunto</span><button class="dyn-mini" data-recv="${t.id}">Ricevi${t.fee > 0 ? ' · ' + fmtMoney(t.fee) : ''}</button></div>`).join('') : ''}
+        ${toFinalizeSale.length ? toFinalizeSale.map((t) => `<div class="ow-fin-row" style="background:rgba(40,217,160,.10);border-radius:8px"><span>💷 Accordo raggiunto con ${escapeHtml(t.fromClub)} per ${escapeHtml(t.playerSnapshot.n)}${t.offerPlayerName ? ' (ricevi anche ' + escapeHtml(t.offerPlayerName) + ')' : ''}</span><button class="dyn-mini" data-finalize="${t.id}">Conferma cessione${t.fee > 0 ? ' · +' + fmtMoney(t.fee) : ''}</button></div>`).join('') : ''}
+        ${incoming.map((t) => `<div class="ow-fin-row" style="align-items:flex-start"><span>${escapeHtml(t.fromClub)} offre ${tradeOfferLabel(t, t.fee)} per <b>${escapeHtml(t.playerName)}</b></span><span style="display:flex;gap:4px"><button class="dyn-mini" data-tacc="${t.id}">Accetta</button><button class="dyn-mini" data-tcnt="${t.id}">🤝</button><button class="dyn-mini ow-reject" data-trej="${t.id}">Rifiuta</button></span></div>`).join('')}
+        ${counters.map((t) => `<div class="ow-fin-row"><span>Hai già controproposto ${tradeOfferLabel({ ...t, offerPlayerName: null }, t.counterFee)} a ${escapeHtml(t.fromClub)} per ${escapeHtml(t.playerName)}${t.offerPlayerName ? ' (in cambio di ' + escapeHtml(t.offerPlayerName) + ')' : ''}: in attesa</span></div>`).join('')}
+        ${myProposals.map((t) => `<div class="ow-fin-row" style="align-items:flex-start"><span>${t.status === 'countered' ? `${escapeHtml(t.toClub)} contropropone ${fmtMoney(t.counterFee)} per ${escapeHtml(t.playerName)}` : `In attesa: ${tradeOfferLabel(t, t.fee)} a ${escapeHtml(t.toClub)} per ${escapeHtml(t.playerName)}`}</span><span style="display:flex;gap:4px">${t.status === 'countered' ? `<button class="dyn-mini" data-tacccnt="${t.id}">Accetta</button><button class="dyn-mini ow-reject" data-trej="${t.id}">Rifiuta</button>` : `<button class="dyn-mini ow-reject" data-tcancel="${t.id}">Annulla</button>`}</span></div>`).join('')}
         ${otherHumans.length ? `
         <div class="ow-fin-row" style="flex-wrap:wrap;gap:6px">
           <select id="mpTradeTarget" style="flex:1;min-width:110px">${otherHumans.map((p) => `<option value="${p.id}">${escapeHtml(p.club)}</option>`).join('')}</select>
-          <input id="mpTradePlayer" type="text" maxlength="40" placeholder="Nome giocatore" style="flex:1;min-width:110px" />
-          <input id="mpTradeFee" type="number" min="0" step="10000" placeholder="Offerta €" style="width:110px" />
+          <input id="mpTradePlayer" type="text" maxlength="40" placeholder="Nome giocatore richiesto" style="flex:1;min-width:110px" />
+        </div>
+        <div class="ow-fin-row" style="flex-wrap:wrap;gap:6px">
+          <input id="mpTradeOfferPlayer" type="text" maxlength="40" placeholder="Un tuo giocatore in cambio (opzionale)" style="flex:1;min-width:110px" />
+          <input id="mpTradeFee" type="number" min="0" step="10000" placeholder="+ cash (opzionale)" style="width:130px" />
           <button class="dyn-btn" id="mpTradeSend">Proponi</button>
         </div>` : '<div class="ow-sub">Nessun altro club umano nella stanza al momento.</div>'}
       `}`;
@@ -595,10 +606,20 @@
     if (tradeSendBtn) tradeSendBtn.onclick = async () => {
       const targetId = $('mpTradeTarget').value;
       const playerName = ($('mpTradePlayer').value || '').trim();
+      const offerPlayerName = ($('mpTradeOfferPlayer').value || '').trim();
       const fee = Math.max(0, Math.round(+($('mpTradeFee').value || 0)));
-      if (!playerName) { toast('Scrivi il nome del giocatore che vuoi offrire.', 'error'); return; }
-      try { const data = await mpApi('proposeTrade', { code: room.code, playerId, targetId, playerName, fee }); toast('Proposta inviata.', 'success'); renderLobby(data.room, playerId); }
-      catch (e) { toast(e.message || 'Impossibile inviare la proposta.', 'error'); }
+      if (!playerName) { toast('Scrivi il nome del giocatore che vuoi ottenere.', 'error'); return; }
+      let offerPlayerSnapshot = null;
+      if (offerPlayerName) {
+        const op = S.squad.find((p) => p.n.toLowerCase() === offerPlayerName.toLowerCase());
+        if (!op) { toast('Non trovi "' + offerPlayerName + '" nella tua rosa: controlla il nome esatto.', 'error'); return; }
+        offerPlayerSnapshot = { n: op.n, pos: op.pos, ovr: op.ovr, age: op.age, wage: op.wage, yrs: op.yrs, potential: op.potential, nat: op.nat };
+      }
+      if (!offerPlayerName && fee <= 0) { toast('Offri almeno un giocatore o una cifra in cash.', 'error'); return; }
+      try {
+        const data = await mpApi('proposeTrade', { code: room.code, playerId, targetId, playerName, fee, offerPlayerName, offerPlayerSnapshot });
+        toast('Proposta inviata.', 'success'); renderLobby(data.room, playerId);
+      } catch (e) { toast(e.message || 'Impossibile inviare la proposta.', 'error'); }
     };
     // Accetta una richiesta ricevuta (io sono il venditore): il giocatore va cercato per nome
     // nella MIA rosa vera (S.squad) — è l'unico posto dove esiste davvero, chi propone non lo
@@ -625,10 +646,12 @@
       if (i < 0) { toast('Il giocatore non è più nella tua rosa (già venduto altrove?): la trattativa resta bloccata, contatta l\'host.', 'error'); return; }
       const p = S.squad[i];
       pushAlumnus(p); S.budget += t.fee; S.squad.splice(i, 1);
+      // Scambio: se la trattativa portava anche un giocatore in cambio, si aggrega ora alla rosa.
+      if (t.offerPlayerSnapshot) S.squad.push({ ...t.offerPlayerSnapshot, pid: newPid(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0, outWeeks: 0, suspMatches: 0 });
       if (!S._appliedTrades) S._appliedTrades = [];
       S._appliedTrades.push(t.id);
       saveGame();
-      toast('Ceduto ' + p.n + ' a ' + t.fromClub + ' per ' + fmtMoney(t.fee) + '.', 'money');
+      toast('Ceduto ' + p.n + ' a ' + t.fromClub + (t.fee > 0 ? ' per ' + fmtMoney(t.fee) : '') + (t.offerPlayerSnapshot ? ', in cambio di ' + t.offerPlayerSnapshot.n : '') + '.', 'money');
       renderLobby(room, playerId);
     }));
     document.querySelectorAll('#owOverlayModal [data-trej]').forEach((el) => el.addEventListener('click', async () => {
@@ -656,10 +679,19 @@
       const snap = t.playerSnapshot;
       S.squad.push({ ...snap, pid: newPid(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0, outWeeks: 0, suspMatches: 0 });
       S.budget -= t.fee;
+      // Scambio: il giocatore che avevi offerto in cambio esce ora dalla tua rosa (già ceduto
+      // dal venditore con "Conferma cessione"). Se non lo trovi più (venduto nel frattempo per
+      // un'altra via), non si blocca comunque la ricezione: hai già il tuo, resta solo un
+      // disallineamento minore da sistemare a mano.
+      let offerNote = '';
+      if (t.offerPlayerSnapshot) {
+        const oi = S.squad.findIndex((p) => p.n.toLowerCase() === t.offerPlayerSnapshot.n.toLowerCase());
+        if (oi >= 0) { pushAlumnus(S.squad[oi]); S.squad.splice(oi, 1); offerNote = ', ceduto ' + t.offerPlayerSnapshot.n + ' in cambio'; }
+      }
       if (!S._appliedTrades) S._appliedTrades = [];
       S._appliedTrades.push(t.id);
       saveGame();
-      toast(snap.n + ' si aggrega alla rosa: -' + fmtMoney(t.fee) + '.', 'spend');
+      toast(snap.n + ' si aggrega alla rosa' + (t.fee > 0 ? ': -' + fmtMoney(t.fee) : '') + offerNote + '.', 'spend');
       renderLobby(room, playerId);
     }));
     const chatSendBtn = $('mpChatSend');
@@ -935,7 +967,7 @@
     if (!trade) return;
     overlay(`
       <h2>🤝 Controproponi</h2>
-      <p>${escapeHtml(trade.fromClub)} offre ${fmtMoney(trade.fee)} per ${escapeHtml(trade.playerName)}. Quanto vuoi chiedere invece?</p>
+      <p>${escapeHtml(trade.fromClub)} offre ${fmtMoney(trade.fee)}${trade.offerPlayerName ? ' + ' + escapeHtml(trade.offerPlayerName) : ''} per ${escapeHtml(trade.playerName)}. Il giocatore offerto in cambio resta lo stesso, quanto cash vuoi chiedere in più?</p>
       <div class="ow-fin-row"><input id="mpCounterFee" type="number" min="0" step="10000" value="${Math.round(trade.fee * 1.25)}" style="width:100%" /></div>
       <div class="dyn-modal-actions">
         <button class="dyn-btn dyn-btn-primary" id="ovCounterGo">Invia controproposta</button>
