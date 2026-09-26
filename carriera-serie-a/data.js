@@ -73,7 +73,7 @@
     { base: 78, premium: 85 },
     { base: 84, premium: 90 },
     { base: 90, premium: 95 },
-    { base: 95, premium: 99 },
+    { base: 95, premium: 105 },
   ];
 
   // Il modulo scelto pesa davvero sulla partita: atk/def sono un piccolo delta aggiunto/
@@ -1333,30 +1333,33 @@
   // aiuta noi/penalizza gli avversari, negativo il contrario), quanto pesano gli imprevisti
   // (infortuni/squalifiche più o meno frequenti, partite più o meno imprevedibili) e gli
   // stipendi richiesti dai giocatori. "Medio" è il bilanciamento di base del gioco.
+  // Ogni fascia è stata alzata leggermente (5-8% circa su ogni fattore, incluso Medio) rispetto
+  // al bilanciamento precedente: il gioco risultava troppo permissivo su tutti i livelli, non
+  // solo su quello facile.
   const DIFFICULTIES = [
     {
       key: 'facile', label: 'Facile', blurb: 'Più margine economico, avversari più abbordabili, meno imprevisti.',
-      budgetMult: 1.35, teamEffDelta: 4, injuryMult: 0.7, varianceMult: 0.85, wageMult: 0.92,
-      scoutCostMult: 0.85, sponsorMult: 1.15, mgrCostMult: 0.9, prospectMult: 1.2, promoStreakMalusMult: 0.6,
-      patienceMult: 0.6, eventMult: 0.7,
+      budgetMult: 1.28, teamEffDelta: 3, injuryMult: 0.75, varianceMult: 0.88, wageMult: 0.95,
+      scoutCostMult: 0.88, sponsorMult: 1.10, mgrCostMult: 0.93, prospectMult: 1.12, promoStreakMalusMult: 0.68,
+      patienceMult: 0.68, eventMult: 0.78,
     },
     {
       key: 'medio', label: 'Medio', blurb: 'Il bilanciamento classico del gioco, senza sconti né penalità.',
-      budgetMult: 1.0, teamEffDelta: 0, injuryMult: 1.0, varianceMult: 1.0, wageMult: 1.0,
-      scoutCostMult: 1.0, sponsorMult: 1.0, mgrCostMult: 1.0, prospectMult: 1.0, promoStreakMalusMult: 1.0,
-      patienceMult: 1.0, eventMult: 1.0,
+      budgetMult: 0.95, teamEffDelta: -1, injuryMult: 1.06, varianceMult: 1.05, wageMult: 1.04,
+      scoutCostMult: 1.05, sponsorMult: 0.94, mgrCostMult: 1.04, prospectMult: 0.92, promoStreakMalusMult: 1.08,
+      patienceMult: 1.08, eventMult: 1.08,
     },
     {
       key: 'difficile', label: 'Difficile', blurb: 'Budget più risicato, avversari più ostici, qualche imprevisto di troppo.',
-      budgetMult: 0.75, teamEffDelta: -4, injuryMult: 1.35, varianceMult: 1.2, wageMult: 1.12,
-      scoutCostMult: 1.2, sponsorMult: 0.88, mgrCostMult: 1.12, prospectMult: 0.85, promoStreakMalusMult: 1.3,
-      patienceMult: 1.3, eventMult: 1.25,
+      budgetMult: 0.70, teamEffDelta: -5, injuryMult: 1.42, varianceMult: 1.26, wageMult: 1.17,
+      scoutCostMult: 1.26, sponsorMult: 0.82, mgrCostMult: 1.17, prospectMult: 0.78, promoStreakMalusMult: 1.4,
+      patienceMult: 1.4, eventMult: 1.34,
     },
     {
       key: 'estremo', label: 'Estremo', blurb: 'Si parte con pochissimo, ogni partita è in salita e gli imprevisti sono la norma.',
-      budgetMult: 0.55, teamEffDelta: -8, injuryMult: 1.7, varianceMult: 1.4, wageMult: 1.25,
-      scoutCostMult: 1.45, sponsorMult: 0.75, mgrCostMult: 1.3, prospectMult: 0.65, promoStreakMalusMult: 1.7,
-      patienceMult: 1.6, eventMult: 1.6,
+      budgetMult: 0.5, teamEffDelta: -9, injuryMult: 1.78, varianceMult: 1.47, wageMult: 1.31,
+      scoutCostMult: 1.52, sponsorMult: 0.69, mgrCostMult: 1.36, prospectMult: 0.58, promoStreakMalusMult: 1.82,
+      patienceMult: 1.72, eventMult: 1.72,
     },
   ];
 

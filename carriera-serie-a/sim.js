@@ -351,7 +351,7 @@
   // Coppia d'attacco affiatata (pairChemistry >= CHEMISTRY_GAMES): un bonus concreto, non
   // solo cosmetico, sulla chance che l'uno assista il gol dell'altro — la stessa idea di due
   // punte che si cercano a memoria dopo tante partite fianco a fianco.
-  const chemistryWeight = (scorerPid, p, lineup, ctx) => assistWeight(p, lineup) * (pairChemistry(scorerPid, p.pid, ctx) >= CHEMISTRY_GAMES ? 1.35 : 1);
+  const chemistryWeight = (scorerPid, p, lineup, ctx) => assistWeight(p, lineup) * (pairChemistry(scorerPid, p.pid, ctx) >= CHEMISTRY_GAMES ? 1.18 : 1);
 
   function pickAssister(scorerPid, lineup, ctx = S) {
     const pool = ctx.squad.filter((p) => p.pid !== scorerPid);
@@ -808,10 +808,10 @@
       const icon = iconPlayer(role);
       if (icon) return icon;
     }
-    // In Serie B lo spin di lusso pesca quasi sempre un giocatore vero (rose di Serie A/B/
-    // Europa): è il senso stesso di pagare per il lusso a quel livello. Lo spin normale
-    // resta più incerto.
-    const realChance = S.div === 5 ? (premium ? 0.8 : 0.68) : S.div === 4 ? (premium ? 0.97 : 0.55) : 0;
+    // In Serie B lo spin di lusso pesca spesso un giocatore vero (rose di Serie A/B/Europa),
+    // ma non quasi sempre come prima: lasciava troppo poco spazio ai generati a quel livello.
+    // Lo spin normale resta più incerto.
+    const realChance = S.div === 5 ? (premium ? 0.8 : 0.68) : S.div === 4 ? (premium ? 0.68 : 0.32) : 0;
     if (realChance && Math.random() < realChance) {
       const real = realLeaguePlayer(band.lo, band.hi, role);
       if (real) return real;
@@ -985,10 +985,21 @@
     let tier = CAP.findIndex((cap) => fee <= cap);
     if (tier < 0) tier = 4;
     tier = clamp(Math.max(tier, ctx.div + 1), 0, DIVS.length - 1);
+    // Una volta arrivati in Serie A, buona parte dell'interesse vero sui big arriva anche
+    // dall'estero, non solo da rivali italiani: le stesse rose di EURO_CLUBS (già usate per gli
+    // avversari di coppa) fanno da bacino di club esteri veri.
+    if (tier === DIVS.length - 1 && Math.random() < 0.35) {
+      const euroPool = [].concat(EURO_CLUBS.ucl, EURO_CLUBS.uel, EURO_CLUBS.conf);
+      const sorted = euroPool.slice().sort((a, b) => b.s - a.s);
+      const topN = fee > CAP[tier] * 0.6 ? Math.max(2, Math.round(sorted.length * 0.55)) : sorted.length;
+      return pick(sorted.slice(0, topN)).n;
+    }
     const pool = (POOLS[tier] || POOLS[DIVS.length - 1]).filter((c) => c.n !== ctx.club);
     if (!pool.length) return 'un club più grande';
     const sorted = pool.slice().sort((a, b) => b.s - a.s);
-    const topN = fee > CAP[tier] * 0.45 ? Math.max(1, Math.round(sorted.length * 0.3)) : sorted.length;
+    // La soglia più alta e la quota più ampia (era il 30% più forte oltre il 45% del tetto)
+    // fanno sì che non siano sempre le 2-3 stesse big a farsi avanti per i giocatori più cari.
+    const topN = fee > CAP[tier] * 0.6 ? Math.max(2, Math.round(sorted.length * 0.55)) : sorted.length;
     return pick(sorted.slice(0, topN)).n;
   }
 
@@ -1639,6 +1650,7 @@
     ctx.sent = clamp(ctx.sent + TICKETS[ctx.ticket].sent, 0, 100);
     ctx.seasonActive = true; ctx.winterDone = false; ctx._janCands = null; ctx._janSwitchUsed = false; ctx._janMgrCands = null;
     ctx.played = 0; ctx.pts = 0; ctx.gf = 0; ctx.ga = 0; ctx.wins = 0; ctx.results = []; ctx.last5 = []; ctx.form = 0;
+    ctx._recapCountSeason = 0;
     // Chi è in panchina ORA, per il resoconto di fine stagione (endSeason) — se a gennaio ne
     // arriva un altro, il suo nome si aggiunge qui invece di sostituirlo: il resoconto deve
     // mostrare TUTTI gli allenatori avuti in quella stagione, non solo l'ultimo.
@@ -1902,8 +1914,13 @@
   // solo testo di colore.
   function maybeMatchRecap(ctx, row) {
     if (ctx.turboMode) return false;
+    // Tenuto raro apposta (2-3 a stagione, non una ad ogni gara in bilico): un click extra ad
+    // ogni giornata "vicina" stancava troppo l'esperienza. Il tetto per stagione è il freno
+    // principale, la probabilità bassa serve solo a spalmarle nel tempo invece che tutte insieme.
+    if ((ctx._recapCountSeason || 0) >= 3) return false;
     if (Math.abs(row.gf - row.ga) > 1) return false;
-    if (Math.random() >= 0.4) return false;
+    if (Math.random() >= 0.12) return false;
+    ctx._recapCountSeason = (ctx._recapCountSeason || 0) + 1;
     ctx._pause = true;
     openMatchRecapOverlay(row, ctx);
     return true;
@@ -2592,10 +2609,20 @@
     // Centrarlo vale SEMPRE (anche nella stessa stagione in cui si sfiora un altro destino),
     // il bonus è già guadagnato sul campo; mancare la scadenza invece cede il passo solo se
     // non è già scattato un destino più grave (esonero/amministrazione controllata).
-    let investorCompleted = null;
+    let investorCompleted = null, investorFailedName = null, investorFailedPenalty = 0;
     if (ctx.investorDeal) {
       if (ctx.div >= ctx.investorDeal.targetDiv) { investorCompleted = ctx.investorDeal; ctx.budget += investorCompleted.completionBonus; ctx.investorDeal = null; }
-      else if (!fate && ctx.season >= ctx.investorDeal.deadlineSeason) fate = 'investor';
+      else if (ctx.season >= ctx.investorDeal.deadlineSeason) {
+        // Mancare l'obiettivo non porta più alla cessione forzata del club (troppo punitivo,
+        // e comunque un destino che si vedeva solo a fine stagione): il fondo si ritira e
+        // pretende indietro l'iniezione versata con gli interessi, un colpo pesante alle
+        // casse ma la dynasty continua.
+        investorFailedName = ctx.investorDeal.name;
+        investorFailedPenalty = Math.round(ctx.investorDeal.injection * 1.4 / 1e4) * 1e4;
+        ctx.budget -= investorFailedPenalty;
+        ctx.sent = clamp(ctx.sent - 8, 0, 100);
+        ctx.investorDeal = null;
+      }
     }
     const worth = computeWorth(ctx); ctx.peakWorth = Math.max(ctx.peakWorth, worth);
     ctx.euroCompNext = qualTier;
@@ -2640,6 +2667,7 @@
     if (ctx.techSponsor) statement.push(['Sponsor tecnico (' + ctx.techSponsor.name + ')', techSponsorMoney]);
     if (investorMoney) statement.push(['Fondo d\'investimento (' + investorDealName + ')', investorMoney]);
     if (investorCompleted) statement.push(['🎯 Bonus obiettivo raggiunto (' + investorCompleted.name + ')', investorCompleted.completionBonus]);
+    if (investorFailedPenalty) statement.push(['📉 Fondo d\'investimento fallito (' + investorFailedName + ')', -investorFailedPenalty]);
     statement.push(
       ['Montepremi + diritti TV', prize],
       ['Percorso in Coppa Italia', ctx.cupMoney],
@@ -2671,7 +2699,7 @@
     if (investorCompleted) unlockAchievement(ctx, 'investor_trust');
     if (ctx.squad.some((p) => p.homegrown && p.ovr >= 85)) unlockAchievement(ctx, 'homegrown_hero');
     ctx._end = {
-      pos, exp, promoted, relegated, title, natWon, euroWon, euroCompWon: ctx.euroComp, trophies, fate, playoff, fbDelta, euroQual: qualTier, treble, investorCompleted,
+      pos, exp, promoted, relegated, title, natWon, euroWon, euroCompWon: ctx.euroComp, trophies, fate, playoff, fbDelta, euroQual: qualTier, treble, investorCompleted, investorFailedName, investorFailedPenalty,
       newAchievements: (ctx._newAchievements || []).slice(),
       att, statement,
       net, sentItems, ratingDelta, worth,

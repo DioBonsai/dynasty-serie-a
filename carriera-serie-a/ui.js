@@ -2526,7 +2526,7 @@
         ${p.icon ? '<div class="real-badge icon-badge">🏆 LEGGENDA</div>' : p.real && p.fromClub ? `<div class="real-badge">🌟 GIOCATORE REALE · da ${p.fromClub}</div>` : ''}
         <div class="big" style="color:${ovrTier(p.ovr).c}">${p.pid === S.captainPid ? p.ovr + 1 : p.ovr}${p.pid === S.captainPid ? ' <small title="Il capitano gioca con +1 OVR">© +1</small>' : ''}</div>
         <div class="nm">${flagOf(p)}${p.n}${p.pid === S.captainPid ? ' ©' : ''} <span class="postag postag-${p.pos}" style="vertical-align:middle">${p.pos}</span></div>
-        <div class="meta">${POS_LABEL[p.pos]} · ${p.nat ? p.nat.name : '-'} · età ${p.age}</div>
+        <div class="meta">${POS_LABEL[p.pos]} · ${p.nat ? p.nat.name : '-'} · età ${p.age}${potentialBadge(p)}</div>
       </div>
       <div class="ow-sec" style="margin-top:4px">
         ${statRows}
@@ -2753,8 +2753,9 @@
       </div>`;
     };
     const outCands = S.squad.filter((p) => outgoingLoanEligible(p));
+    const outAlready = S.squad.filter((p) => p.loanedOut).length;
     const outLoanHTML = outCands.length ? `
-      <div class="ow-sub" style="margin:10px 0 6px;text-align:left">📤 Prestiti in uscita: poco spazio finora, possono farsi le ossa altrove fino a fine stagione (tornano automaticamente la prossima).</div>
+      <div class="ow-sub" style="margin:10px 0 6px;text-align:left">📤 Prestiti in uscita (max 3 a finestra, ${outAlready}/3 usati): poco spazio finora, possono farsi le ossa altrove fino a fine stagione (tornano automaticamente la prossima).</div>
       ${outCands.map((p) => `
       <div class="ow-jan-card">
         <div class="ow-jan-head">
@@ -2762,7 +2763,7 @@
           <span class="postag postag-${p.pos}">${p.pos}</span>
           <span class="nm">${flagOf(p)}${p.n}<small>${POS_LABEL[p.pos]} · età ${p.age} · ${p.seasonApps || 0} presenze finora</small></span>
         </div>
-        <button class="dyn-mini" data-jan-loanout="${p.pid}">📤 Manda in prestito · +${fmtMoney(outgoingLoanFee(p))}</button>
+        <button class="dyn-mini" data-jan-loanout="${p.pid}" ${outAlready >= 3 ? 'disabled' : ''}>📤 Manda in prestito · +${fmtMoney(outgoingLoanFee(p))}</button>
       </div>`).join('')}` : '';
     overlay(`
       <h2>❄️ Il mercato di gennaio</h2>
@@ -2794,6 +2795,8 @@
     }));
     document.querySelectorAll('#owOverlayModal [data-jan-loanout]').forEach((el) => el.addEventListener('click', () => {
       const p = S.squad.find((x) => x.pid === +el.dataset.janLoanout); if (!p || !outgoingLoanEligible(p)) return;
+      const outSoFar = S.squad.filter((x) => x.loanedOut).length;
+      if (outSoFar >= 3) { toast('Massimo 3 giocatori in prestito in uscita per finestra.', 'error'); return; }
       const fee = outgoingLoanFee(p);
       p.loanedOut = true; S.budget += fee;
       toast(p.n + ' va in prestito fino a fine stagione: +' + fmtMoney(fee) + '.', 'money');
@@ -2837,7 +2840,7 @@
     const e = S._end, d = divOf(), body = $('owSeasonEndBody');
     const banner = e.fate === 'forced' ? ['😡 I tifosi hanno parlato', 'Gradimento troppo basso. Sei costretto a dimetterti.']
       : e.fate === 'admin' ? ['🏦 Amministrazione controllata', 'Due stagioni in rosso. La banca chiede i conti.']
-      : e.fate === 'investor' ? ['📉 Obiettivo del fondo mancato', 'Scaduta la scadenza pattuita senza il traguardo di categoria: il fondo ti costringe a cedere il club.']
+      : e.investorFailedPenalty ? ['📉 Obiettivo del fondo mancato', e.investorFailedName + ' si ritira e pretende indietro ' + fmtMoney(e.investorFailedPenalty) + ': un colpo pesante alle casse.']
       : e.investorCompleted ? ['🎯 Obiettivo del fondo raggiunto!', e.investorCompleted.name + ' incassa il patto: bonus finale di ' + fmtMoney(e.investorCompleted.completionBonus) + '.']
       : e.promoted ? ['🎉 PROMOZIONE', e.playoff && e.playoff.won ? 'Su tramite i playoff dopo un ' + ord(e.pos) + ' posto!' : e.title ? 'Campioni di ' + d.name + '!' : 'Promossi al ' + ord(e.pos) + ' posto!']
       : e.playoff && !e.playoff.won ? ['💔 Delusione playoff', 'Eliminati ' + (() => { const st = e.playoff.rounds[e.playoff.rounds.length - 1].stage.replace(' (aggregato)', ''); return st === 'Finale' ? 'in finale' : st === 'Semifinale' ? 'in semifinale' : 'ai quarti'; })() + ' playoff dopo un ' + ord(e.pos) + ' posto.']
@@ -3000,13 +3003,12 @@
     body.querySelectorAll('.ow-trophy-moment').forEach((bm) => { fireConfetti(bm); setTimeout(() => fireConfetti(bm), 550); });
     if (DynSound) {
       if (bigMoments.length || e.promoted) DynSound.trophy();
-      else if (e.relegated || e.fate || (e.playoff && !e.playoff.won)) DynSound.sadDown();
+      else if (e.relegated || e.fate || e.investorFailedPenalty || (e.playoff && !e.playoff.won)) DynSound.sadDown();
       else DynSound.calmEnd();
     }
     $('owEndBtn').onclick = () => {
       if (e.fate === 'forced') { endDynasty('forced', 0); return; }
       if (e.fate === 'admin') { endDynasty('admin', 0); return; }
-      if (e.fate === 'investor') { endDynasty('investor', 0); return; }
       if (S.season >= (S.maxSeasons || MAX_SEASONS)) { endDynasty('retired', 0); return; }
       advance();
     };
