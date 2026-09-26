@@ -1622,9 +1622,10 @@
     const chips = [];
     for (let i = 0; i < count; i++) {
       const p = list[i];
+      const isCap = p && p.pid === S.captainPid;
       chips.push(p
-        ? `<div class="ow-pitch-chip${p.pid === selectedPreviewPid ? ' sel' : ''}" data-pid="${p.pid}" title="${p.n} · ${p.ovr} · tocca per scambiare">
-            <span class="ovr" style="${ROLE_BADGE[p.pos] || ''}">${p.ovr}</span><span class="nm">${flagOf(p)}${p.n.split(' ').slice(-1)[0]}</span></div>`
+        ? `<div class="ow-pitch-chip${p.pid === selectedPreviewPid ? ' sel' : ''}" data-pid="${p.pid}" title="${p.n} · ${p.ovr}${isCap ? ' · Capitano' : ''} · tocca per scambiare">
+            <span class="ovr" style="${ROLE_BADGE[p.pos] || ''}">${p.ovr}</span><span class="nm">${flagOf(p)}${p.n.split(' ').slice(-1)[0]}${isCap ? ' <span class="ow-pitch-cap" title="Capitano">©</span>' : ''}</span></div>`
         : '<div class="ow-pitch-chip empty"><span class="ovr">–</span><span class="nm">—</span></div>');
     }
     return `<div class="ow-pitch-row">${chips.join('')}</div>`;
@@ -1817,14 +1818,22 @@
     const squadRows = squadFiltered.length ? squadFiltered.map((p) => {
       const fy = !p.loan && finalYear(p);
       return `
-      <div class="ow-player${fy ? ' final' : ''}" data-pid="${p.pid}"><span class="ovr" style="${ovrBadge(p.ovr)}" title="${p.pid === S.captainPid ? 'Capitano: +1 OVR' : ''}">${p.pid === S.captainPid ? p.ovr + 1 : p.ovr}</span>
-        <span class="postag postag-${p.pos}">${p.pos}</span>
-        <span class="nm">${flagOf(p)}${p.n}${p.pid === S.captainPid ? ' <span title="Capitano">©</span>' : ''}${hasChemistryPartner(p) ? ' <span title="Coppia d\'attacco affiatata: si cercano a memoria">🔗</span>' : ''}<small>età ${p.age}${potentialBadge(p)}</small></span>
-        ${p.outWeeks > 0 ? `<span class="stat-tag inj" title="Infortunato">🚑 ${p.outWeeks}</span>` : p.suspMatches > 0 ? '<span class="stat-tag susp" title="Squalificato">🟥</span>' : p.loanedOut ? '<span class="stat-tag" title="In prestito altrove fino a fine stagione">📤 prestito fuori</span>' : ''}
-        ${p.loan ? '<span class="yy loan" title="Torna al suo club se non riscattato">prestito</span>' : `<span class="yy${fy ? ' fy' : ''}" title="Anni di contratto rimasti">${p.yrs}a</span>`}
-        <span class="wg">${fmtYr(p.wage)}</span>
-        ${fy ? `<button class="ow-renew" data-renew="${p.pid}" title="Offri un nuovo contratto">Rinnova</button>` : ''}
-        ${p.loan ? `<button class="ow-renew" data-buyback="${p.pid}" title="Riscatta a titolo definitivo, altrimenti torna al suo club a inizio stagione">💰 Riscatta · ${fmtMoney(loanBuybackFee(p))}</button>` : `<button class="ow-x" data-rel="${p.pid}" title="Vendi">💷</button>`}</div>`;
+      <div class="ow-player${fy ? ' final' : ''}" data-pid="${p.pid}">
+        <div class="ow-player-row1">
+          <span class="ovr" style="${ovrBadge(p.ovr)}" title="${p.pid === S.captainPid ? 'Capitano: +1 OVR' : ''}">${p.pid === S.captainPid ? p.ovr + 1 : p.ovr}</span>
+          <span class="postag postag-${p.pos}">${p.pos}</span>
+          <span class="nm">${flagOf(p)}${p.n}${p.pid === S.captainPid ? ' <span title="Capitano">©</span>' : ''}${hasChemistryPartner(p) ? ' <span title="Coppia d\'attacco affiatata: si cercano a memoria">🔗</span>' : ''}<small>età ${p.age}${potentialBadge(p)}</small></span>
+          ${p.outWeeks > 0 ? `<span class="stat-tag inj" title="Infortunato">🚑 ${p.outWeeks}</span>` : p.suspMatches > 0 ? '<span class="stat-tag susp" title="Squalificato">🟥</span>' : p.loanedOut ? '<span class="stat-tag" title="In prestito altrove fino a fine stagione">📤 prestito fuori</span>' : ''}
+        </div>
+        <div class="ow-player-row2">
+          <span class="ow-player-row2-left">
+            ${p.loan ? '<span class="yy loan" title="Torna al suo club se non riscattato">prestito</span>' : `<span class="yy${fy ? ' fy' : ''}" title="Anni di contratto rimasti">${p.yrs}a</span>`}
+            <span class="wg">${fmtYr(p.wage)}</span>
+          </span>
+          ${fy ? `<button class="ow-renew" data-renew="${p.pid}" title="Offri un nuovo contratto">Rinnova</button>` : ''}
+          ${p.loan ? `<button class="ow-renew" data-buyback="${p.pid}" title="Riscatta a titolo definitivo, altrimenti torna al suo club a inizio stagione">💰 Riscatta · ${fmtMoney(loanBuybackFee(p))}</button>` : `<button class="ow-x" data-rel="${p.pid}" title="Vendi">💷</button>`}
+        </div>
+      </div>`;
     }).join('') : '<div class="ow-sub" style="margin:10px 0">Nessun giocatore in questo ruolo.</div>';
     const estRevenue = estSeasonRevenue();
     const scout = scoutTier(), scoutLv = S.scoutLevel || 0, nextScoutCost = scoutLv < SCOUT_TIERS.length - 1 ? scoutUpgradeCost(scoutLv + 1) : null;
@@ -1869,13 +1878,30 @@
       </div>` : ''}
       <div class="ow-sec">
         <div class="ow-sec-title">🏦 Fondo d'investimento</div>
-        ${S.investorDeal ? `
-          <div class="ow-fin-row"><span>${S.investorDeal.name}</span><b>${fmtMoney(S.investorDeal.yearly)}/anno</b></div>
-          <div class="ow-sub">Obiettivo: raggiungere ${DIVS[S.investorDeal.targetDiv].name} entro la stagione ${S.investorDeal.deadlineSeason} (siamo alla ${S.season}), pena la cessione forzata del club. Centrandolo, bonus finale di ${fmtMoney(S.investorDeal.completionBonus)}.</div>
-        ` : (S.investorOpts && S.investorOpts.length) ? `
-          <div class="ow-sub">Un patto pluriennale: cassa subito + un top-up ogni stagione, in cambio di un obiettivo di categoria entro una scadenza. Non lo raggiungi in tempo? Cessione forzata del club.</div>
-          ${S.investorOpts.map((o, i) => `
-          <button class="ow-offer" data-inv="${i}"><span class="info"><b>${o.name}</b><small>Obiettivo: ${DIVS[o.targetDiv].name} entro la stagione ${o.deadlineSeason} · +${fmtMoney(o.yearly)}/anno · bonus finale ${fmtMoney(o.completionBonus)}</small></span><span class="money">+${fmtMoney(o.injection)} subito</span></button>`).join('')}
+        ${S.investorDeal ? (() => {
+          const dl = S.investorDeal;
+          const left = dl.deadlineSeason - S.season;
+          return `
+          <div class="ow-invdeal">
+            <div class="ow-invdeal-head"><b>${dl.name}</b><span class="ow-invdeal-badge ${left <= 1 ? 'urgent' : ''}">${left <= 0 ? 'ultima chiamata' : left + ' stagion' + (left === 1 ? 'e' : 'i') + ' rimast' + (left === 1 ? 'a' : 'e')}</span></div>
+            <div class="ow-invdeal-row"><span>🎯 Obiettivo</span><b>${DIVS[dl.targetDiv].name} entro la stagione ${dl.deadlineSeason}</b></div>
+            <div class="ow-invdeal-row"><span>📈 Ogni stagione</span><b class="good">+${fmtMoney(dl.yearly)}</b></div>
+            <div class="ow-invdeal-row"><span>🏆 Bonus se centri l'obiettivo</span><b class="good">+${fmtMoney(dl.completionBonus)}</b></div>
+            <div class="ow-invdeal-row bad-row"><span>⚠️ Se non arrivi in tempo</span><b class="bad">cessione forzata del club</b></div>
+          </div>`;
+        })() : (S.investorOpts && S.investorOpts.length) ? `
+          <div class="ow-sub">Un patto pluriennale serio: cassa subito e un top-up ogni stagione, in cambio di un obiettivo di categoria entro una scadenza — se non lo raggiungi in tempo, cessione forzata del club. Il bonus finale, da solo, può valere più del club oggi.</div>
+          ${S.investorOpts.map((o, i) => {
+            const seasons = o.deadlineSeason - S.season;
+            return `<div class="ow-invoffer">
+            <div class="ow-invdeal-head"><b>${o.name}</b><span class="money">+${fmtMoney(o.injection)} subito</span></div>
+            <div class="ow-invdeal-row"><span>🎯 Obiettivo</span><b>${DIVS[o.targetDiv].name} entro ${seasons} stagion${seasons === 1 ? 'e' : 'i'} (stagione ${o.deadlineSeason})</b></div>
+            <div class="ow-invdeal-row"><span>📈 Ogni stagione</span><b class="good">+${fmtMoney(o.yearly)}</b></div>
+            <div class="ow-invdeal-row"><span>🏆 Bonus se centri l'obiettivo</span><b class="good">+${fmtMoney(o.completionBonus)}</b></div>
+            <div class="ow-invdeal-row bad-row"><span>⚠️ Se non arrivi in tempo</span><b class="bad">cessione forzata del club</b></div>
+            <button class="dyn-btn dyn-btn-primary" data-inv="${i}" style="margin-top:8px;width:100%">Accetta il patto</button>
+          </div>`;
+          }).join('')}
           <button class="dyn-mini" id="investorDismissBtn" style="margin-top:6px">Non interessa, per ora</button>
         ` : `<div class="ow-sub">Nessun fondo interessato al momento.</div>`}
       </div>`;
@@ -1970,7 +1996,7 @@
       <div class="ow-sec">
         <div class="ow-sec-title">🏟️ Stadio + biglietti</div>
         <div class="ow-fin-row"><span>Capienza</span><b>${capOf().toLocaleString('it-IT')} posti</b></div>
-        ${next ? `<button class="dyn-btn ow-upg" id="upgradeBtn" ${(debtEmbargo || S.budget < next.cost) ? 'disabled' : ''} title="${debtEmbargo ? 'Bloccato: club in rosso' : ''}">Amplia a ${next.cap.toLocaleString('it-IT')} posti · ${fmtMoney(next.cost)}</button>` : '<div class="ow-sub">Lo stadio è alla sua dimensione massima.</div>'}
+        ${next ? (() => { const cost = stadiumUpgradeCost(next); const discounted = cost < next.cost; return `<button class="dyn-btn ow-upg" id="upgradeBtn" ${(debtEmbargo || S.budget < cost) ? 'disabled' : ''} title="${debtEmbargo ? 'Bloccato: club in rosso' : discounted ? 'Sconto dello sponsor di stadio già applicato' : ''}">Amplia a ${next.cap.toLocaleString('it-IT')} posti · ${discounted ? `<s style="opacity:.6">${fmtMoney(next.cost)}</s> ` : ''}${fmtMoney(cost)}</button>`; })() : '<div class="ow-sub">Lo stadio è alla sua dimensione massima.</div>'}
         <div class="ow-sub" style="margin-top:10px">Prezzi biglietti (i tifosi reagiscono, la domanda cambia):</div>
         <div class="ow-tickets">${TICKETS.map((t, i) => `<button class="ow-ticket ${S.ticket === i ? 'on' : ''}" data-tk="${i}"><b>${t.label}</b><small>€${Math.round(d.ticket * t.mult)} medio · ${t.hint}</small></button>`).join('')}</div>
       </div>`;
@@ -1984,18 +2010,20 @@
         const clauseBits = [];
         if (active.clauseWin) clauseBits.push('🏆 +' + fmtMoney(active.clauseWin) + ' se vinci il campionato o sei promosso');
         if (active.clauseEuro) clauseBits.push('⭐ +' + fmtMoney(active.clauseEuro) + ' se ti qualifichi in Europa');
+        const perk = active.perk;
         return `<div class="ow-sec">
           <div class="ow-sec-title">${title}</div>
           <div class="ow-fin-row"><span>${active.name} (${active.left} ann${active.left === 1 ? 'o' : 'i'} rimasti${sentNote && active.sent ? ', ' + (active.sent > 0 ? 'i tifosi approvano' : 'i tifosi disapprovano') : ''})</span><b>${fmtMoney(active.perYear)}/anno</b></div>
           ${clauseBits.length ? `<div class="ow-sub">${clauseBits.join(' · ')}</div>` : ''}
+          ${perk ? `<div class="ow-sub" title="${escapeHtml(perk.desc)}">${perk.icon} <b>${perk.label}</b>${perk.key !== 'neutral' ? ': ' + escapeHtml(perk.desc) : ''}</div>` : ''}
         </div>`;
       }
       const opts = S[optsKey] || [];
       return `<div class="ow-sec">
         <div class="ow-sec-title">${title}</div>
-        <div class="ow-sub">Nessun accordo attivo. Scegline uno (importo fisso + clausole):</div>
+        <div class="ow-sub">Nessun accordo attivo. Scegline uno (importo fisso + clausole + un effetto di gioco diverso per ciascuno):</div>
         ${opts.map((o, i) => `
-        <button class="ow-offer" data-${dataAttr}="${i}"><span class="info"><b>${o.name}</b><small>${o.years} anni${sentNote && o.sent ? (o.sent > 0 ? ' · i tifosi approvano' : ' · i tifosi disapprovano') : ''} · 🏆 +${fmtMoney(o.clauseWin)} vittoria · ⭐ +${fmtMoney(o.clauseEuro)} Europa</small></span><span class="money">${fmtMoney(o.perYear)}/anno</span></button>`).join('')}
+        <button class="ow-offer" data-${dataAttr}="${i}"><span class="info"><b>${o.name}</b><small>${o.years} anni${sentNote && o.sent ? (o.sent > 0 ? ' · i tifosi approvano' : ' · i tifosi disapprovano') : ''} · 🏆 +${fmtMoney(o.clauseWin)} vittoria · ⭐ +${fmtMoney(o.clauseEuro)} Europa${o.perk ? ' · ' + o.perk.icon + ' ' + o.perk.label : ''}</small>${o.perk && o.perk.key !== 'neutral' ? `<small class="ow-sponsor-perk-desc">${escapeHtml(o.perk.desc)}</small>` : ''}</span><span class="money">${fmtMoney(o.perYear)}/anno</span></button>`).join('')}
       </div>`;
     };
     const sponsorHTML = sponsorSlotHTML('👕 Sponsor di maglia', 'sponsor', 'sponsorOpts', 'sp', true)
@@ -2020,6 +2048,7 @@
       ${crestMarkup(S.crestShape, S.crestColors, 'ow-board-crest')}
       <div class="dyn-top"><div class="dyn-top-title">Dirigenza</div><div class="dyn-top-sub">${S.owner} · ${S.club} · Stagione ${S.season} di ${S.maxSeasons || MAX_SEASONS}</div></div>
       ${ladderHTML()}
+      ${S.investorDeal ? (() => { const left = S.investorDeal.deadlineSeason - S.season; return `<div class="ow-invpill${left <= 1 ? ' urgent' : ''}" title="Fondo d'investimento: ${S.investorDeal.name}">🏦 Obiettivo fondo: ${DIVS[S.investorDeal.targetDiv].name} entro la stagione ${S.investorDeal.deadlineSeason} (${left <= 0 ? 'ultima chiamata' : 'mancano ' + left + ' stagion' + (left === 1 ? 'e' : 'i')})</div>`; })() : ''}
       <div class="ow-tabs">${TABS.map((t) => `<button class="ow-tab ${boardTab === t.key ? 'on' : ''}" data-tab="${t.key}">${t.label}${t.warn ? '<span class="dot"></span>' : ''}</button>`).join('')}</div>
       <div id="boardTabBody">${activeTab.html}</div>
       ${mpBoard ? `
@@ -2160,7 +2189,7 @@
       S.techSponsor = o; S.techSponsorOpts = null;
       toast('Firmato con ' + o.name + ' (tecnico) per ' + fmtMoney(o.perYear) + ' all\'anno.', 'success'); renderBoard(); saveGame();
     }));
-    body.querySelectorAll('.ow-offer[data-inv]').forEach((el) => el.addEventListener('click', () => {
+    body.querySelectorAll('[data-inv]').forEach((el) => el.addEventListener('click', () => {
       const o = (S.investorOpts || [])[+el.dataset.inv]; if (!o) return;
       S.investorDeal = o; S.investorOpts = null; S.budget += o.injection;
       toast(o.name + ' investe: +' + fmtMoney(o.injection) + ' subito. Obiettivo: ' + DIVS[o.targetDiv].name + ' entro la stagione ' + o.deadlineSeason + '.', 'success'); renderBoard(); saveGame();
@@ -2169,9 +2198,10 @@
     if (invDismiss) invDismiss.addEventListener('click', () => { S.investorOpts = null; renderBoard(); saveGame(); });
     const upg = $('upgradeBtn');
     if (upg) upg.addEventListener('click', () => {
-      const nx = STADIUM[S.stadiumTier + 1]; if (!nx || S.budget < nx.cost) return;
-      spendGuard(nx.cost, 'L\'ampliamento', '', () => {
-        S.budget -= nx.cost; S.stadiumTier++; S.stadiumSpent += nx.cost; S.sent = clamp(S.sent + 3, 0, 100);
+      const nx = STADIUM[S.stadiumTier + 1]; if (!nx) return;
+      const cost = stadiumUpgradeCost(nx); if (S.budget < cost) return;
+      spendGuard(cost, 'L\'ampliamento', '', () => {
+        S.budget -= cost; S.stadiumTier++; S.stadiumSpent += cost; S.sent = clamp(S.sent + 3, 0, 100);
         toast('Le ruspe entrano in azione. Nuova capienza: ' + nx.cap.toLocaleString('it-IT'), 'spend'); renderBoard(); saveGame();
       });
     });

@@ -224,9 +224,12 @@
       // più sana, sia sul fronte infortuni sia su quello cartellini.
       const mgrMedic = ctx.manager && ctx.manager.spec === 'medic' ? 0.7 : 1;
       const fitnessPrevention = ctx.fitnessCoach && ctx.fitnessCoach.spec === 'injury_prevention' ? 0.72 : 1;
+      // Sponsor tecnico "tecnologia sportiva" (perk injuryDiscount): materiali migliori, un
+      // filo meno rischio — si somma (non sostituisce) al preparatore atletico/manager medic.
+      const sponsorInjuryMult = 1 - clamp(sponsorPerkValue('injuryDiscount', ctx), 0, 0.5);
       // Pressing/ritmo alti (tacticDeltas.fatigue) tirano un filo di più il fisico: un rischio
       // in più di infortunio, coerente con l'idea di una tattica più dispendiosa da sostenere.
-      const injMult = diffOf(null, ctx).injuryMult * mgrMedic * fitnessPrevention * (1 + Math.max(0, tacticDeltas(ctx).fatigue) * 0.5);
+      const injMult = diffOf(null, ctx).injuryMult * mgrMedic * fitnessPrevention * sponsorInjuryMult * (1 + Math.max(0, tacticDeltas(ctx).fatigue) * 0.5);
       const recidivism = p._muscleRisk > 0 ? 0.02 * p._muscleRisk : 0;
       const injChance = ((p.age >= 32 ? 0.03 : p.age >= 28 ? 0.02 : 0.013) + recidivism) * injMult;
       let injuredNow = false;
@@ -1132,15 +1135,34 @@
   // `winMult`/`euroMult` variano leggermente da un'offerta all'altra così due proposte con
   // lo stesso importo fisso possono comunque convenire in modo diverso a seconda di quanto
   // realisticamente pensi di arrivare in Europa o vincere qualcosa quest'anno.
+  // Somma un campo di perk (fanbaseGrowBonus, prestigePerSeason, ecc.) su tutti e tre gli
+  // accordi sponsor attivi: la maggior parte dei perk vive su un solo slot per costruzione
+  // (es. solo lo sponsor tecnico ha injuryDiscount), ma sommarli invece di leggerne uno alla
+  // volta permette in teoria anche più effetti dello stesso tipo a sommarsi, senza casi
+  // speciali da gestire quando (in futuro) un perk comparisse su più di uno slot.
+  function sponsorPerkValue(field, ctx = S) {
+    return [ctx.sponsor, ctx.stadiumSponsor, ctx.techSponsor].reduce((a, sp) => a + ((sp && sp.perk && sp.perk[field]) || 0), 0);
+  }
+
+  // Sponsor di stadio "gruppo costruzioni" (perk stadiumUpgradeDiscount): sconto sul prossimo
+  // ampliamento, applicato qui (un solo punto, letto sia per il prezzo mostrato che per
+  // l'addebito vero) invece che duplicato in ui.js.
+  const stadiumUpgradeCost = (tierSpec, ctx = S) => Math.round(tierSpec.cost * (1 - clamp(sponsorPerkValue('stadiumUpgradeDiscount', ctx), 0, 0.5)) / 1e4) * 1e4;
+
   const sponsorClauses = (perYear) => ({
     clauseWin: Math.round(perYear * (0.7 + Math.random() * 0.5) / 1e4) * 1e4,
     clauseEuro: Math.round(perYear * (0.35 + Math.random() * 0.3) / 1e4) * 1e4,
   });
 
+  // Il perk di un'offerta sponsor di maglia segue il TAG (community/betting/global sono già
+  // pensati per quel carattere, standard/regional restano neutri): mai casuale qui, coerente
+  // col nome/tag che l'offerta mostra già.
+  const kitPerkFor = (tag) => SPONSOR_PERKS.kit.find((p) => p.key === tag) || SPONSOR_PERKS.kit.find((p) => p.key === 'neutral');
+
   function sponsorOffers() {
     const d = divOf();
     const base = (d.prize * 0.3 + capOf() * 9) * 1.3 * diffOf().sponsorMult;   // +30% su tutti gli accordi sponsor (aumentato di un ulteriore 8% circa), poi scalato per difficoltà
-    const mk = (tag, mult, yrs, sent) => { const perYear = Math.round(base * mult * (0.85 + Math.random() * 0.3) / 1e4) * 1e4; return { name: pick(SPONSOR_BRANDS[tag]), tag, perYear, years: yrs, left: yrs, sent, ...sponsorClauses(perYear) }; };
+    const mk = (tag, mult, yrs, sent) => { const perYear = Math.round(base * mult * (0.85 + Math.random() * 0.3) / 1e4) * 1e4; return { name: pick(SPONSOR_BRANDS[tag]), tag, perYear, years: yrs, left: yrs, sent, perk: kitPerkFor(tag), ...sponsorClauses(perYear) }; };
     // Sempre QUATTRO offerte, con un peso economico più alto di prima: più scelta e
     // più soldi in ballo. Dalla Serie B in su un mega-sponsor globale sostituisce lo
     // sponsor di comunità, con un accordo regionale a fare da via di mezzo in entrambi
@@ -1155,13 +1177,15 @@
   // più bassi, coerenti con contratti secondari rispetto allo sponsor principale.
   function stadiumSponsorOffers() {
     const base = (divOf().prize * 0.16 + capOf() * 5) * diffOf().sponsorMult;
-    const mk = (mult, yrs) => { const perYear = Math.round(base * mult * (0.85 + Math.random() * 0.3) / 1e4) * 1e4; return { name: pick(SPONSOR_BRANDS.stadium), perYear, years: yrs, left: yrs, sent: 0, ...sponsorClauses(perYear) }; };
-    return [mk(1.0, 3), mk(1.4, 4), mk(1.8, 2)];
+    const perks = shuffle(SPONSOR_PERKS.stadium.slice());   // un perk diverso per ciascuna delle 3 offerte, mai due uguali nello stesso lotto
+    const mk = (mult, yrs, i) => { const perYear = Math.round(base * mult * (0.85 + Math.random() * 0.3) / 1e4) * 1e4; return { name: pick(SPONSOR_BRANDS.stadium), perYear, years: yrs, left: yrs, sent: 0, perk: perks[i % perks.length], ...sponsorClauses(perYear) }; };
+    return [mk(1.0, 3, 0), mk(1.4, 4, 1), mk(1.8, 2, 2)];
   }
   function techSponsorOffers() {
     const base = (divOf().prize * 0.12 + capOf() * 4) * diffOf().sponsorMult;
-    const mk = (mult, yrs) => { const perYear = Math.round(base * mult * (0.85 + Math.random() * 0.3) / 1e4) * 1e4; return { name: pick(SPONSOR_BRANDS.tech), perYear, years: yrs, left: yrs, sent: 0, ...sponsorClauses(perYear) }; };
-    return [mk(1.0, 3), mk(1.35, 3), mk(1.7, 2)];
+    const perks = shuffle(SPONSOR_PERKS.tech.slice());
+    const mk = (mult, yrs, i) => { const perYear = Math.round(base * mult * (0.85 + Math.random() * 0.3) / 1e4) * 1e4; return { name: pick(SPONSOR_BRANDS.tech), perYear, years: yrs, left: yrs, sent: 0, perk: perks[i % perks.length], ...sponsorClauses(perYear) }; };
+    return [mk(1.0, 3, 0), mk(1.35, 3, 1), mk(1.7, 2, 2)];
   }
 
   // Un fondo propone un'iniezione di capitale + un top-up ogni stagione, in cambio di un
@@ -1170,22 +1194,33 @@
   // Due profili di rischio fissi (cauto/aggressivo) invece di uno solo, per lasciare scegliere
   // quanto rischiare; nessuna offerta se sei già in Serie A (non c'è categoria più alta) o se
   // hai già un fondo attivo.
+  // Le cifre sono una frazione del VALORE ATTUALE del club (computeWorth), non della singola
+  // costante di divisione come prima: un fondo che punta su un club che vale già €10M mette sul
+  // piatto cifre proporzionate a quello, non a un importo fisso di categoria che coi tempi
+  // faceva sembrare il patto poco conveniente rispetto al rischio (cessione forzata). Cresce
+  // insieme al club, resta un'offerta seria a qualunque punto della carriera.
   function investorDealOffers(ctx = S) {
     if (ctx.div >= DIVS.length - 1) return [];
-    const base = divOf(ctx).investor * diffOf(null, ctx).sponsorMult;
-    const mk = (name, steps, seasons, injMult, yrMult) => {
+    const worth = computeWorth(ctx);
+    const diffMult = diffOf(null, ctx).sponsorMult;
+    const mk = (name, steps, seasons, injFrac, yrFrac, bonusFrac) => {
       const targetDiv = clamp(ctx.div + steps, 0, DIVS.length - 1);
       return {
         name, targetDiv, deadlineSeason: ctx.season + seasons,
-        injection: Math.round(base * injMult / 1e4) * 1e4,
-        yearly: Math.round(base * yrMult / 1e4) * 1e4,
-        completionBonus: Math.round(base * injMult * 1.8 / 1e4) * 1e4,
+        injection: Math.round(worth * injFrac * diffMult / 1e4) * 1e4,
+        yearly: Math.round(worth * yrFrac * diffMult / 1e4) * 1e4,
+        completionBonus: Math.round(worth * bonusFrac * diffMult / 1e4) * 1e4,
       };
     };
     const steps = ctx.div >= DIVS.length - 2 ? 1 : 2;   // a un passo dalla Serie A l'obiettivo è quella, altrimenti due categorie sopra
     return [
-      mk(pick(INVESTOR_FUNDS), Math.max(1, steps - 1), 5, 1.1, 0.18),
-      mk(pick(INVESTOR_FUNDS), steps, 3, 2.2, 0.32),
+      // Cauto: un quarto del valore del club subito, un top-up modesto, 5 stagioni per un
+      // solo passo di categoria — il bonus finale da solo vale più di mezzo club.
+      mk(pick(INVESTOR_FUNDS), Math.max(1, steps - 1), 5, 0.25, 0.05, 0.6),
+      // Aggressivo: metà del valore del club subito, un top-up sostanzioso, solo 3 stagioni
+      // per il doppio salto di categoria — il bonus finale può superare il valore attuale
+      // del club: un vero cambio di vita se ce la fai, una vera scommessa se non ci arrivi.
+      mk(pick(INVESTOR_FUNDS), steps, 3, 0.5, 0.09, 1.1),
     ];
   }
 
@@ -1258,7 +1293,7 @@
     return { atk: press.atk + width.atk + tempo.atk, def: press.def + width.def + tempo.def, fatigue: press.fatigue + tempo.fatigue };
   }
 
-  const teamEff = (ctx = S) => squadStr(ctx) + mgrBonus(ctx) + (ctx.form || 0) - promoStreakMalus(ctx) - formationFitMalus(ctx) - fatigueMalus(ctx) + diffOf(null, ctx).teamEffDelta + captainBonus(ctx);
+  const teamEff = (ctx = S) => squadStr(ctx) + mgrBonus(ctx) + (ctx.form || 0) - promoStreakMalus(ctx) - formationFitMalus(ctx) - fatigueMalus(ctx) + diffOf(null, ctx).teamEffDelta + captainBonus(ctx) + sponsorPerkValue('teamEffBonus', ctx);
 
   // Un capitano disponibile (non infortunato, non squalificato) dà una piccola spinta in più
   // alla squadra — un modo semplice per rendere "chi porta la fascia" qualcosa di più di
@@ -1503,7 +1538,7 @@
   // Il risultato in campo (winPct) non è ancora noto qui, quindi non è nella stima.
   function estSeasonRevenue() {
     const d = divOf(), t = TICKETS[S.ticket], ec = S.euro ? EURO_COMPS[S.euroComp] : null;
-    const sentFactor = 1 + (S.sent - 50) / 220;
+    const sentFactor = 1 + (S.sent - 50) / 220 + sponsorPerkValue('demandBonus');
     const att = Math.min(capOf(), Math.max(600, d.demand * S.fanbase * sentFactor * t.demand * (ec ? ec.attBoost : 1)));
     const merch = d.demand * S.fanbase * d.ticket * 5 * 0.8;
     const sponsorEst = (S.sponsor ? S.sponsor.perYear : 0) + (S.stadiumSponsor ? S.stadiumSponsor.perYear : 0) + (S.techSponsor ? S.techSponsor.perYear : 0) + (S.investorDeal ? S.investorDeal.yearly : 0);
@@ -2426,7 +2461,9 @@
     const t = TICKETS[ctx.ticket];
     const winPct = ctx.wins / G;
     // Le notti europee gonfiano anche il pubblico
-    const demand = d.demand * ctx.fanbase * (1 + winPct * 0.35 + (ctx.sent - 50) / 220) * t.demand * (ecPlaying ? ecPlaying.attBoost : 1);
+    // Sponsor di stadio "gruppo ospitalità" (perk demandBonus): più pubblico a parità di
+    // prezzo, un'esperienza matchday migliore che va oltre il solo risultato in campo.
+    const demand = d.demand * ctx.fanbase * (1 + winPct * 0.35 + (ctx.sent - 50) / 220 + sponsorPerkValue('demandBonus', ctx)) * t.demand * (ecPlaying ? ecPlaying.attBoost : 1);
     const att = Math.round(Math.min(capOf(ctx), Math.max(600, demand)));
     const matchday = Math.round(att * d.ticket * t.mult * (G / 2));
     // Il merchandising scala con la TIFOSERIA, non con lo stadio: una tifoseria in
@@ -2476,10 +2513,16 @@
     // effetti, solo mai possibile in singolo (_supercoppaWon esiste solo se impostato lì).
     if (ctx._supercoppaWon) { trophies.push('Supercoppa dei Presidenti'); ctx.trophies.total++; ctx.prestige += 5e6; }
     if (qualTier) ctx.prestige += EURO_COMPS[qualTier].qualPrestige;   // la qualificazione europea costruisce il brand
+    // Sponsor di maglia "internazionale" (perk prestigePerSeason): costruisce prestigio ogni
+    // stagione a prescindere dai risultati, proprio come un marchio globale farebbe.
+    ctx.prestige += sponsorPerkValue('prestigePerSeason', ctx);
     // ----- umore -----
     const sentItems = [];
     const bump = (label, v) => { if (!v) return; sentItems.push([label, v]); ctx.sent = clamp(ctx.sent + v, 0, 100); };
     bump('Risultati vs aspettative', clamp(Math.round((exp - pos) * 0.9), -10, 10));
+    // Sponsor di maglia "scommesse" (perk sentDeltaPerSeason): paga meglio di chiunque altro,
+    // ma una parte della tifoseria non lo digerisce — un piccolo prezzo d'immagine ogni anno.
+    bump('Sponsor discusso dalla tifoseria', sponsorPerkValue('sentDeltaPerSeason', ctx));
     // ----- obiettivo di stagione dichiarato: centrato o mancato, con un peso proporzionale
     // a quanto la difficoltà scelta rende i tifosi/la proprietà più o meno pazienti -----
     const target = ctx.seasonTargetInfo || seasonTarget(ctx);
@@ -2508,7 +2551,8 @@
       + clamp(overach, -6, 6) * 0.003
       + (ctx.sent - 50) * 0.0006
       + t.fanGrow
-      + (euroWon ? EURO_COMPS[ctx.euroComp].growWon : (ecPlaying ? ecPlaying.growPlaying : 0));
+      + (euroWon ? EURO_COMPS[ctx.euroComp].growWon : (ecPlaying ? ecPlaying.growPlaying : 0))
+      + sponsorPerkValue('fanbaseGrowBonus', ctx);   // sponsor di maglia "di comunità": radicamento più veloce, indipendente dai risultati
     grow = clamp(grow, -0.06, 0.08);
     ctx.fanbase = Math.round(clamp(ctx.fanbase + grow, 0.7, 3.0) * 1000) / 1000;
     const fbDelta = Math.round((ctx.fanbase - fbBefore) * 100) / 100;

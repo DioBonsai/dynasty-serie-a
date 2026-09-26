@@ -360,6 +360,37 @@ body{
   color:var(--bad); background:rgba(255,84,112,.09); border:1px solid rgba(255,84,112,.3);
 }
 
+/* ---------- fondo d'investimento: patto attivo o offerta, stesso schema a elenco ---------- */
+.ow-invdeal, .ow-invoffer{
+  border:1px solid var(--line); border-radius:13px; padding:12px 13px; margin-bottom:9px;
+  background:linear-gradient(180deg,rgba(255,210,74,.06),transparent);
+}
+.ow-invdeal-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; flex-wrap:wrap; }
+.ow-invdeal-head b{ font-size:14px; font-weight:900; }
+.ow-invdeal-head .money{ font-size:13px; font-weight:900; color:var(--gold); font-variant-numeric:tabular-nums; }
+.ow-invdeal-badge{
+  font-size:10.5px; font-weight:900; padding:3px 9px; border-radius:999px;
+  color:var(--gold); background:rgba(255,210,74,.14); border:1px solid rgba(255,210,74,.35); white-space:nowrap;
+}
+.ow-invdeal-badge.urgent{ color:var(--bad); background:rgba(255,84,112,.14); border-color:rgba(255,84,112,.4); }
+.ow-invdeal-row{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  padding:5px 0; font-size:12px; font-weight:700; color:var(--muted); border-bottom:1px solid rgba(255,255,255,.05);
+}
+.ow-invdeal-row:last-of-type{ border-bottom:none; }
+.ow-invdeal-row b{ color:var(--txt); font-weight:900; text-align:right; font-variant-numeric:tabular-nums; }
+.ow-invdeal-row b.good{ color:var(--good); }
+.ow-invdeal-row b.bad{ color:var(--bad); }
+.ow-invdeal-row.bad-row{ border-top:1px solid rgba(255,84,112,.2); margin-top:2px; padding-top:8px; }
+/* Pill sempre visibile in cima alla Dirigenza quando un patto è attivo: l'obiettivo del fondo
+   non deve restare nascosto in un sotto-tab per essere "centrale" come richiesto. */
+.ow-invpill{
+  display:block; text-align:center; font-size:11.5px; font-weight:800; margin:10px 0;
+  padding:8px 12px; border-radius:999px; color:var(--gold);
+  background:rgba(255,210,74,.1); border:1px solid rgba(255,210,74,.3);
+}
+.ow-invpill.urgent{ color:var(--bad); background:rgba(255,84,112,.1); border-color:rgba(255,84,112,.35); }
+
 .ow-status{ display:flex; flex-direction:column; gap:10px; }
 .ow-bigmoney{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
 .ow-bigmoney span{ font-size:11.5px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.07em; }
@@ -407,6 +438,7 @@ body{
 .ow-offer .info{ flex:1; min-width:0; }
 .ow-offer .info b{ font-size:14px; font-weight:900; display:block; }
 .ow-offer .info small{ font-size:11px; color:var(--muted); font-weight:700; }
+.ow-offer .info small.ow-sponsor-perk-desc{ display:block; margin-top:3px; color:var(--gold); font-weight:600; line-height:1.35; }
 .ow-offer .money{ font-size:13px; font-weight:900; color:var(--gold); flex:0 0 auto; font-variant-numeric:tabular-nums; }
 
 .ow-upg{ width:100%; margin-top:4px; }
@@ -463,13 +495,21 @@ body{
 .ow-squadlist::-webkit-scrollbar{ width:8px; }
 .ow-squadlist::-webkit-scrollbar-thumb{ background:var(--line); border-radius:999px; }
 .ow-squadlist::-webkit-scrollbar-thumb:hover{ background:var(--dyn); }
+/* Due righe fisse invece di un'unica riga con troppi elementi a larghezza fissa (badge OVR,
+   ruolo, contratto/prestito, stipendio, bottone vendi/rinnova) in cerca di spazio: identità del
+   giocatore sopra (row1), economia + azione sotto (row2) — stipendio in basso a sinistra,
+   bottone (vendi/rinnova/riscatta) in basso a destra, sempre, anche su schermo stretto dove
+   prima si sovrapponevano. */
 .ow-player{
-  display:flex; align-items:center; gap:10px; padding:7px 2px;
+  display:flex; flex-direction:column; gap:5px; padding:7px 2px;
   border-bottom:1px solid rgba(255,255,255,.05); font-size:12.5px;
   cursor:pointer; border-radius:6px;
 }
 .ow-player:hover{ background:rgba(255,255,255,.04); }
 .ow-player:last-child{ border-bottom:none; }
+.ow-player-row1{ display:flex; align-items:center; gap:10px; }
+.ow-player-row2{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding-left:44px; }
+.ow-player-row2-left{ display:flex; align-items:center; gap:10px; min-width:0; }
 .ow-player .ovr{
   width:34px; height:30px; flex:0 0 auto; display:flex; align-items:center; justify-content:center;
   border-radius:8px; font-weight:900; font-size:13px; font-family:var(--serif);
@@ -480,16 +520,6 @@ body{
 }
 .ow-player .nm{ flex:1; min-width:0; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .ow-player .nm small{ color:var(--muted); font-weight:700; margin-left:6px; }
-/* Su schermo stretto la riga giocatore ha troppi elementi a larghezza fissa (badge OVR, ruolo,
-   contratto/prestito, stipendio, bottone vendi/rinnova) perché il nome (l'unico a restringersi,
-   ma con min-width:0 può restringersi "sulla carta" fino a 0 senza mai forzare un a capo)
-   resti leggibile: veniva tagliato dopo 1-2 lettere invece di andare a capo. Sotto i 460px un
-   min-width vero sul nome fa sì che sia il gruppo contratto/stipendio/bottone a scendere sulla
-   riga sotto quando manca spazio — stesso principio già usato per .ow-bid qui sopra. */
-@media(max-width:460px){
-  .ow-player{ flex-wrap:wrap; row-gap:4px; }
-  .ow-player .nm{ flex:1 1 110px; min-width:110px; }
-}
 
 /* righe delle statistiche (fine stagione): nome su tutta la riga sopra, mai tagliato */
 .ow-stat-row{ padding:8px 2px; border-bottom:1px solid rgba(255,255,255,.05); }
@@ -734,6 +764,7 @@ body{
   font-size:10px; font-weight:800; color:#fff; text-align:center; text-shadow:0 1px 3px rgba(0,0,0,.65);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;
 }
+.ow-pitch-cap{ color:var(--gold); font-weight:900; }
 .ow-pitch-chip.empty{ cursor:default; }
 .ow-pitch-chip.empty .ovr{ background:rgba(255,255,255,.22); color:rgba(255,255,255,.55); box-shadow:none; }
 .ow-pitch-chip.empty .nm{ color:rgba(255,255,255,.45); }

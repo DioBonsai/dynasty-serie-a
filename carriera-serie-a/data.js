@@ -1251,6 +1251,30 @@
     tech: ['Velox Sport', 'Dynamis Athletic', 'Corsa Technical', 'Pantera Sportswear', 'Ignis Kit', 'Aurora Teamwear', 'Scatto Sport', 'Cardo Athletic', 'Vetta Sportswear', 'Bravos Kit'],
   };
 
+  // Ogni offerta sponsor (maglia/stadio/tecnico) porta anche un "perk" pescato da qui, non solo
+  // un importo: un effetto di gioco vero, non economico, che dura quanto l'accordo — così
+  // scegliere fra due offerte non è mai solo "quale paga di più", ognuna ha un carattere
+  // diverso (vedi sponsorPerkValue in sim.js per come i campi numerici vengono letti e
+  // sommati). `neutral` (nessun effetto) resta sempre un'opzione valida, non uno spreco.
+  const SPONSOR_PERKS = {
+    kit: [
+      { key: 'community', label: 'Sponsor di comunità', icon: '🤝', desc: 'La tifoseria cresce un filo più in fretta ogni stagione mentre l\'accordo è attivo.', fanbaseGrowBonus: 0.006 },
+      { key: 'global', label: 'Sponsor internazionale', icon: '🌍', desc: 'Il marchio globale costruisce prestigio di club ogni stagione, anche a bocce ferme.', prestigePerSeason: 1.2e5 },
+      { key: 'betting', label: 'Sponsor di scommesse', icon: '🎰', desc: 'Paga meglio di chiunque altro, ma una parte della tifoseria non lo digerisce: umore in leggero calo ogni stagione.', sentDeltaPerSeason: -1 },
+      { key: 'neutral', label: 'Sponsor storico', icon: '🏛️', desc: 'Nessun effetto particolare oltre ai soldi: un accordo solido e senza sorprese.' },
+    ],
+    stadium: [
+      { key: 'construction', label: 'Gruppo costruzioni', icon: '🏗️', desc: 'Sconto sui lavori di ampliamento dello stadio per tutta la durata dell\'accordo.', stadiumUpgradeDiscount: 0.15 },
+      { key: 'hospitality', label: 'Gruppo ospitalità', icon: '🍽️', desc: 'Il pacchetto hospitality attira più pubblico del solito, a parità di prezzo del biglietto.', demandBonus: 0.03 },
+      { key: 'neutral', label: 'Sponsor storico', icon: '🏛️', desc: 'Nessun effetto particolare oltre ai soldi: un accordo solido e senza sorprese.' },
+    ],
+    tech: [
+      { key: 'medical', label: 'Tecnologia sportiva', icon: '🦵', desc: 'Materiali migliori, meno infortuni muscolari per tutta la squadra.', injuryDiscount: 0.12 },
+      { key: 'performance', label: 'Fornitore di alte prestazioni', icon: '⚡', desc: 'Kit da gara pensati per lo sprint: un filo di brillantezza in più in campo.', teamEffBonus: 0.4 },
+      { key: 'neutral', label: 'Fornitore storico', icon: '🏛️', desc: 'Nessun effetto particolare oltre ai soldi: un accordo solido e senza sorprese.' },
+    ],
+  };
+
   // Fondi/investitori che propongono un patto pluriennale: iniezione di cassa subito + un
   // top-up ogni stagione, in cambio di un obiettivo di categoria da raggiungere entro un
   // numero di stagioni dato — se non lo raggiungi in tempo perdi il club (cessione forzata),
