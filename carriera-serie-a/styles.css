@@ -480,6 +480,16 @@ body{
 }
 .ow-player .nm{ flex:1; min-width:0; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .ow-player .nm small{ color:var(--muted); font-weight:700; margin-left:6px; }
+/* Su schermo stretto la riga giocatore ha troppi elementi a larghezza fissa (badge OVR, ruolo,
+   contratto/prestito, stipendio, bottone vendi/rinnova) perché il nome (l'unico a restringersi,
+   ma con min-width:0 può restringersi "sulla carta" fino a 0 senza mai forzare un a capo)
+   resti leggibile: veniva tagliato dopo 1-2 lettere invece di andare a capo. Sotto i 460px un
+   min-width vero sul nome fa sì che sia il gruppo contratto/stipendio/bottone a scendere sulla
+   riga sotto quando manca spazio — stesso principio già usato per .ow-bid qui sopra. */
+@media(max-width:460px){
+  .ow-player{ flex-wrap:wrap; row-gap:4px; }
+  .ow-player .nm{ flex:1 1 110px; min-width:110px; }
+}
 
 /* righe delle statistiche (fine stagione): nome su tutta la riga sopra, mai tagliato */
 .ow-stat-row{ padding:8px 2px; border-bottom:1px solid rgba(255,255,255,.05); }
@@ -523,13 +533,20 @@ body{
   background:linear-gradient(90deg,#ffd24a,#ffb300); color:#1a1205; font-weight:900; font-size:11px;
 }
 .ow-renew:hover{ filter:brightness(1.05); }
-.ow-bid{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 0; border-bottom:1px solid rgba(255,255,255,.06); }
+/* .who ha un min-width vero (non 0): su schermo stretto la somma di .who (badge OVR + ruolo +
+   nome, larghezza minima reale) e .act (importo + fino a 3 bottoni, larghezza fissa) supera
+   quasi sempre i ~320-340px disponibili in un telefono — con .who a min-width:0 il browser non
+   se ne accorgeva MAI (poteva sempre "restringersi a 0" sulla carta) e non andava mai a capo:
+   il badge OVR (larghezza fissa, non si restringe) finiva così a sovrapporsi letteralmente ai
+   bottoni invece di spostarsi sotto. flex-wrap + un min-width reale su .who fanno sì che sia
+   .act a scendere su una riga propria quando manca spazio, mai una sovrapposizione. */
+.ow-bid{ display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px 10px; padding:9px 0; border-bottom:1px solid rgba(255,255,255,.06); }
 .ow-bid:last-child{ border-bottom:none; }
-.ow-bid .who{ display:flex; align-items:center; gap:10px; min-width:0; flex:1; }
+.ow-bid .who{ display:flex; align-items:center; gap:10px; min-width:150px; flex:1 1 150px; }
 .ow-bid .who .ovr{ width:34px; height:30px; flex:0 0 auto; display:flex; align-items:center; justify-content:center; border-radius:8px; font-weight:900; font-size:13px; background:rgba(255,210,74,.16); font-family:var(--serif); }
-.ow-bid .who .nm{ min-width:0; font-weight:800; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ow-bid .who .nm{ min-width:0; flex:1 1 auto; font-weight:800; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .ow-bid .who .nm small{ display:block; color:var(--muted); font-weight:700; font-size:11px; margin-top:1px; }
-.ow-bid .act{ display:flex; align-items:center; gap:6px; flex:0 0 auto; }
+.ow-bid .act{ display:flex; align-items:center; flex-wrap:wrap; gap:6px; flex:0 1 auto; justify-content:flex-end; }
 .ow-bid .fee{ font-weight:900; color:var(--gold); font-size:13px; font-variant-numeric:tabular-nums; margin-right:2px; }
 .ow-bid .dyn-mini{ padding:7px 12px; font-size:12px; }
 .ow-accept{ background:rgba(40,217,160,.14); border-color:rgba(40,217,160,.5); color:#a6f3dc; }
