@@ -50,7 +50,19 @@ function storage_read_all($dbFile, $jsonFallbackFile, $name, $default) {
         $stmt = $pdo->prepare('SELECT value FROM blob_store WHERE name = :n');
         $stmt->execute([':n' => $name]);
         $raw = $stmt->fetchColumn();
-        if ($raw === false) return $default;
+        if ($raw === false) {
+            // Migrazione una tantum: questa chiave non è mai stata scritta su SQLite (prima
+            // riga vuota dopo il passaggio da JSON+flock a SQLite). Se il vecchio file JSON
+            // esiste ancora con dati dentro, li importa invece di ripartire da una lista vuota
+            // — altrimenti la cronologia precedente al passaggio a SQLite sparirebbe pur
+            // restando intatta e mai persa sul disco.
+            $legacy = read_json_file($jsonFallbackFile, null);
+            if (is_array($legacy) && count($legacy)) {
+                storage_write_all($dbFile, $jsonFallbackFile, $name, $legacy);
+                return $legacy;
+            }
+            return $default;
+        }
         $data = json_decode($raw, true);
         return is_array($data) ? $data : $default;
     }
