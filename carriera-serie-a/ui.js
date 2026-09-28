@@ -3126,7 +3126,7 @@
     try {
       const res = await fetch('leaderboard.php', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ club: S.club, owner: S.owner, div: S.div, season: S.season, trophies: S.trophies.total, worth: computeWorth(), difficulty: S.difficulty }),
+        body: JSON.stringify({ club: S.club, owner: S.owner, div: S.div, season: S.season, trophies: S.trophies.total, worth: computeWorth(), difficulty: S.difficulty, trophyBreakdown: S.trophies }),
       });
       const data = await res.json().catch(() => null);
       if (data && data.ok) { toast('🌍 Carriera inviata alla classifica globale!'); if (btn) btn.textContent = '✓ Inviata'; }
@@ -3162,7 +3162,7 @@
     // Podio per i primi 3: il 1° al centro e più grande, come un vero podio, ordinato con
     // CSS `order` (nel markup restano comunque nell'ordine di merito, screen reader inclusi).
     const podium = top10.slice(0, 3).map((e, i) => `
-      <div style="order:${i === 0 ? 2 : i === 1 ? 1 : 3};flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:${i === 0 ? '14px 6px 10px' : '8px 6px'};border-radius:12px;background:${i === 0 ? 'rgba(255,210,74,.14)' : 'rgba(255,255,255,.04)'};border:1px solid ${i === 0 ? 'var(--gold)' : 'var(--line)'}">
+      <div data-lbpodium="${i}" title="Tocca per i dettagli" style="cursor:pointer;order:${i === 0 ? 2 : i === 1 ? 1 : 3};flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:${i === 0 ? '14px 6px 10px' : '8px 6px'};border-radius:12px;background:${i === 0 ? 'rgba(255,210,74,.14)' : 'rgba(255,255,255,.04)'};border:1px solid ${i === 0 ? 'var(--gold)' : 'var(--line)'}">
         <div style="font-size:${i === 0 ? '34px' : '24px'};line-height:1">${medal[i]}</div>
         <div style="font-weight:900;font-size:${i === 0 ? '14px' : '12px'};text-align:center;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">${escapeHtml(e.club)}</div>
         <div style="font-size:10px;color:var(--muted);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">${escapeHtml(e.owner)}</div>
@@ -3193,6 +3193,36 @@
     $('ovClose').onclick = closeOverlay;
     document.querySelectorAll('#owOverlayModal [data-lbdiff]').forEach((el) => el.addEventListener('click', () => { lbFilterDiff = el.dataset.lbdiff; renderLeaderboardBody(); }));
     document.querySelectorAll('#owOverlayModal [data-lbdiv]').forEach((el) => el.addEventListener('click', () => { lbFilterDiv = el.dataset.lbdiv; renderLeaderboardBody(); }));
+    document.querySelectorAll('#owOverlayModal [data-lbpodium]').forEach((el) => el.addEventListener('click', () => { const e = top10[+el.dataset.lbpodium]; if (e) showLeaderboardDetail(e); }));
+  }
+
+  // Dettaglio di una voce del podio: scompone il totale trofei in scudetti/promozioni per
+  // categoria, Coppa Italia e coppe europee — dati inviati solo da chi ha condiviso DOPO
+  // questo aggiornamento (trophyBreakdown), quindi una voce più vecchia mostra solo il totale
+  // già visibile in classifica, con una nota invece di far finta di avere un dettaglio che
+  // semplicemente non è mai stato mandato dal client a suo tempo.
+  function showLeaderboardDetail(e) {
+    const tb = e.trophyBreakdown;
+    const rows = [];
+    if (tb && Array.isArray(tb.titles)) {
+      tb.titles.forEach((n, i) => { if (n > 0 && DIVS[i]) rows.push(['🏆 Titoli in ' + DIVS[i].name, n]); });
+      if (tb.nat > 0) rows.push(['🇮🇹 Coppa Italia', tb.nat]);
+      if (tb.ucl > 0) rows.push(['⭐ ' + (EURO_COMPS.ucl ? EURO_COMPS.ucl.name : 'Champions League'), tb.ucl]);
+      if (tb.uel > 0) rows.push(['🟠 ' + (EURO_COMPS.uel ? EURO_COMPS.uel.name : 'Europa League'), tb.uel]);
+      if (tb.conf > 0) rows.push(['🟢 ' + (EURO_COMPS.conf ? EURO_COMPS.conf.name : 'Conference League'), tb.conf]);
+    }
+    overlay(`<h2>${escapeHtml(e.club)}</h2>
+      <div class="ow-sub" style="text-align:center">${escapeHtml(e.owner)} · ${(DIVS[e.div] || {}).name || ''} · stagione ${e.season} ${diffBadge(e.difficulty)}</div>
+      <div class="ow-sec" style="margin-top:10px">
+        <div class="ow-fin-row"><span>Punteggio</span><b class="good">${Math.round(e.score).toLocaleString('it-IT')}</b></div>
+        <div class="ow-fin-row"><span>Valore del club</span><b>${fmtMoney(e.worth)}</b></div>
+        <div class="ow-fin-row"><span>Trofei totali</span><b>🏆 ${e.trophies}</b></div>
+        ${rows.length ? rows.map(([label, n]) => `<div class="ow-fin-row"><span>${label}</span><b>${n}</b></div>`).join('') : `<div class="ow-sub" style="margin-top:8px">${tb ? 'Nessun trofeo specifico oltre al totale.' : 'Dettaglio trofei non disponibile per questa carriera (condivisa prima di questo aggiornamento).'}</div>`}
+      </div>
+      <div class="dyn-modal-actions">
+        <button class="dyn-btn" id="ovBack">← Torna alla classifica</button>
+      </div>`);
+    $('ovBack').onclick = renderLeaderboardBody;
   }
 
   async function showGlobalLeaderboard() {

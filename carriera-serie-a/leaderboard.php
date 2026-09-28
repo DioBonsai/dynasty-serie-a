@@ -114,6 +114,25 @@ if ($trophies < 0 || $trophies > 500) fail('Trofei non validi.');
 if ($worth < 0 || $worth > 1e13) fail('Valore club non valido.');
 if (!in_array($difficulty, ['facile', 'medio', 'difficile', 'estremo'], true)) $difficulty = 'medio';
 
+// Dettaglio trofei (S.trophies lato client): facoltativo, solo per la card di dettaglio del
+// podio nella classifica globale — mai usato per il punteggio (resta $trophies, il totale già
+// validato sopra), quindi un valore assente o incoerente qui non blocca comunque l'invio.
+$tbIn = isset($body['trophyBreakdown']) && is_array($body['trophyBreakdown']) ? $body['trophyBreakdown'] : null;
+$trophyBreakdown = null;
+if ($tbIn) {
+    $capInt = function ($v) { return max(0, min(60, (int) $v)); };
+    $titles = isset($tbIn['titles']) && is_array($tbIn['titles']) ? array_values($tbIn['titles']) : [];
+    $titles = array_map($capInt, $titles);
+    $titles = array_pad(array_slice($titles, 0, 6), 6, 0);
+    $trophyBreakdown = [
+        'titles' => $titles,
+        'nat' => $capInt($tbIn['nat'] ?? 0),
+        'ucl' => $capInt($tbIn['ucl'] ?? 0),
+        'uel' => $capInt($tbIn['uel'] ?? 0),
+        'conf' => $capInt($tbIn['conf'] ?? 0),
+    ];
+}
+
 // Punteggio semplice e difficile da "barare" gonfiando un solo numero: pesa soprattutto i
 // trofei (il vero traguardo di una carriera), poi la categoria raggiunta, poi il valore
 // del club come spareggio.
@@ -130,6 +149,7 @@ $entry = [
     'difficulty' => $difficulty,
     'score' => $score,
     'ts' => $now,
+    'trophyBreakdown' => $trophyBreakdown,
 ];
 
 $entries = storage_read_all($SQLITE_FILE, $DATA_FILE, 'leaderboard', []);
