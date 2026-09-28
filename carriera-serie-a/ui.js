@@ -1580,6 +1580,11 @@
     if (trophyCaseBtn) trophyCaseBtn.addEventListener('click', showTrophyCase);
     const leaderboardBtn = $('owGlobalLeaderboardBtn');
     if (leaderboardBtn) leaderboardBtn.addEventListener('click', showGlobalLeaderboard);
+    // Stesso bottone, anche sulla schermata iniziale: prima la classifica globale era
+    // raggiungibile solo dalla topbar, visibile solo a carriera già avviata — così è
+    // consultabile anche prima di comprare un club.
+    const homeLeaderboardBtn = $('owHomeLeaderboardBtn');
+    if (homeLeaderboardBtn) homeLeaderboardBtn.addEventListener('click', showGlobalLeaderboard);
     const notifBtn = $('owNotifBtn');
     if (notifBtn) notifBtn.addEventListener('click', openReminders);
     const mpBtn = $('owMultiplayerBtn');

@@ -47,22 +47,42 @@ function storage_pdo($dbFile) {
 function storage_read_all($dbFile, $jsonFallbackFile, $name, $default) {
     $pdo = storage_pdo($dbFile);
     if ($pdo) {
+        // Migrazione una tantum dal vecchio file JSON+flock: un marcatore dedicato (non il
+        // semplice "riga vuota") perché nel frattempo possono già essere arrivate scritture
+        // nuove su SQLite (dopo il passaggio, prima che questa migrazione esistesse) — un
+        // controllo "solo se vuota" le avrebbe ignorate per sempre, lasciando la cronologia
+        // precedente invisibile pur restando intatta sul disco.
+        $migratedKey = $name . '__legacy_migrated';
+        $stmt = $pdo->prepare('SELECT value FROM blob_store WHERE name = :n');
+        $stmt->execute([':n' => $migratedKey]);
+        if ($stmt->fetchColumn() === false) {
+            $legacy = read_json_file($jsonFallbackFile, null);
+            if (is_array($legacy) && count($legacy)) {
+                $stmt2 = $pdo->prepare('SELECT value FROM blob_store WHERE name = :n');
+                $stmt2->execute([':n' => $name]);
+                $currentRaw = $stmt2->fetchColumn();
+                $current = $currentRaw !== false ? json_decode($currentRaw, true) : [];
+                if (!is_array($current)) $current = [];
+                // Deduplica su club+proprietario+timestamp d'invio (l'avvicinarsi di più a un
+                // id univoco disponibile in questo formato), così una voce scritta sia prima
+                // che dopo il passaggio a SQLite non compare due volte nella lista unita.
+                $seen = [];
+                $merged = [];
+                foreach (array_merge($current, $legacy) as $e) {
+                    $key = ($e['club'] ?? '') . '|' . ($e['owner'] ?? '') . '|' . ($e['ts'] ?? '');
+                    if (isset($seen[$key])) continue;
+                    $seen[$key] = true;
+                    $merged[] = $e;
+                }
+                storage_write_all($dbFile, $jsonFallbackFile, $name, $merged);
+            }
+            $stmt3 = $pdo->prepare('INSERT INTO blob_store (name, value, updated_at) VALUES (:n, :v, :t) ON CONFLICT(name) DO NOTHING');
+            $stmt3->execute([':n' => $migratedKey, ':v' => '1', ':t' => time()]);
+        }
         $stmt = $pdo->prepare('SELECT value FROM blob_store WHERE name = :n');
         $stmt->execute([':n' => $name]);
         $raw = $stmt->fetchColumn();
-        if ($raw === false) {
-            // Migrazione una tantum: questa chiave non è mai stata scritta su SQLite (prima
-            // riga vuota dopo il passaggio da JSON+flock a SQLite). Se il vecchio file JSON
-            // esiste ancora con dati dentro, li importa invece di ripartire da una lista vuota
-            // — altrimenti la cronologia precedente al passaggio a SQLite sparirebbe pur
-            // restando intatta e mai persa sul disco.
-            $legacy = read_json_file($jsonFallbackFile, null);
-            if (is_array($legacy) && count($legacy)) {
-                storage_write_all($dbFile, $jsonFallbackFile, $name, $legacy);
-                return $legacy;
-            }
-            return $default;
-        }
+        if ($raw === false) return $default;
         $data = json_decode($raw, true);
         return is_array($data) ? $data : $default;
     }
