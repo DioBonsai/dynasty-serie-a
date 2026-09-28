@@ -3167,7 +3167,7 @@
         <div style="font-weight:900;font-size:${i === 0 ? '14px' : '12px'};text-align:center;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">${escapeHtml(e.club)}</div>
         <div style="font-size:10px;color:var(--muted);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">${escapeHtml(e.owner)}</div>
         ${diffBadge(e.difficulty)}
-        <div style="font-weight:900;color:var(--gold);font-size:${i === 0 ? '17px' : '14px'};font-variant-numeric:tabular-nums">${Math.round(e.score).toLocaleString('it-IT')}</div>
+        <div style="font-weight:900;color:var(--gold);font-size:${i === 0 ? '17px' : '14px'};font-variant-numeric:tabular-nums">${Math.round(e.score).toLocaleString('it-IT')} <span style="font-size:.6em;font-weight:800;opacity:.75">PA</span></div>
       </div>`).join('');
     const restRows = top10.slice(3).map((e, i) => `
       <div class="ow-fin-row" style="align-items:center">
@@ -3177,12 +3177,12 @@
             <small style="display:flex;gap:6px;align-items:center;color:var(--muted);margin-top:2px">${escapeHtml(e.owner)} · ${(DIVS[e.div] || {}).name || ''} · 🏆 ${e.trophies} ${diffBadge(e.difficulty)}</small>
           </span>
         </span>
-        <b class="good" style="flex:0 0 auto;font-variant-numeric:tabular-nums">${Math.round(e.score).toLocaleString('it-IT')}</b>
+        <b class="good" style="flex:0 0 auto;font-variant-numeric:tabular-nums">${Math.round(e.score).toLocaleString('it-IT')} <span style="font-size:.75em;opacity:.75">PA</span></b>
       </div>`).join('');
     const diffPills = ['all'].concat(DIFFICULTIES.map((d) => d.key)).map((k) => `<button type="button" class="ow-filter-pill ${lbFilterDiff === k ? 'on' : ''}" data-lbdiff="${k}">${k === 'all' ? 'Tutte' : diffOfEntry(k).label}</button>`).join('');
     const divPills = ['all'].concat(DIVS.map((d, i) => i)).map((k) => `<button type="button" class="ow-filter-pill ${lbFilterDiv === String(k) ? 'on' : ''}" data-lbdiv="${k}">${k === 'all' ? 'Tutte' : DIVS[k].name}</button>`).join('');
     overlay(`<h2>🌍 Classifica presidenti</h2>
-      <div class="ow-sub" style="text-align:center">Le migliori 10 carriere condivise da chi gioca, filtrabili per difficoltà e categoria raggiunta</div>
+      <div class="ow-sub" style="text-align:center">Le migliori 10 carriere condivise da chi gioca, filtrabili per difficoltà e categoria raggiunta · punteggio in PA (Punti Aura)</div>
       <div class="ow-sub" style="margin:8px 0 2px">Difficoltà</div>
       <div class="ow-squad-filters">${diffPills}</div>
       <div class="ow-sub" style="margin:8px 0 2px">Categoria</div>
@@ -3214,7 +3214,7 @@
     overlay(`<h2>${escapeHtml(e.club)}</h2>
       <div class="ow-sub" style="text-align:center">${escapeHtml(e.owner)} · ${(DIVS[e.div] || {}).name || ''} · stagione ${e.season} ${diffBadge(e.difficulty)}</div>
       <div class="ow-sec" style="margin-top:10px">
-        <div class="ow-fin-row"><span>Punteggio</span><b class="good">${Math.round(e.score).toLocaleString('it-IT')}</b></div>
+        <div class="ow-fin-row"><span>Punteggio</span><b class="good">${Math.round(e.score).toLocaleString('it-IT')} PA</b></div>
         <div class="ow-fin-row"><span>Valore del club</span><b>${fmtMoney(e.worth)}</b></div>
         <div class="ow-fin-row"><span>Trofei totali</span><b>🏆 ${e.trophies}</b></div>
         ${rows.length ? rows.map(([label, n]) => `<div class="ow-fin-row"><span>${label}</span><b>${n}</b></div>`).join('') : `<div class="ow-sub" style="margin-top:8px">${tb ? 'Nessun trofeo specifico oltre al totale.' : 'Dettaglio trofei non disponibile per questa carriera (condivisa prima di questo aggiornamento).'}</div>`}
