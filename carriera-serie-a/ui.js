@@ -3173,7 +3173,7 @@
       <div class="ow-fin-row" style="align-items:center">
         <span style="display:flex;align-items:center;gap:8px;min-width:0">
           <span style="flex:0 0 auto;width:22px;text-align:center;color:var(--muted);font-weight:800">${i + 4}</span>
-          <span style="min-width:0"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(e.club)}</b>
+          <span style="min-width:0;text-align:left"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(e.club)}</b>
             <small style="display:flex;gap:6px;align-items:center;color:var(--muted);margin-top:2px">${escapeHtml(e.owner)} · ${(DIVS[e.div] || {}).name || ''} · 🏆 ${e.trophies} ${diffBadge(e.difficulty)}</small>
           </span>
         </span>
