@@ -229,7 +229,14 @@
       const sponsorInjuryMult = 1 - clamp(sponsorPerkValue('injuryDiscount', ctx), 0, 0.5);
       // Pressing/ritmo alti (tacticDeltas.fatigue) tirano un filo di più il fisico: un rischio
       // in più di infortunio, coerente con l'idea di una tattica più dispendiosa da sostenere.
-      const injMult = diffOf(null, ctx).injuryMult * mgrMedic * fitnessPrevention * sponsorInjuryMult * (1 + Math.max(0, tacticDeltas(ctx).fatigue) * 0.5);
+      // Fatica individuale accumulata (registerAppearances): fino a +60% di rischio a fatica
+      // piena (100), 0 quando è fresco — si somma, non sostituisce, il malus di squadra
+      // aggregato già esistente (ctx._congestion via injMult sopra la tattica).
+      const fatigueRisk = 1 + clamp(p.fatigue || 0, 0, 100) / 100 * 0.6;
+      // Hardcore: +25% di rischio infortunio fisso, indipendente dalla difficoltà scelta (che
+      // ha già il suo injuryMult) — un ulteriore giro di vite, non un sostituto.
+      const hardcoreRisk = ctx.hardcore ? 1.25 : 1;
+      const injMult = diffOf(null, ctx).injuryMult * mgrMedic * fitnessPrevention * sponsorInjuryMult * fatigueRisk * hardcoreRisk * (1 + Math.max(0, tacticDeltas(ctx).fatigue) * 0.5);
       const recidivism = p._muscleRisk > 0 ? 0.02 * p._muscleRisk : 0;
       const injChance = ((p.age >= 32 ? 0.03 : p.age >= 28 ? 0.02 : 0.013) + recidivism) * injMult;
       let injuredNow = false;
@@ -263,7 +270,10 @@
     // Margine di casualità a partita stretto (±7%, non più ±18%): la forma stagionale
     // pesa già parecchio da sola, qui serve solo a rompere i pareggi, non a far scavalcare
     // un titolare più forte a un panchinaro mediocre su un colpo di fortuna.
-    const rated = pool.map((p) => ({ p, eff: p.ovr * (p.formSeason || 1) * (0.93 + Math.random() * 0.14) }));
+    // Malus lieve (fino al 12%) per chi è più affaticato (p.fatigue, registerAppearances):
+    // la formazione automatica tende così a rifiatare da sé i più stanchi, senza stravolgere
+    // le scelte quando la fatica è bassa/nulla.
+    const rated = pool.map((p) => ({ p, eff: p.ovr * (p.formSeason || 1) * (0.93 + Math.random() * 0.14) * (1 - clamp(p.fatigue || 0, 0, 100) / 100 * 0.12) }));
     const starters = new Set();
     // La formazione scelta a mano in "Probabile formazione" (S.previewXI) non è più solo
     // grafica: se valida (stesso numero di titolari, tutti ancora in rosa) è LEI a
@@ -301,6 +311,17 @@
   // Chi ha giocato quella partita (titolare o subentrato) guadagna una presenza.
   function registerAppearances(lineup, ctx = S) {
     ctx.squad.forEach((p) => { if (lineup.starters.has(p.pid) || lineup.subs.has(p.pid)) p.seasonApps = (p.seasonApps || 0) + 1; });
+    // Affaticamento per singolo giocatore (oltre al malus di squadra aggregato, fatigueMalus):
+    // chi scende in campo accumula fatica, di più se il calendario è già congestionato
+    // (ctx._congestion, coppe+campionato ravvicinati); chi riposa recupera. Letto da
+    // rollAbsences (rischio infortunio individuale) e da pickMatchLineup (lieve malus nella
+    // formazione automatica, che tende quindi a far rifiatare da sé chi è più stanco).
+    ctx.squad.forEach((p) => {
+      const congestion = ctx._congestion || 0;
+      if (lineup.starters.has(p.pid)) p.fatigue = clamp((p.fatigue || 0) + 6 + congestion * 4, 0, 100);
+      else if (lineup.subs.has(p.pid)) p.fatigue = clamp((p.fatigue || 0) + 3 + congestion * 2, 0, 100);
+      else p.fatigue = clamp((p.fatigue || 0) - 10, 0, 100);
+    });
     // Coppie d'attacco affiatate: ogni volta che due attaccanti sono TITOLARI insieme, il loro
     // contatore di "partite insieme" (ctx.chem, per coppia di pid) sale di uno. Oltre
     // CHEMISTRY_GAMES partite fianco a fianco, l'intesa è fatta e pickAssister la premia con un
@@ -549,13 +570,33 @@
       return kind === 'ovr' ? { n: player.n, pos: player.pos, ovr, nat: player.nat, age: player.age } : { n: player.n, pos: player.pos, q: OVR_TO_Q(ovr), nat: player.nat, age: player.age };
     };
     const transferCount = clamp(Math.round(allClubs.length * 0.3), 4, 40);
+    // Lo scambio è vincolato a due condizioni minime di buon senso, altrimenti un top club
+    // può ritrovarsi a barattare il proprio miglior giocatore con uno svincolato di fascia
+    // bassa: stesso ruolo (un attaccante non diventa un difensore) e overall comparabile
+    // (SWAP_OVR_TOLERANCE), scelto fra i più vicini per qualità così da lasciare comunque
+    // un po' di varietà stagione dopo stagione invece del match più simile in assoluto.
+    const SWAP_OVR_TOLERANCE = 8;
+    const ovrOf = (player, kind) => (kind === 'ovr' ? player.ovr : Q_TO_OVR(player.q));
+    const pickTradePartnerIndex = (rosterB, kindB, pos, targetOvr) => {
+      const sameRole = rosterB
+        .map((p, i) => ({ i, ovr: ovrOf(p, kindB) }))
+        .filter((_, i) => rosterB[i].pos === pos);
+      if (!sameRole.length) return -1;
+      sameRole.sort((x, y) => Math.abs(x.ovr - targetOvr) - Math.abs(y.ovr - targetOvr));
+      const pool = sameRole.slice(0, Math.max(1, Math.ceil(sameRole.length * 0.3)));
+      return pool[rnd(pool.length)].i;
+    };
     for (let i = 0; i < transferCount; i++) {
       const a = pick(allClubs), b = pick(allClubs);
       if (a === b) continue;
       const rosterA = a.clubs[a.name], rosterB = b.clubs[b.name];
       if (!rosterA || !rosterB || !rosterA.length || !rosterB.length) continue;
-      const idxA = rnd(rosterA.length), idxB = rnd(rosterB.length);
-      const playerA = rosterA[idxA], playerB = rosterB[idxB];
+      const idxA = rnd(rosterA.length);
+      const playerA = rosterA[idxA];
+      const idxB = pickTradePartnerIndex(rosterB, b.kind, playerA.pos, ovrOf(playerA, a.kind));
+      if (idxB < 0) continue;
+      const playerB = rosterB[idxB];
+      if (Math.abs(ovrOf(playerA, a.kind) - ovrOf(playerB, b.kind)) > SWAP_OVR_TOLERANCE) continue;
       rosterA[idxA] = convertTo(playerB, a.kind);
       rosterB[idxB] = convertTo(playerA, b.kind);
     }
@@ -709,6 +750,45 @@
         return { n: genName(nat), nat, ovr, age, wage: wageFor(ovr), yrs: 3 + rnd(2), pid: newPid(), pos: randPos(), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0, potential: genPotential(ovr, age) };
       });
     }
+  }
+
+  // Vivaio persistente (Primavera): a differenza di scoutProspects (una tantum, "prendi o
+  // perdi entro la stagione"), questi giovani restano nel club e crescono stagione dopo
+  // stagione con la stessa curva di crescita della prima squadra (ageGrowthBase/growthDamp),
+  // finché non li promuovi in prima squadra, li rilasci, o superano YOUTH_RELEASE_AGE senza
+  // essere stati promossi (si svincolano da soli, altrimenti la panchina del vivaio si
+  // riempirebbe all'infinito di gente che non giocherà mai). Stesso guard "una volta a
+  // stagione" di maybeScoutProspect, richiamata subito dopo nello stesso punto (renderBoard).
+  const YOUTH_SQUAD_CAP = 5;
+  const YOUTH_RELEASE_AGE = 21;
+  function advanceYouthSquad() {
+    if (!S.youthSquad) S.youthSquad = [];
+    if (S.youthSquadSeason === S.season) return;
+    S.youthSquadSeason = S.season;
+    S.youthSquad.forEach((p) => {
+      p.age += 1;
+      let delta = ageGrowthBase(p.age) + gaussInt(0.4, 2.2);
+      if (delta > 0) delta *= growthDamp(p.ovr);
+      p.ovr = clamp(p.ovr + Math.round(delta), 35, p.potential || 99);
+    });
+    S.youthSquad = S.youthSquad.filter((p) => p.age < YOUTH_RELEASE_AGE);
+    if (S.youthSquad.length < YOUTH_SQUAD_CAP && Math.random() < scoutTier().prospectChance * diffOf().prospectMult) {
+      const nat = pickNationality(S.div);
+      const age = 15 + rnd(3);
+      const ovr = clamp(gaussInt(divOf().avg - 14, 5), 30, 70);
+      S.youthSquad.push({ n: genName(nat), nat, ovr, age, pid: newPid(), pos: randPos(), potential: genPotential(ovr, age), seasonGoals: 0, seasonAssists: 0, seasonCleanSheets: 0, seasonApps: 0 });
+    }
+  }
+
+  // Sposta un giovane del vivaio in prima squadra: stesso trattamento di un prospetto scout
+  // (stipendio calcolato ora, homegrown=true per l'achievement "Prodotto del vivaio").
+  function promoteYouthPlayer(pid) {
+    if (!S.youthSquad) return null;
+    const i = S.youthSquad.findIndex((p) => p.pid === pid); if (i < 0) return null;
+    const p = S.youthSquad.splice(i, 1)[0];
+    p.wage = wageFor(p.ovr); p.yrs = 3 + rnd(2); p.homegrown = true;
+    S.squad.push(p);
+    return p;
   }
 
   // Range di quotazione (min-max) per ruolo, calcolato una sola volta dalle rose reali
@@ -919,6 +999,9 @@
     if (!S.derbyRecord) S.derbyRecord = {};
     ensureCaptain(S);
     if (S.scoutProspectSeason == null) S.scoutProspectSeason = 0;
+    if (!S.youthSquad) S.youthSquad = [];
+    if (S.youthSquadSeason == null) S.youthSquadSeason = 0;
+    if (S.hardcore == null) S.hardcore = false;
     // Migrazione da un salvataggio pre-"cerimonia del vivaio": un prospetto singolo diventa
     // una lista con un solo candidato, così non sparisce per chi ce l'aveva già in sospeso.
     if (!S.scoutProspects) S.scoutProspects = S.scoutProspect ? [S.scoutProspect] : [];
@@ -937,7 +1020,7 @@
     if (S.stadiumName === undefined) S.stadiumName = null;
     if (S.stadiumRecordAtt == null) S.stadiumRecordAtt = 0;
     if (S.stadiumRecordSeason === undefined) S.stadiumRecordSeason = null;
-    S.squad.forEach((p) => { if (p.loanedOut == null) p.loanedOut = false; });
+    S.squad.forEach((p) => { if (p.loanedOut == null) p.loanedOut = false; if (p.fatigue == null) p.fatigue = 0; });
     S.squad.forEach((p) => { if (p.yrs == null) p.yrs = 2 + rnd(2); if (p.pid == null) p.pid = newPid(); if (!p.pos) p.pos = randPos(); if (p.seasonGoals == null) p.seasonGoals = 0; if (p.seasonAssists == null) p.seasonAssists = 0; if (p.seasonCleanSheets == null) p.seasonCleanSheets = 0; if (p.seasonApps == null) p.seasonApps = 0; if (p.careerGoals == null) p.careerGoals = 0; if (p.careerAssists == null) p.careerAssists = 0; if (p.careerCleanSheets == null) p.careerCleanSheets = 0; if (p.careerApps == null) p.careerApps = 0; if (p.joinedSeason == null) p.joinedSeason = S.season; if (!p.nat) p.nat = pickNationality(S.div); if (p.outWeeks == null) p.outWeeks = 0; if (p.suspMatches == null) p.suspMatches = 0; if (p.potential == null) p.potential = genPotential(p.ovr, p.age); });
     if (S.manager && !S.manager.nat) S.manager.nat = S.manager.real ? natByCode(REAL_MANAGERS.find((m) => m.n === S.manager.n)?.nat) || pickNationality(S.div) : pickNationality(S.div);
     if (S.manager && !S.manager.spec) {
@@ -1006,6 +1089,13 @@
   // I rivali fanno offerte per i tuoi giocatori migliori: quelli chiaramente sopra il
   // livello, o i giovani precoci. Zero a due offerte all'estate, pesate perché i veri
   // gioielli attirino interesse e i giocatori normali no.
+  // Nessun club rivale sotto Serie A/B/Europa ha una rosa vera da consultare (POOLS tiene
+  // solo un nome + una forza aggregata, vedi initMarket): non si può quindi controllare se UN
+  // club specifico ha davvero un buco in un ruolo. La domanda di mercato per ruolo (un
+  // attaccante/trequartista genera più interesse di un difensore centrale, un portiere quasi
+  // nessuno) è però un dato realistico che si può applicare senza fingere di avere quella
+  // rosa: pesa la probabilità che arrivi un'offerta, non solo overall/età come prima.
+  const ROLE_DEMAND_WEIGHT = { POR: 0.55, DIF: 0.8, CEN: 1, ATT: 1.25 };
   function genOffers(ctx = S) {
     const d = divOf(ctx);
     // Il direttore sportivo "rete di osservatori" allarga il giro di squadre interessate: un
@@ -1016,7 +1106,11 @@
       .sort((a, b) => (b.ovr + (b.age <= 22 ? 4 : 0)) - (a.ovr + (a.age <= 22 ? 4 : 0)))
       .slice(0, scoutNetwork ? 4 : 3);
     const offers = [];
-    targets.forEach((p, i) => { if (Math.random() < (i === 0 ? 0.95 : i === 1 ? 0.75 : 0.55) + (scoutNetwork ? 0.15 : 0)) { const fee = offerFee(p, ctx); offers.push({ pid: p.pid, club: buyerClub(fee, ctx), fee }); } });
+    targets.forEach((p, i) => {
+      const baseChance = (i === 0 ? 0.95 : i === 1 ? 0.75 : 0.55) + (scoutNetwork ? 0.15 : 0);
+      const chance = clamp(baseChance * (ROLE_DEMAND_WEIGHT[p.pos] || 1), 0, 0.98);
+      if (Math.random() < chance) { const fee = offerFee(p, ctx); offers.push({ pid: p.pid, club: buyerClub(fee, ctx), fee }); }
+    });
     return offers;
   }
 
@@ -1407,7 +1501,7 @@
       localStorage.setItem(savePoolsKey(S._saveId), JSON.stringify(POOLS));
       const idx = readSavesIndex();
       const i = idx.findIndex((x) => x.id === S._saveId);
-      const meta = { id: S._saveId, owner: S.owner, club: S.club, div: S.div, season: S.season, updated: Date.now() };
+      const meta = { id: S._saveId, owner: S.owner, club: S.club, div: S.div, season: S.season, updated: Date.now(), hardcore: !!S.hardcore };
       if (i >= 0) idx[i] = meta; else idx.push(meta);
       writeSavesIndex(idx);
       localStorage.setItem(ACTIVE_SAVE_KEY, S._saveId);
@@ -1508,7 +1602,7 @@
     });
   }
 
-  function startDynasty(owner, t, customClub, div, difficulty, seasons) {
+  function startDynasty(owner, t, customClub, div, difficulty, seasons, hardcore) {
     div = div || 0;
     // Niente clearSave() qui: con gli slot multipli, iniziare una nuova carriera non deve
     // toccare quella (eventualmente) ancora in memoria — resta al suo posto nell'indice
@@ -1539,6 +1633,7 @@
       formation: '433', tacticStyle: { ...DEFAULT_TACTIC_STYLE }, turboMode: false,
       maxSeasons: [8, 12, 20].includes(seasons) ? seasons : MAX_SEASONS,
       stadiumName: null, stadiumRecordAtt: 0, stadiumRecordSeason: null,
+      hardcore: !!hardcore, youthSquad: [], youthSquadSeason: 0,
     };
     normSquad();
     S.peakWorth = computeWorth();
@@ -1742,10 +1837,24 @@
   // personalità in campo. Un avversario aggressivo (atk alto) segna di più contro di te, uno
   // con una difesa fragile (def alto, "concede di più") ti regala qualche gol in più a tua
   // volta — stessa scala di FORMATION_TACTICS, letta dal punto di vista opposto.
+  // Nelle ultime giornate, se sei a ridosso di uno spartiacque vero (promozione diretta,
+  // playoff, retrocessione — non un piazzamento qualunque), il gap di forza reale conta un
+  // po' di più: lo sprint finale di una corsa promozione/salvezza risulta meno arbitrario,
+  // senza toccare il resto della stagione. Usa ctx.table così com'è dopo l'ultima giornata
+  // giocata (nessun ricalcolo extra: computeTable gira già ad ogni partita).
+  function seasonStakesBoost(ctx = S) {
+    const total = gp(ctx);
+    if (total - (ctx.played || 0) > 6 || !ctx.table || !ctx.table.length) return 1;
+    const d = divOf(ctx);
+    const pos = ctx.table.findIndex((r) => r.me) + 1; if (pos <= 0) return 1;
+    const zones = [d.promoted, d.promoted + (d.playoff || 0), d.teams - (d.releg || 0)].filter((z) => z > 0);
+    return zones.some((z) => Math.abs(pos - z) <= 3) ? 1.25 : 1;
+  }
+
   function rollMatchScore(d, ctx = S, oppFmt) {
     // Più alta è la varianza di difficoltà, meno pesa il gap di forza reale sul risultato:
     // partite più imprevedibili, upset più frequenti anche quando si è nettamente più forti.
-    const coeff = 0.045 / diffOf(null, ctx).varianceMult;
+    const coeff = (0.045 / diffOf(null, ctx).varianceMult) * seasonStakesBoost(ctx);
     // Il modulo scelto in "Probabile formazione" pesa davvero: uno più offensivo segna un
     // filo di più e incassa un filo di più, uno più difensivo il contrario.
     const fb = FORMATION_TACTICS[ctx.formation] || FORMATION_TACTICS['433'];
@@ -2023,11 +2132,16 @@
   function applyNarrativeEffect(eff, ctx) {
     if (!eff) return;
     if (typeof eff.apply === 'function') { eff.apply(S, ctx); return; }
-    if (eff.sent) S.sent = clamp(S.sent + eff.sent, 0, 100);
-    if (eff.budgetPct) S.budget += Math.round(S.budget * eff.budgetPct);
-    if (eff.ownerRating) S.ownerRating = clamp(S.ownerRating + eff.ownerRating, 0, 100);
-    if (eff.fanbaseDelta) S.fanbase = Math.round(clamp(S.fanbase + eff.fanbaseDelta, 0.7, 3.0) * 100) / 100;
-    if (eff.prestige) S.prestige += eff.prestige;
+    // Hardcore: gli imprevisti NEGATIVI mordono il 35% in più, quelli positivi restano
+    // invariati — non è un doppione di eventMult (quello scala TUTTI gli eventi per
+    // difficoltà), è specifico di questa modalità: la sfortuna pesa di più, i colpi di
+    // fortuna no.
+    const bite = (v) => (S.hardcore && v < 0 ? v * 1.35 : v);
+    if (eff.sent) S.sent = clamp(S.sent + bite(eff.sent), 0, 100);
+    if (eff.budgetPct) S.budget += Math.round(S.budget * bite(eff.budgetPct));
+    if (eff.ownerRating) S.ownerRating = clamp(S.ownerRating + bite(eff.ownerRating), 0, 100);
+    if (eff.fanbaseDelta) S.fanbase = Math.round(clamp(S.fanbase + bite(eff.fanbaseDelta), 0.7, 3.0) * 100) / 100;
+    if (eff.prestige) S.prestige += bite(eff.prestige);
   }
 
   /* ---------------- coppe (checkpoint scalati sulla lunghezza di stagione) ---------------- */
@@ -3122,7 +3236,10 @@
 
   /* ---------------- fine carriera ---------------- */
   function endDynasty(how, saleMoney) {
-    if (how === 'retired' && S.season >= (S.maxSeasons || MAX_SEASONS)) unlockAchievement(S, 'dynasty_complete');
+    if (how === 'retired' && S.season >= (S.maxSeasons || MAX_SEASONS)) {
+      unlockAchievement(S, 'dynasty_complete');
+      if (S.hardcore) unlockAchievement(S, 'hardcore_survivor');
+    }
     saveLegacy(S);
     S.over = true; clearSave();
     S._how = how; S._sale = saleMoney || 0;

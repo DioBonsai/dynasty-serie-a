@@ -1,4 +1,5 @@
 {
+  "id": "/carriera-serie-a/",
   "name": "Presidente · Serie A",
   "short_name": "Presidente",
   "description": "Compra un club di Promozione e costruisci un impero: spin, stadio, coppe e la scalata fino alla Serie A.",
@@ -9,6 +10,7 @@
   "background_color": "#0b0906",
   "theme_color": "#0b0906",
   "lang": "it",
+  "categories": ["sports", "games"],
   "icons": [
     { "src": "icon.webp", "sizes": "1254x1254", "type": "image/webp", "purpose": "any" }
   ]

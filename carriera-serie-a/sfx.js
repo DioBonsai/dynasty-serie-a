@@ -159,6 +159,14 @@
   // Notifica neutra e discreta: cambi di stato altrui (lobby multiplayer, poll, ecc).
   DynSound.notify = function () { tone(880, 0.08, 'sine', 0.13, 0); };
 
+  // Soglia critica appena superata (umore tifosi/gradimento proprietario scesi sotto
+  // guardia): due note discendenti in onda quadra, diverso da error() — qui non è
+  // un'azione rifiutata, è uno stato passivo da tenere d'occhio.
+  DynSound.alarm = function () {
+    tone(466.16, 0.11, 'square', 0.14, 0);
+    tone(349.23, 0.2, 'square', 0.16, 0.12);
+  };
+
   // Fine stagione "tranquilla": né trofeo né retrocessione, un accordo pacato che chiude
   // comunque il capitolo invece di lasciare tutto in silenzio.
   DynSound.calmEnd = function () {

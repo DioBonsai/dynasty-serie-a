@@ -31,7 +31,11 @@
     { name: 'Eccellenza', teams: 24, avg: 55, demand: 4200, ticket: 14, prize: 0.15e6, perPlace: 6e3, promoted: 2, playoff: 4, releg: 3, promoBonus: 0.6e6, titleBonus: 0.25e6, spin: 75e3, premium: 225e3, cupBase: 35e3, admin: 120e3, mgrBase: 52, investor: 300e3 },
     { name: 'Serie D', teams: 24, avg: 62, demand: 7500, ticket: 17, prize: 1.0e6, perPlace: 15e3, promoted: 3, playoff: 4, releg: 2, promoBonus: 1.2e6, titleBonus: 0.5e6, spin: 200e3, premium: 600e3, cupBase: 70e3, admin: 250e3, mgrBase: 58, investor: 600e3 },
     { name: 'Serie C', teams: 24, avg: 68, demand: 13000, ticket: 21, prize: 1.6e6, perPlace: 25e3, promoted: 2, playoff: 4, releg: 4, promoBonus: 3e6, titleBonus: 1e6, spin: 500e3, premium: 2.5e6, cupBase: 140e3, admin: 450e3, mgrBase: 63, investor: 1.2e6 },
-    { name: 'Serie B', teams: 20, avg: 74, demand: 24000, ticket: 28, prize: 9e6, perPlace: 120e3, promoted: 2, playoff: 6, releg: 3, promoBonus: 130e6, titleBonus: 3e6, spin: 1.5e6, premium: 8e6, cupBase: 500e3, admin: 1.5e6, mgrBase: 69, investor: 5e6 },
+    // promoBonus riequilibrato: prima era 130e6 (quasi 4x il titleBonus di Serie A, 30e6, e più
+    // del prize base di Serie A, 105e6) — un'iniezione sproporzionata rispetto a ogni altro
+    // traguardo del gioco. 45e6 resta chiaramente il salto più ricco della piramide (riflette
+    // il vero "paracadute" economico della promozione in A) senza eclissare tutto il resto.
+    { name: 'Serie B', teams: 20, avg: 74, demand: 24000, ticket: 28, prize: 9e6, perPlace: 120e3, promoted: 2, playoff: 6, releg: 3, promoBonus: 45e6, titleBonus: 3e6, spin: 1.5e6, premium: 8e6, cupBase: 500e3, admin: 1.5e6, mgrBase: 69, investor: 5e6 },
     { name: 'Serie A', teams: 20, avg: 83, demand: 52000, ticket: 42, prize: 105e6, perPlace: 3.1e6, promoted: 0, playoff: 0, releg: 3, euroSpots: 4, uelSpots: 2, confPos: 7, promoBonus: 0, titleBonus: 30e6, spin: 6e6, premium: 30e6, cupBase: 2e6, admin: 6e6, mgrBase: 76, investor: 15e6 },
   ];
 
@@ -1318,6 +1322,7 @@
     { key: 'no_releg_10', icon: '🧱', title: 'Un decennio di stabilità', desc: '10 stagioni di fila senza mai retrocedere.' },
     { key: 'legend_squad', icon: '⭐', title: 'Squadra di fenomeni', desc: 'Metti insieme 3 giocatori reali o leggende in rosa nella stessa stagione.' },
     { key: 'dynasty_complete', icon: '🏁', title: 'Fine di un\'era', desc: 'Porta a termine tutte le 20 stagioni della dynasty.' },
+    { key: 'hardcore_survivor', icon: '🔥', title: 'Sopravvissuto', desc: 'Porta a termine un\'intera dynasty in modalità Hardcore.' },
     { key: 'youth_movement', icon: '🧒', title: 'Movimento giovanile', desc: 'Vinci il campionato o ottieni una promozione con una rosa dall\'età media sotto i 23 anni.' },
     { key: 'frugal_champion', icon: '🪙', title: 'Vittoria a costo zero', desc: 'Vinci il campionato o ottieni una promozione con una rosa più debole della media di categoria.' },
     { key: 'perfect_season', icon: '🛡️', title: 'Stagione perfetta', desc: 'Chiudi un intero campionato senza mai perdere una partita.' },

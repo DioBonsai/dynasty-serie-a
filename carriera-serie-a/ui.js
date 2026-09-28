@@ -1237,9 +1237,9 @@
       <div class="dyn-aggr-label" style="text-align:center;margin:6px 0 8px">Le tue carriere</div>
       <div class="ow-saveslots">
         ${idx.map((m) => `
-          <div class="ow-saveslot">
+          <div class="ow-saveslot${m.hardcore ? ' hardcore' : ''}">
             <div class="info">
-              <b>${m.club || 'Club'}</b>
+              <b>${m.hardcore ? '🔥 ' : ''}${m.club || 'Club'}</b>
               <small>${(DIVS[m.div] || {}).name || ''} · Stagione ${m.season || 1}${m.owner ? ' · ' + m.owner : ''}</small>
             </div>
             <div class="act">
@@ -1249,7 +1249,10 @@
             </div>
           </div>`).join('')}
       </div>
+      ${idx.length >= 2 ? '<button type="button" class="dyn-mini" id="compareCareersBtn" style="width:100%;margin-bottom:8px">📊 Confronta le carriere</button>' : ''}
       <label class="dyn-mini ow-import-label">⬆️ Importa carriera da file<input type="file" id="importSaveInput" accept="application/json" hidden /></label>`;
+    const compareBtn = $('compareCareersBtn');
+    if (compareBtn) compareBtn.addEventListener('click', compareCareers);
     wrap.querySelectorAll('[data-resume]').forEach((el) => el.addEventListener('click', () => resumeDynasty(el.dataset.resume)));
     wrap.querySelectorAll('[data-exportslot]').forEach((el) => el.addEventListener('click', () => exportSaveSlot(el.dataset.exportslot)));
     wrap.querySelectorAll('[data-delslot]').forEach((el) => el.addEventListener('click', () => {
@@ -1265,6 +1268,39 @@
     const imp = $('importSaveInput');
     if (imp) imp.addEventListener('change', handleImportSaveFile);
     renderHotseatPanel();
+  }
+
+  // Confronto fra tutte le carriere salvate: readSavesIndex() tiene solo metadati leggeri
+  // (club/categoria/stagione), qui si rilegge per intero ogni singolo salvataggio da
+  // localStorage (dsa_save_<id>) per i numeri veri (trofei, traguardi, categoria più alta mai
+  // raggiunta) — accettabile perché sono poche decine di slot al massimo, letti una tantum
+  // solo quando l'utente chiede esplicitamente il confronto, non ad ogni render della lista.
+  function compareCareers() {
+    const idx = readSavesIndex();
+    const rows = idx.map((m) => {
+      let save = null;
+      try { save = JSON.parse(localStorage.getItem(saveSlotKey(m.id))); } catch (e) {}
+      if (!save) return null;
+      const topDivIdx = (save.history || []).reduce((a, hh) => Math.max(a, DIVS.findIndex((x) => x.name === hh.div)), save.div || 0);
+      return {
+        club: save.club || m.club || 'Club', owner: save.owner || m.owner || '',
+        div: (DIVS[save.div] || {}).name || '', season: save.season || 1,
+        trophies: (save.trophies && save.trophies.total) || 0,
+        achievements: (save.achievements || []).length,
+        topDiv: (DIVS[topDivIdx] || {}).name || '',
+      };
+    }).filter(Boolean);
+    if (!rows.length) { toast('Nessuna carriera leggibile da confrontare.', 'error'); return; }
+    rows.sort((a, b) => b.trophies - a.trophies || b.achievements - a.achievements);
+    overlay(`<h2>📊 Confronta le carriere</h2>
+      <div style="max-height:56vh;overflow:auto;margin:-6px -6px 14px">
+        ${rows.map((r) => `<div class="ow-fin-row" style="align-items:flex-start">
+          <span style="text-align:left"><b>${escapeHtml(r.club)}</b><small style="display:block;color:var(--muted)">${escapeHtml(r.owner)} · ${r.div} · Stagione ${r.season}</small></span>
+          <b style="text-align:right;white-space:nowrap">🏆 ${r.trophies} · 🏅 ${r.achievements}/${ACHIEVEMENTS.length}<small style="display:block;color:var(--muted);font-weight:600">Top: ${r.topDiv}</small></b>
+        </div>`).join('')}
+      </div>
+      <div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovClose">Chiudi</button></div>`);
+    $('ovClose').onclick = closeOverlay;
   }
 
   // Card riassuntiva della stagione appena chiusa, disegnata su un canvas e scaricata come
@@ -1478,6 +1514,10 @@
   // grande impegno di tempo delle 20 stagioni intere.
   const SEASON_LENGTHS = [8, 12, 20];
   let startSeasons = 20;
+  // Modalità Hardcore: un interruttore ortogonale alla difficoltà (che tocca solo i numeri
+  // economici/simulazione) — qui è una regola di meta-gioco, cessioni giocatore/club senza
+  // conferma (irreversibili sul colpo) e un badge "🔥 Hardcore" ben visibile in Dirigenza.
+  let startHardcore = false;
 
   // Stato dello stemma in fase di creazione del club (prima che esista S).
   let crestShape = CREST_DEFAULT.shape, crestColors = randCrestColors();
@@ -1563,9 +1603,19 @@
     // Con gli slot multipli, comprare un nuovo club non minaccia mai le carriere già
     // salvate (restano nell'elenco "Le tue carriere" qui sotto): nessuna conferma di
     // sovrascrittura da chiedere.
+    const hardcoreChk = $('hardcoreChk');
+    if (hardcoreChk) hardcoreChk.addEventListener('change', () => { startHardcore = hardcoreChk.checked; });
     $('owStartBtn').addEventListener('click', () => {
       if (selTakeover < 0) { toast('Scegli prima una situazione di partenza.'); return; }
-      startDynasty(($('owName').value || '').trim() || 'Il Presidente', takeovers[selTakeover], ($('owClubName').value || '').trim(), startDiv, startDifficulty, startSeasons);
+      // Una sola dynasty Hardcore per volta: vero spirito "una vita sola", niente farm di
+      // tentativi in parallelo. Non cancella nulla, blocca solo la creazione di una seconda
+      // finché quella in corso non finisce (a fine carriera esce comunque dall'indice, vedi
+      // clearSave() in endDynasty).
+      if (startHardcore && readSavesIndex().some((m) => m.hardcore)) {
+        toast('🔥 Hai già una dynasty Hardcore in corso: portala a termine (o abbandonala) prima di iniziarne un\'altra.', 'error');
+        return;
+      }
+      startDynasty(($('owName').value || '').trim() || 'Il Presidente', takeovers[selTakeover], ($('owClubName').value || '').trim(), startDiv, startDifficulty, startSeasons, startHardcore);
     });
     $('owHomeBtn').addEventListener('click', () => { saveGame(); location.href = 'index.html'; });
     renderSaveSlots();
@@ -1772,6 +1822,11 @@
       ${dots}
     </svg>`;
   }
+  // Etichetta + sparkline: prima definita solo dentro renderEnd() (bacheca di fine carriera),
+  // promossa qui per essere riusabile anche dalla tab Finanze durante la carriera.
+  const sparkRow = (label, values, color) => `
+    <div class="ow-spark-row"><span class="lbl">${label}</span></div>
+    ${sparklineSVG(values, color)}`;
 
   // Coriandoli CSS per i momenti che contano (promozione, scudetto, coppe): niente
   // canvas o librerie, solo elementi assoluti con un'animazione di caduta.
@@ -1797,6 +1852,420 @@
     fireConfetti(panelEl);
   }
 
+  // Buonuscita per esonerare allenatore/DS/preparatore: il 30% classico, il 50% in hardcore —
+  // le assunzioni pesano di più, non si cambia idea a cuor leggero.
+  const severanceRate = () => (S.hardcore ? 0.5 : 0.3);
+
+  // Ordine fisso delle tab della Dirigenza, usato dallo swipe orizzontale (bindBoardDelegation)
+  // per sapere qual è la tab "successiva"/"precedente" — le stesse 4 chiavi di TABS in
+  // renderBoard, ma qui accessibile senza dover ricostruire quell'array locale.
+  const BOARD_TAB_ORDER = ['finanze', 'rosa', 'stadio', 'sponsor'];
+
+  // Anima un numero testuale da `from` a `to` in `duration` ms (ease-out), invece del solito
+  // scatto istantaneo: usata per Budget/Libero da spendere nella sticky bar. Se `from` è null
+  // (primo render della sessione, nessun valore precedente da cui partire) mostra `to` subito,
+  // senza animare — altrimenti sembrerebbe un conteggio da zero, non un cambiamento reale.
+  function animateNumber(el, from, to, duration, fmt) {
+    if (!el) return;
+    if (from == null || from === to) { el.textContent = fmt(to); return; }
+    const start = performance.now();
+    const step = (now) => {
+      const p = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = fmt(Math.round(from + (to - from) * eased));
+      if (p < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
+  // Stessa idea di animateNumber ma per un ow-meter (barra + valore): anima sia la larghezza
+  // del riempimento sia il numero, ricalcolando il colore soglia ad ogni frame (stessa
+  // formula di meterHTML) così la barra cambia colore nel momento esatto in cui attraversa
+  // una soglia, invece di scattare al colore finale fin da subito.
+  function animateMeterFill(fillEl, valEl, from, to, duration, warnSuffix) {
+    if (!fillEl) return;
+    const colorFor = (v) => (v >= 60 ? 'var(--dyn)' : v >= 35 ? 'var(--gold)' : 'var(--bad)');
+    if (from == null || from === to) {
+      fillEl.style.width = to + '%'; fillEl.style.background = colorFor(to);
+      if (valEl) valEl.textContent = Math.round(to) + warnSuffix; if (valEl) valEl.style.color = colorFor(to);
+      return;
+    }
+    const start = performance.now();
+    const step = (now) => {
+      const p = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - p, 3);
+      const v = from + (to - from) * eased;
+      fillEl.style.width = v + '%'; fillEl.style.background = colorFor(v);
+      if (valEl) { valEl.textContent = Math.round(v) + warnSuffix; valEl.style.color = colorFor(v); }
+      if (p < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
+  // Valori mostrati all'ultimo render, per sapere da dove far partire l'animazione del
+  // prossimo: cache di modulo apposta (non su S), sono solo uno stato di presentazione,
+  // non vanno in localStorage insieme alla carriera.
+  let lastShownBudget = null, lastShownFree = null;
+  const lastShownMeter = { sent: null, ownerRating: null };
+
+  // Richiamata subito dopo aver ricostruito l'HTML della board: anima i numeri che sono
+  // appena cambiati invece di lasciarli scattare al valore finale.
+  function enhanceBoardNumbers(body, free) {
+    const cells = body.querySelectorAll('.ow-stickybar .cell');
+    if (cells[0]) animateNumber(cells[0].querySelector('b'), lastShownBudget, S.budget, 500, fmtMoney);
+    if (cells[2]) animateNumber(cells[2].querySelector('b'), lastShownFree, free, 500, fmtMoney);
+    lastShownBudget = S.budget; lastShownFree = free;
+
+    if (boardTab === 'finanze') {
+      const meters = body.querySelectorAll('#boardTabBody .ow-meter');
+      const order = [['sent', S.sent, S.sent < 30], ['ownerRating', S.ownerRating, S.ownerRating < 35]];
+      meters.forEach((m, i) => {
+        const entry = order[i]; if (!entry) return;
+        const [key, val, warn] = entry;
+        // Suona solo al MOMENTO in cui si entra in zona critica (prima era sopra soglia, ora
+        // no), mai ad ogni render mentre ci si resta già sotto — altrimenti sarebbe un suono
+        // ripetuto ad ogni click finché il valore non risale.
+        const wasWarn = lastShownMeter[key] != null && lastShownMeter[key] < (key === 'sent' ? 30 : 35);
+        if (warn && !wasWarn && DynSound) DynSound.alarm();
+        animateMeterFill(m.querySelector('.fill'), m.querySelector('.val'), lastShownMeter[key], val, 500, warn ? ' ⚠️' : '');
+        lastShownMeter[key] = val;
+      });
+    }
+  }
+
+  // Un solo listener delegato per la board (click + change), registrato una sola volta
+  // invece che ri-registrato ad ogni renderBoard(): prima ogni singolo click che causava un
+  // re-render (cambio tab, filtro rosa, vendita giocatore...) ricostruiva l'intero innerHTML
+  // di #boardBody e poi ri-collegava ~30 querySelectorAll().forEach(addEventListener), anche
+  // quando era cambiato un solo elemento. Qui gli handler rileggono sempre lo stato corrente
+  // (S, mpSess, ecc.) al momento del click invece di catturarlo per closure, quindi restano
+  // validi identici dopo qualunque renderBoard() successivo.
+  let boardDelegationBound = false;
+  function bindBoardDelegation() {
+    if (boardDelegationBound) return;
+    boardDelegationBound = true;
+    const body = $('boardBody');
+
+    body.addEventListener('click', (ev) => {
+      const on = (sel) => ev.target.closest(sel);
+      let el;
+
+      if ((el = on('[data-tab]'))) { boardTab = el.dataset.tab; renderBoard(); return; }
+
+      // Scheda giocatore: tocca la riga per aprirla, ma non se il tocco è su uno dei bottoni
+      // di azione della riga stessa (Vendi/Rinnova/Riscatta), che hanno il loro handler.
+      if ((el = on('.ow-player[data-pid]')) && !ev.target.closest('button')) { openPlayerDetail(+el.dataset.pid); return; }
+
+      // La cessione è irreversibile: prima di eseguirla chiediamo conferma con l'overlay
+      // (stesso pattern di "Vendi il club"/"Dimettiti"), per evitare che un tap sbagliato sul
+      // 💷 nella lista rosa costi un giocatore per sempre.
+      if ((el = on('.ow-x'))) {
+        const p = S.squad.find((x) => x.pid === +el.dataset.rel); if (!p) return;
+        const fee = Math.round(playerValue(p) * 0.3);
+        // Hardcore: cessione immediata, senza il passaggio dall'overlay di conferma — ogni
+        // scelta sulla rosa è definitiva sul colpo, coerente con l'interruttore scelto alla
+        // creazione della carriera.
+        if (S.hardcore) {
+          const i = S.squad.findIndex((x) => x.pid === p.pid); if (i < 0) return;
+          pushAlumnus(p); S.squad.splice(i, 1); S.offers = (S.offers || []).filter((o) => o.pid !== p.pid); S.budget += fee;
+          toast('Ceduto ' + p.n + ' per ' + fmtMoney(fee) + '.', 'money'); renderBoard(); saveGame();
+          return;
+        }
+        overlay(`<h2>Cedere ${p.n}?</h2>
+          <div class="ow-spin-card">
+            <div class="big" style="color:${ovrTier(p.ovr).c}">${p.ovr}</div>
+            <div class="nm">${flagOf(p)}${p.n}</div>
+            <div class="meta">età ${p.age} · ${POS_LABEL[p.pos]}</div>
+            <div class="meta">Incassi <b>${fmtMoney(fee)}</b> — non si può annullare</div>
+          </div>
+          <div class="dyn-modal-actions">
+            <button class="dyn-btn dyn-btn-primary" id="ovConfirmRel">Cedi per ${fmtMoney(fee)}</button>
+            <button class="dyn-btn" id="ovCancelRel">Annulla</button>
+          </div>`);
+        $('ovConfirmRel').onclick = () => {
+          closeOverlay();
+          const i = S.squad.findIndex((x) => x.pid === p.pid); if (i < 0) return;
+          pushAlumnus(p); S.squad.splice(i, 1); S.offers = (S.offers || []).filter((o) => o.pid !== p.pid); S.budget += fee;
+          toast('Ceduto ' + p.n + ' per ' + fmtMoney(fee) + '.', 'money'); renderBoard(); saveGame();
+        };
+        $('ovCancelRel').onclick = closeOverlay;
+        return;
+      }
+
+      // Rinnova un contratto: nella lista rosa il bottone compare solo per chi è in scadenza
+      // (finalYear); per tutti gli altri il rinnovo resta possibile ma solo aprendo la scheda
+      // del giocatore (tocca la riga), per non affollare la lista di bottoni "Rinnova" inutili
+      // su una rosa intera. Sempre un aumento, più ripido per i giovani talenti; se non
+      // rinnovi in tempo lo perdi a parametro zero.
+      if ((el = on('.ow-renew'))) {
+        const p = S.squad.find((x) => x.pid === +el.dataset.renew); if (!p) return;
+        openRenewOverlay(p); return;
+      }
+
+      // Riscatta un giocatore in prestito a titolo definitivo: se non lo fai entro l'inizio
+      // della stagione, torna al suo club (vedi startSeason).
+      if ((el = on('[data-buyback]'))) {
+        const p = S.squad.find((x) => x.pid === +el.dataset.buyback); if (!p) return;
+        const fee = loanBuybackFee(p);
+        if (S.budget < fee) { toast('Non hai abbastanza per riscattarlo.', 'error'); return; }
+        S.budget -= fee; p.loan = false; p.yrs = 3 + rnd(2);
+        toast(p.n + ' riscattato a titolo definitivo per ' + fmtMoney(fee) + '.', 'spend');
+        renderBoard(); saveGame(); return;
+      }
+
+      // Accetta un'offerta: incassi la cifra, il giocatore parte. Vendere un vero big infastidisce l'ambiente.
+      if ((el = on('.ow-accept'))) {
+        const pid = +el.dataset.acc; const o = (S.offers || []).find((x) => x.pid === pid);
+        const i = S.squad.findIndex((x) => x.pid === pid); if (!o || i < 0) return;
+        const p = S.squad[i];
+        pushAlumnus(p); S.budget += o.fee; S.squad.splice(i, 1); S.offers = S.offers.filter((x) => x.pid !== pid);
+        if (p.ovr >= divOf().avg + 6) S.sent = clamp(S.sent - 3, 0, 100);
+        toast('Venduto ' + p.n + ' al ' + o.club + ' per ' + fmtMoney(o.fee) + '.', 'money'); renderBoard(); saveGame(); return;
+      }
+
+      // Un po' di leva negoziale invece di prendere-o-lasciare: rilanciare una sola volta per
+      // offerta (per non ridurla a un loop di "chiedi sempre di più senza rischio") — il
+      // compratore può alzare l'offerta o ritirarsi del tutto.
+      if ((el = on('[data-counter]'))) {
+        if (S.hardcore) return;   // il bottone non c'è già in hardcore, guardia difensiva
+        const pid = +el.dataset.counter; const o = (S.offers || []).find((x) => x.pid === pid); if (!o || o.countered) return;
+        const p = S.squad.find((x) => x.pid === pid);
+        o.countered = true;
+        if (Math.random() < 0.65) {
+          const higher = Math.round(o.fee * (1.15 + Math.random() * 0.15) / 1e4) * 1e4;
+          o.fee = higher;
+          toast(o.club + ' alza l\'offerta a ' + fmtMoney(higher) + (p ? ' per ' + p.n : '') + '.', 'money');
+        } else {
+          S.offers = S.offers.filter((x) => x.pid !== pid);
+          toast(o.club + ' si ritira dopo il rilancio: niente offerta' + (p ? ' per ' + p.n : '') + '.', 'error');
+        }
+        renderBoard(); saveGame(); return;
+      }
+
+      if ((el = on('.ow-reject'))) {
+        const pid = +el.dataset.rej; const o = (S.offers || []).find((x) => x.pid === pid); if (!o) return;
+        const p = S.squad.find((x) => x.pid === pid);
+        S.offers = S.offers.filter((x) => x.pid !== pid);
+        toast('Rifiuti l\'offerta del ' + o.club + (p ? ' per ' + p.n : '') + '.'); renderBoard(); saveGame(); return;
+      }
+
+      if ((el = on('.ow-hire'))) {
+        const m = S.mgrOpts[+el.dataset.hire]; if (!m) return;
+        const sev = Math.round(S.manager.salary * severanceRate());
+        if (S.budget < sev) { toast('Non puoi permetterti la buonuscita.', 'error'); return; }
+        S.budget -= sev; S.manager = m; S.mgrOpts = null;
+        toast(m.n + ' prende in carico la squadra. Buonuscita pagata: ' + fmtMoney(sev), 'spend'); renderBoard(); saveGame(); return;
+      }
+
+      if ((el = on('.ow-hire-ds'))) {
+        const m = (S.dsOpts || [])[+el.dataset.hireds]; if (!m) return;
+        S.sportingDirector = m; S.dsOpts = null;
+        toast(m.n + ' è il nuovo direttore sportivo.', 'success'); renderBoard(); saveGame(); return;
+      }
+
+      if (on('#dsFireBtn')) {
+        const sev = Math.round(S.sportingDirector.salary * severanceRate());
+        if (S.budget < sev) { toast('Non puoi permetterti la buonuscita.', 'error'); return; }
+        S.budget -= sev; S.sportingDirector = null; S.dsOpts = null;
+        toast('Direttore sportivo licenziato. Buonuscita pagata: ' + fmtMoney(sev), 'spend'); renderBoard(); saveGame(); return;
+      }
+
+      if ((el = on('.ow-hire-fit'))) {
+        const m = (S.fitOpts || [])[+el.dataset.hirefit]; if (!m) return;
+        S.fitnessCoach = m; S.fitOpts = null;
+        toast(m.n + ' è il nuovo preparatore atletico.', 'success'); renderBoard(); saveGame(); return;
+      }
+
+      if (on('#fitFireBtn')) {
+        const sev = Math.round(S.fitnessCoach.salary * severanceRate());
+        if (S.budget < sev) { toast('Non puoi permetterti la buonuscita.', 'error'); return; }
+        S.budget -= sev; S.fitnessCoach = null; S.fitOpts = null;
+        toast('Preparatore atletico licenziato. Buonuscita pagata: ' + fmtMoney(sev), 'spend'); renderBoard(); saveGame(); return;
+      }
+
+      if ((el = on('.ow-offer[data-sp]'))) {
+        const o = S.sponsorOpts[+el.dataset.sp]; if (!o) return;
+        S.sponsor = o; S.sponsorOpts = null;
+        toast('Firmato con ' + o.name + ' (maglia) per ' + fmtMoney(o.perYear) + ' all\'anno.', 'success'); renderBoard(); saveGame(); return;
+      }
+      if ((el = on('.ow-offer[data-stsp]'))) {
+        const o = S.stadiumSponsorOpts[+el.dataset.stsp]; if (!o) return;
+        S.stadiumSponsor = o; S.stadiumSponsorOpts = null;
+        toast('Firmato con ' + o.name + ' (stadio) per ' + fmtMoney(o.perYear) + ' all\'anno.', 'success'); renderBoard(); saveGame(); return;
+      }
+      if ((el = on('.ow-offer[data-tesp]'))) {
+        const o = S.techSponsorOpts[+el.dataset.tesp]; if (!o) return;
+        S.techSponsor = o; S.techSponsorOpts = null;
+        toast('Firmato con ' + o.name + ' (tecnico) per ' + fmtMoney(o.perYear) + ' all\'anno.', 'success'); renderBoard(); saveGame(); return;
+      }
+
+      if ((el = on('[data-inv]'))) {
+        const o = (S.investorOpts || [])[+el.dataset.inv]; if (!o) return;
+        S.investorDeal = o; S.investorOpts = null; S.budget += o.injection;
+        toast(o.name + ' investe: +' + fmtMoney(o.injection) + ' subito. Obiettivo: ' + DIVS[o.targetDiv].name + ' entro la stagione ' + o.deadlineSeason + '.', 'success'); renderBoard(); saveGame(); return;
+      }
+      if (on('#investorDismissBtn')) { S.investorOpts = null; renderBoard(); saveGame(); return; }
+
+      if (on('#upgradeBtn')) {
+        const nx = STADIUM[S.stadiumTier + 1]; if (!nx) return;
+        const cost = stadiumUpgradeCost(nx); if (S.budget < cost) return;
+        spendGuard(cost, 'L\'ampliamento', '', () => {
+          S.budget -= cost; S.stadiumTier++; S.stadiumSpent += cost; S.sent = clamp(S.sent + 3, 0, 100);
+          toast('Le ruspe entrano in azione. Nuova capienza: ' + nx.cap.toLocaleString('it-IT'), 'spend'); renderBoard(); saveGame();
+        });
+        return;
+      }
+
+      if ((el = on('.ow-ticket'))) { S.ticket = +el.dataset.tk; renderBoard(); saveGame(); if (DynSound) DynSound.tap(); return; }
+
+      if (on('#stadiumNameSaveBtn')) {
+        const val = ($('stadiumNameInput').value || '').trim().slice(0, 40);
+        S.stadiumName = val || null;
+        toast('Nome dello stadio aggiornato.', 'success'); renderBoard(); saveGame(); return;
+      }
+
+      if (on('#spinStdBtn')) { doSpin(false); return; }
+      if (on('#spinPremBtn')) { doSpin(true); return; }
+      if (on('#spinPremRoleBtn')) { doSpin(true, true); return; }
+      if (on('#spinStdRoleBtn')) { doSpin(false, true); return; }
+      if (on('#freeAgentBtn')) { pickFreeAgentRole(); return; }
+
+      if (on('#investorBtn')) {
+        const amount = Math.round(divOf().investor * diffOf().sponsorMult / 1e4) * 1e4;
+        S.investorUsed = true; S.budget += amount;
+        toast('Un investitore stacca un assegno: +' + fmtMoney(amount), 'money'); renderBoard(); saveGame(); return;
+      }
+
+      if (on('#scoutUpgBtn')) {
+        const lvl = (S.scoutLevel || 0) + 1, cost = scoutUpgradeCost(lvl); if (S.budget < cost) return;
+        spendGuard(cost, 'L\'investimento nel settore giovanile', '', () => {
+          S.budget -= cost; S.scoutLevel = lvl;
+          toast('Settore giovanile potenziato: ' + SCOUT_TIERS[lvl].name + '.'); renderBoard(); saveGame();
+        });
+        return;
+      }
+
+      if ((el = on('[data-scoutsign]'))) {
+        const i = +el.dataset.scoutsign;
+        const p = S.scoutProspects && S.scoutProspects[i]; if (!p) return;
+        p.homegrown = true;   // per l'achievement "Prodotto del vivaio" (sim.js, endSeason)
+        S.squad.push(p);
+        toast(p.n + ' entra in prima squadra dal settore giovanile.', 'success');
+        S.scoutProspects = []; renderBoard(); saveGame(); return;
+      }
+
+      if ((el = on('[data-youthpromote]'))) {
+        const p = promoteYouthPlayer(+el.dataset.youthpromote); if (!p) return;
+        toast(p.n + ' sale in prima squadra dal vivaio.', 'success'); renderBoard(); saveGame(); return;
+      }
+      if ((el = on('[data-youthrelease]'))) {
+        const pid = +el.dataset.youthrelease;
+        const i = (S.youthSquad || []).findIndex((p) => p.pid === pid); if (i < 0) return;
+        const p = S.youthSquad.splice(i, 1)[0];
+        toast(p.n + ' viene rilasciato dal vivaio.'); renderBoard(); saveGame(); return;
+      }
+
+      if ((el = on('[data-role]'))) { squadRoleFilter = el.dataset.role; renderBoard(); return; }
+      if (on('#squadSortBtn')) { squadSortDesc = !squadSortDesc; renderBoard(); return; }
+
+      if ((el = on('[data-formation]'))) { previewFormation = el.dataset.formation; S.formation = previewFormation; selectedPreviewPid = null; renderBoard(); saveGame(); return; }
+
+      if ((el = on('[data-tactic]'))) {
+        if (!S.tacticStyle) S.tacticStyle = { ...DEFAULT_TACTIC_STYLE };
+        S.tacticStyle[el.dataset.tactic] = el.dataset.tacticVal;
+        renderBoard(); saveGame(); return;
+      }
+
+      // Scambio titolare/panchina: primo tocco seleziona, secondo tocco su un altro giocatore
+      // scambia i due (stesso giocatore due volte = deseleziona). Funziona anche titolare
+      // con titolare, per riordinare la formazione a piacere. Scoping esplicito ai chip di
+      // campo/panchina (.ow-pitch-chip/.ow-bench-chip): un `[data-pid]` senza classe avrebbe
+      // intercettato per errore anche le righe della lista rosa (stesso attributo, classe
+      // .ow-player), che finivano per attivare ANCHE questo scambio oltre ad aprire la scheda
+      // giocatore — un bug preesistente, corretto come effetto collaterale di questo scoping.
+      if ((el = on('.ow-pitch-chip[data-pid], .ow-bench-chip[data-pid]'))) {
+        const pid = +el.dataset.pid;
+        if (selectedPreviewPid == null) { selectedPreviewPid = pid; renderBoard(); return; }
+        if (selectedPreviewPid === pid) { selectedPreviewPid = null; renderBoard(); return; }
+        const xi = S.previewXI.pids;
+        const idxA = xi.indexOf(selectedPreviewPid), idxB = xi.indexOf(pid);
+        if (idxA >= 0 && idxB >= 0) { xi[idxA] = pid; xi[idxB] = selectedPreviewPid; }
+        else if (idxA >= 0) { xi[idxA] = pid; }
+        else if (idxB >= 0) { xi[idxB] = selectedPreviewPid; }
+        selectedPreviewPid = null;
+        renderBoard(); saveGame(); return;
+      }
+
+      if (on('#resetXIBtn')) { S.previewXI = null; selectedPreviewPid = null; renderBoard(); saveGame(); return; }
+
+      if (on('#mpBoardReadyBtn')) {
+        const mpSess = readMpSession(); if (!mpSess) return;
+        (async () => {
+          // Stesso controllo di startSeason() (sim.js) prima di lasciar partire la stagione in
+          // singolo: lì un budget/rosa insufficiente blocca "Inizia Stagione" con un avviso. In
+          // multiplayer "Inizia Stagione" non esiste più (la stagione la avvia l'host per tutti),
+          // quindi lo stesso controllo va fatto qui, altrimenti la tua simulazione fallirebbe in
+          // silenzio nel browser dell'host (startSeason si ferma senza toast per un ctx remoto).
+          if (S.squad.length < MIN_SQUAD) { toast('Ti servono almeno ' + MIN_SQUAD + ' giocatori per iniziare la prossima stagione. Ingaggia svincolati gratis se sei a corto.', 'error'); return; }
+          const bill = kickoffBill();
+          if (S.budget < bill) { toast('Ti mancano ' + fmtMoney(bill - S.budget) + ' per il monte ingaggi della prossima stagione: vendi giocatori, prendi il bonus investitore o trova soldi prima di essere pronto.', 'error'); return; }
+          saveGame();
+          try {
+            const data = await mpApi('ready', { code: mpSess.code, playerId: mpSess.playerId, ready: true, state: S });
+            if (DynSound) DynSound.tap();
+            stopMpPolling();
+            renderLobby(data.room, mpSess.playerId);
+          } catch (e) { toast(e.message || 'Impossibile sottomettere la carriera.', 'error'); }
+        })();
+        return;
+      }
+
+      if (on('#mpBoardBackBtn')) {
+        const mpSess = readMpSession(); if (!mpSess) return;
+        (async () => {
+          try {
+            const room = await mpFetchState(mpSess.code);
+            stopMpPolling();
+            renderLobby(room, mpSess.playerId);
+          } catch (e) { toast('Impossibile aggiornare lo stato della stanza.', 'error'); }
+        })();
+        return;
+      }
+
+      if (on('#startSeasonBtn')) { if (DynSound) DynSound.kickoff(); startSeason(); return; }
+      if (on('#sellBtn')) { confirmSell(); return; }
+      if (on('#resignBtn')) { confirmResign(); return; }
+    });
+
+    body.addEventListener('change', (ev) => {
+      if (ev.target.id === 'autoInvestorChk') { S.autoInvestor = ev.target.checked; saveGame(); return; }
+      if (ev.target.id === 'turboModeChk') { S.turboMode = ev.target.checked; toast(S.turboMode ? '⏩ Modalità veloce attiva.' : 'Modalità veloce disattivata.'); saveGame(); return; }
+    });
+
+    // Swipe orizzontale per cambiare tab (Finanze/Rosa/Stadio/Sponsor) su mobile, in aggiunta
+    // al tocco sui pulsanti tab. Soglie: almeno 60px orizzontali e non più di 60px di deriva
+    // verticale, altrimenti è uno scroll della lista, non uno swipe — { passive: true } perché
+    // non serve mai bloccare lo scroll verticale nativo.
+    const SWIPE_MIN_DX = 60, SWIPE_MAX_DY = 60;
+    let touchStartX = null, touchStartY = null;
+    body.addEventListener('touchstart', (ev) => {
+      if (ev.touches.length !== 1) { touchStartX = null; return; }
+      touchStartX = ev.touches[0].clientX; touchStartY = ev.touches[0].clientY;
+    }, { passive: true });
+    body.addEventListener('touchend', (ev) => {
+      if (touchStartX == null) return;
+      const t = ev.changedTouches[0];
+      const dx = t.clientX - touchStartX, dy = t.clientY - touchStartY;
+      touchStartX = touchStartY = null;
+      if (Math.abs(dx) < SWIPE_MIN_DX || Math.abs(dy) > SWIPE_MAX_DY) return;
+      const idx = BOARD_TAB_ORDER.indexOf(boardTab); if (idx < 0) return;
+      const nextIdx = dx < 0 ? idx + 1 : idx - 1;   // swipe a sinistra = tab successivo
+      if (nextIdx < 0 || nextIdx >= BOARD_TAB_ORDER.length) return;
+      boardTab = BOARD_TAB_ORDER[nextIdx];
+      renderBoard();
+    }, { passive: true });
+  }
+
   function renderBoard() {
     syncNotifDot();
     const d = divOf(), body = $('boardBody');
@@ -1808,6 +2277,7 @@
     normSquad();
     previewFormation = S.formation;   // il modulo mostrato riflette quello persistito (ora pesa in partita)
     maybeScoutProspect();
+    advanceYouthSquad();
     // QoL: chi lo desidera può evitare di ripremere manualmente "Bonus investitore" ogni
     // singola stagione (l'esito ottimale — prenderlo — non cambia mai in 20 stagioni): un
     // interruttore per carriera, non imposto a chi preferisce comunque decidere volta per volta.
@@ -1856,7 +2326,7 @@
           <span class="ovr" style="${ovrBadge(p.ovr)}" title="${p.pid === S.captainPid ? 'Capitano: +1 OVR' : ''}">${p.pid === S.captainPid ? p.ovr + 1 : p.ovr}</span>
           <span class="postag postag-${p.pos}">${p.pos}</span>
           <span class="nm">${flagOf(p)}${p.n}${p.pid === S.captainPid ? ' <span title="Capitano">©</span>' : ''}${hasChemistryPartner(p) ? ' <span title="Coppia d\'attacco affiatata: si cercano a memoria">🔗</span>' : ''}<small>età ${p.age}${potentialBadge(p)}</small></span>
-          ${p.outWeeks > 0 ? `<span class="stat-tag inj" title="Infortunato">🚑 ${p.outWeeks}</span>` : p.suspMatches > 0 ? '<span class="stat-tag susp" title="Squalificato">🟥</span>' : p.loanedOut ? '<span class="stat-tag" title="In prestito altrove fino a fine stagione">📤 prestito fuori</span>' : ''}
+          ${p.outWeeks > 0 ? `<span class="stat-tag inj" title="Infortunato">🚑 ${p.outWeeks}</span>` : p.suspMatches > 0 ? '<span class="stat-tag susp" title="Squalificato">🟥</span>' : p.loanedOut ? '<span class="stat-tag" title="In prestito altrove fino a fine stagione">📤 prestito fuori</span>' : (p.fatigue || 0) >= 65 ? `<span class="stat-tag" title="Affaticato: più a rischio infortunio, reso leggermente meno nelle prossime partite">🥵 ${Math.round(p.fatigue)}</span>` : ''}
         </div>
         <div class="ow-player-row2">
           <span class="ow-player-row2-left">
@@ -1874,6 +2344,7 @@
     const financeHTML = `
       <div class="ow-sec ow-status">
         <div class="ow-bigmoney"><span>Valore del club</span><b>${fmtMoney(worth)}</b></div>
+        ${S.history && S.history.length ? sparkRow('Andamento budget (fine stagione + oggi)', S.history.map((hh) => hh.budget != null ? hh.budget : 0).concat([S.budget]), 'var(--good)') : ''}
         <div class="ow-fin-row" style="padding:2px 0 6px"><span>Indice tifoseria (cresce con successo e prezzi equi)</span><b>${S.fanbase.toFixed(2)}</b></div>
         ${S.euro ? '<div class="ow-euroflag">' + EURO_COMPS[S.euroComp].flag + ' ' + EURO_COMPS[S.euroComp].name + ' questa stagione · grandi notti, grandi soldi</div>' : ''}
         ${meterHTML('Umore tifosi', S.sent, S.sent < 30)}
@@ -1904,7 +2375,7 @@
             <div class="who"><span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span><span class="postag postag-${p.pos}">${p.pos}</span><span class="nm">${flagOf(p)}${p.n}<small>età ${p.age} · ${o.club} si fa avanti</small></span></div>
             <div class="act"><span class="fee">${fmtMoney(o.fee)}</span>
               <button class="dyn-mini ow-accept" data-acc="${o.pid}">Accetta</button>
-              ${!o.countered ? `<button class="dyn-mini" data-counter="${o.pid}" title="Chiedi di più: potrebbero accettare o ritirarsi">🤝 Rilancia</button>` : ''}
+              ${!o.countered && !S.hardcore ? `<button class="dyn-mini" data-counter="${o.pid}" title="Chiedi di più: potrebbero accettare o ritirarsi">🤝 Rilancia</button>` : ''}
               <button class="dyn-mini ow-reject" data-rej="${o.pid}">Rifiuta</button></div>
           </div>`;
         }).join('')}
@@ -1986,6 +2457,20 @@
             <span class="nm">${flagOf(p)}${p.n}<small>${POS_LABEL[p.pos]} · età ${p.age} · promessa del vivaio${potentialBadge(p)}</small></span>
           </div>
           <button class="dyn-btn dyn-btn-primary" data-scoutsign="${i}">Aggrega alla rosa · Gratis</button>
+        </div>`).join('')}` : ''}
+        ${S.youthSquad && S.youthSquad.length ? `
+        <div class="ow-sub" style="margin:10px 0 4px">🌱 Vivaio (${S.youthSquad.length}/${YOUTH_SQUAD_CAP}): crescono stagione dopo stagione finché non li promuovi o li rilasci — oltre i ${YOUTH_RELEASE_AGE} anni si svincolano da soli se restano lì.</div>
+        ${S.youthSquad.map((p) => `
+        <div class="ow-jan-card">
+          <div class="ow-jan-head">
+            <span class="ovr" style="${ovrBadge(p.ovr)}">${p.ovr}</span>
+            <span class="postag postag-${p.pos}">${p.pos}</span>
+            <span class="nm">${flagOf(p)}${p.n}<small>${POS_LABEL[p.pos]} · età ${p.age}${potentialBadge(p)}</small></span>
+          </div>
+          <div class="ow-jan-actions">
+            <button class="dyn-mini" data-youthpromote="${p.pid}">⬆️ Promuovi in prima squadra</button>
+            <button class="dyn-mini ow-danger" data-youthrelease="${p.pid}">Rilascia</button>
+          </div>
         </div>`).join('')}` : ''}
       </div>
       <div class="ow-sec">
@@ -2092,11 +2577,11 @@
         <div class="cell free"><span>Libero da spendere</span><b class="${free < 0 ? 'bad' : ''}">${fmtMoney(free)}</b></div>
       </div>
       ${crestMarkup(S.crestShape, S.crestColors, 'ow-board-crest')}
-      <div class="dyn-top"><div class="dyn-top-title">Dirigenza</div><div class="dyn-top-sub">${S.owner} · ${S.club} · Stagione ${S.season} di ${S.maxSeasons || MAX_SEASONS}</div></div>
+      <div class="dyn-top"><div class="dyn-top-title">Dirigenza${S.hardcore ? ' <span class="ow-invpill" style="display:inline-block;vertical-align:middle;font-size:11px;padding:2px 8px" title="Cessioni immediate, spin senza rimborso, niente rilancio sulle offerte, niente scorciatoie sulla cassa, +25% rischio infortuni, imprevisti negativi più pesanti, buonuscita staff al 50%">🔥 Hardcore</span>' : ''}</div><div class="dyn-top-sub">${S.owner} · ${S.club} · Stagione ${S.season} di ${S.maxSeasons || MAX_SEASONS}</div></div>
       ${ladderHTML()}
       ${S.investorDeal ? (() => { const left = S.investorDeal.deadlineSeason - S.season; return `<div class="ow-invpill${left <= 1 ? ' urgent' : ''}" title="Fondo d'investimento: ${S.investorDeal.name}">🏦 Obiettivo fondo: ${DIVS[S.investorDeal.targetDiv].name} entro la stagione ${S.investorDeal.deadlineSeason} (${left <= 0 ? 'ultima chiamata' : 'mancano ' + left + ' stagion' + (left === 1 ? 'e' : 'i')})</div>`; })() : ''}
       <div class="ow-tabs">${TABS.map((t) => `<button class="ow-tab ${boardTab === t.key ? 'on' : ''}" data-tab="${t.key}">${t.label}${t.warn ? '<span class="dot"></span>' : ''}</button>`).join('')}</div>
-      <div id="boardTabBody">${activeTab.html}</div>
+      <div id="boardTabBody" class="ow-tab-enter">${activeTab.html}</div>
       ${mpBoard ? `
         <button class="dyn-btn dyn-btn-primary" id="mpBoardReadyBtn">✅ Sono pronto</button>
         <button class="dyn-btn" id="mpBoardBackBtn">🔙 Torna alla stanza</button>
@@ -2105,248 +2590,8 @@
         <button class="dyn-btn" id="sellBtn">💷 Vendi il club · ${fmtMoney(worth)}</button>
         <button class="dyn-btn" id="resignBtn">Dimettiti</button>
       </div>`;
-    // colleghiamo tutto
-    body.querySelectorAll('[data-tab]').forEach((el) => el.addEventListener('click', () => { boardTab = el.dataset.tab; renderBoard(); }));
-    // Scheda giocatore: tocca la riga per aprirla, ma non se il tocco è su uno dei bottoni
-    // di azione della riga stessa (Vendi/Rinnova/Riscatta), che hanno il loro handler.
-    body.querySelectorAll('.ow-player[data-pid]').forEach((el) => el.addEventListener('click', (ev) => {
-      if (ev.target.closest('button')) return;
-      openPlayerDetail(+el.dataset.pid);
-    }));
-    // La cessione è irreversibile: prima di eseguirla chiediamo conferma con l'overlay
-    // (stesso pattern di "Vendi il club"/"Dimettiti"), per evitare che un tap sbagliato sul
-    // 💷 nella lista rosa costi un giocatore per sempre.
-    body.querySelectorAll('.ow-x').forEach((el) => el.addEventListener('click', () => {
-      const p = S.squad.find((x) => x.pid === +el.dataset.rel); if (!p) return;
-      const fee = Math.round(playerValue(p) * 0.3);
-      overlay(`<h2>Cedere ${p.n}?</h2>
-        <div class="ow-spin-card">
-          <div class="big" style="color:${ovrTier(p.ovr).c}">${p.ovr}</div>
-          <div class="nm">${flagOf(p)}${p.n}</div>
-          <div class="meta">età ${p.age} · ${POS_LABEL[p.pos]}</div>
-          <div class="meta">Incassi <b>${fmtMoney(fee)}</b> — non si può annullare</div>
-        </div>
-        <div class="dyn-modal-actions">
-          <button class="dyn-btn dyn-btn-primary" id="ovConfirmRel">Cedi per ${fmtMoney(fee)}</button>
-          <button class="dyn-btn" id="ovCancelRel">Annulla</button>
-        </div>`);
-      $('ovConfirmRel').onclick = () => {
-        closeOverlay();
-        const i = S.squad.findIndex((x) => x.pid === p.pid); if (i < 0) return;
-        pushAlumnus(p); S.squad.splice(i, 1); S.offers = (S.offers || []).filter((o) => o.pid !== p.pid); S.budget += fee;
-        toast('Ceduto ' + p.n + ' per ' + fmtMoney(fee) + '.', 'money'); renderBoard(); saveGame();
-      };
-      $('ovCancelRel').onclick = closeOverlay;
-    }));
-    // Rinnova un contratto: nella lista rosa il bottone compare solo per chi è in scadenza
-    // (finalYear); per tutti gli altri il rinnovo resta possibile ma solo aprendo la scheda
-    // del giocatore (tocca la riga), per non affollare la lista di bottoni "Rinnova" inutili
-    // su una rosa intera. Sempre un aumento, più ripido per i giovani talenti; se non
-    // rinnovi in tempo lo perdi a parametro zero.
-    body.querySelectorAll('.ow-renew').forEach((el) => el.addEventListener('click', () => {
-      const p = S.squad.find((x) => x.pid === +el.dataset.renew); if (!p) return;
-      openRenewOverlay(p);
-    }));
-    // Riscatta un giocatore in prestito a titolo definitivo: se non lo fai entro l'inizio
-    // della stagione, torna al suo club (vedi startSeason).
-    body.querySelectorAll('[data-buyback]').forEach((el) => el.addEventListener('click', () => {
-      const p = S.squad.find((x) => x.pid === +el.dataset.buyback); if (!p) return;
-      const fee = loanBuybackFee(p);
-      if (S.budget < fee) { toast('Non hai abbastanza per riscattarlo.', 'error'); return; }
-      S.budget -= fee; p.loan = false; p.yrs = 3 + rnd(2);
-      toast(p.n + ' riscattato a titolo definitivo per ' + fmtMoney(fee) + '.', 'spend');
-      renderBoard(); saveGame();
-    }));
-    // Accetta un'offerta: incassi la cifra, il giocatore parte. Vendere un vero big infastidisce l'ambiente.
-    body.querySelectorAll('.ow-accept').forEach((el) => el.addEventListener('click', () => {
-      const pid = +el.dataset.acc; const o = (S.offers || []).find((x) => x.pid === pid);
-      const i = S.squad.findIndex((x) => x.pid === pid); if (!o || i < 0) return;
-      const p = S.squad[i];
-      pushAlumnus(p); S.budget += o.fee; S.squad.splice(i, 1); S.offers = S.offers.filter((x) => x.pid !== pid);
-      if (p.ovr >= divOf().avg + 6) S.sent = clamp(S.sent - 3, 0, 100);
-      toast('Venduto ' + p.n + ' al ' + o.club + ' per ' + fmtMoney(o.fee) + '.', 'money'); renderBoard(); saveGame();
-    }));
-    // Un po' di leva negoziale invece di prendere-o-lasciare: rilanciare una sola volta per
-    // offerta (per non ridurla a un loop di "chiedi sempre di più senza rischio") — il
-    // compratore può alzare l'offerta o ritirarsi del tutto.
-    body.querySelectorAll('[data-counter]').forEach((el) => el.addEventListener('click', () => {
-      const pid = +el.dataset.counter; const o = (S.offers || []).find((x) => x.pid === pid); if (!o || o.countered) return;
-      const p = S.squad.find((x) => x.pid === pid);
-      o.countered = true;
-      if (Math.random() < 0.65) {
-        const higher = Math.round(o.fee * (1.15 + Math.random() * 0.15) / 1e4) * 1e4;
-        o.fee = higher;
-        toast(o.club + ' alza l\'offerta a ' + fmtMoney(higher) + (p ? ' per ' + p.n : '') + '.', 'money');
-      } else {
-        S.offers = S.offers.filter((x) => x.pid !== pid);
-        toast(o.club + ' si ritira dopo il rilancio: niente offerta' + (p ? ' per ' + p.n : '') + '.', 'error');
-      }
-      renderBoard(); saveGame();
-    }));
-    body.querySelectorAll('.ow-reject').forEach((el) => el.addEventListener('click', () => {
-      const pid = +el.dataset.rej; const o = (S.offers || []).find((x) => x.pid === pid); if (!o) return;
-      const p = S.squad.find((x) => x.pid === pid);
-      S.offers = S.offers.filter((x) => x.pid !== pid);
-      toast('Rifiuti l\'offerta del ' + o.club + (p ? ' per ' + p.n : '') + '.'); renderBoard(); saveGame();
-    }));
-    body.querySelectorAll('.ow-hire').forEach((el) => el.addEventListener('click', () => {
-      const m = S.mgrOpts[+el.dataset.hire]; if (!m) return;
-      const sev = Math.round(S.manager.salary * 0.3);
-      if (S.budget < sev) { toast('Non puoi permetterti la buonuscita.', 'error'); return; }
-      S.budget -= sev; S.manager = m; S.mgrOpts = null;
-      toast(m.n + ' prende in carico la squadra. Buonuscita pagata: ' + fmtMoney(sev), 'spend'); renderBoard(); saveGame();
-    }));
-    body.querySelectorAll('.ow-hire-ds').forEach((el) => el.addEventListener('click', () => {
-      const m = (S.dsOpts || [])[+el.dataset.hireds]; if (!m) return;
-      S.sportingDirector = m; S.dsOpts = null;
-      toast(m.n + ' è il nuovo direttore sportivo.', 'success'); renderBoard(); saveGame();
-    }));
-    const dsFireBtn = $('dsFireBtn');
-    if (dsFireBtn) dsFireBtn.onclick = () => {
-      const sev = Math.round(S.sportingDirector.salary * 0.3);
-      if (S.budget < sev) { toast('Non puoi permetterti la buonuscita.', 'error'); return; }
-      S.budget -= sev; S.sportingDirector = null; S.dsOpts = null;
-      toast('Direttore sportivo licenziato. Buonuscita pagata: ' + fmtMoney(sev), 'spend'); renderBoard(); saveGame();
-    };
-    body.querySelectorAll('.ow-hire-fit').forEach((el) => el.addEventListener('click', () => {
-      const m = (S.fitOpts || [])[+el.dataset.hirefit]; if (!m) return;
-      S.fitnessCoach = m; S.fitOpts = null;
-      toast(m.n + ' è il nuovo preparatore atletico.', 'success'); renderBoard(); saveGame();
-    }));
-    const fitFireBtn = $('fitFireBtn');
-    if (fitFireBtn) fitFireBtn.onclick = () => {
-      const sev = Math.round(S.fitnessCoach.salary * 0.3);
-      if (S.budget < sev) { toast('Non puoi permetterti la buonuscita.', 'error'); return; }
-      S.budget -= sev; S.fitnessCoach = null; S.fitOpts = null;
-      toast('Preparatore atletico licenziato. Buonuscita pagata: ' + fmtMoney(sev), 'spend'); renderBoard(); saveGame();
-    };
-    body.querySelectorAll('.ow-offer[data-sp]').forEach((el) => el.addEventListener('click', () => {
-      const o = S.sponsorOpts[+el.dataset.sp]; if (!o) return;
-      S.sponsor = o; S.sponsorOpts = null;
-      toast('Firmato con ' + o.name + ' (maglia) per ' + fmtMoney(o.perYear) + ' all\'anno.', 'success'); renderBoard(); saveGame();
-    }));
-    body.querySelectorAll('.ow-offer[data-stsp]').forEach((el) => el.addEventListener('click', () => {
-      const o = S.stadiumSponsorOpts[+el.dataset.stsp]; if (!o) return;
-      S.stadiumSponsor = o; S.stadiumSponsorOpts = null;
-      toast('Firmato con ' + o.name + ' (stadio) per ' + fmtMoney(o.perYear) + ' all\'anno.', 'success'); renderBoard(); saveGame();
-    }));
-    body.querySelectorAll('.ow-offer[data-tesp]').forEach((el) => el.addEventListener('click', () => {
-      const o = S.techSponsorOpts[+el.dataset.tesp]; if (!o) return;
-      S.techSponsor = o; S.techSponsorOpts = null;
-      toast('Firmato con ' + o.name + ' (tecnico) per ' + fmtMoney(o.perYear) + ' all\'anno.', 'success'); renderBoard(); saveGame();
-    }));
-    body.querySelectorAll('[data-inv]').forEach((el) => el.addEventListener('click', () => {
-      const o = (S.investorOpts || [])[+el.dataset.inv]; if (!o) return;
-      S.investorDeal = o; S.investorOpts = null; S.budget += o.injection;
-      toast(o.name + ' investe: +' + fmtMoney(o.injection) + ' subito. Obiettivo: ' + DIVS[o.targetDiv].name + ' entro la stagione ' + o.deadlineSeason + '.', 'success'); renderBoard(); saveGame();
-    }));
-    const invDismiss = $('investorDismissBtn');
-    if (invDismiss) invDismiss.addEventListener('click', () => { S.investorOpts = null; renderBoard(); saveGame(); });
-    const upg = $('upgradeBtn');
-    if (upg) upg.addEventListener('click', () => {
-      const nx = STADIUM[S.stadiumTier + 1]; if (!nx) return;
-      const cost = stadiumUpgradeCost(nx); if (S.budget < cost) return;
-      spendGuard(cost, 'L\'ampliamento', '', () => {
-        S.budget -= cost; S.stadiumTier++; S.stadiumSpent += cost; S.sent = clamp(S.sent + 3, 0, 100);
-        toast('Le ruspe entrano in azione. Nuova capienza: ' + nx.cap.toLocaleString('it-IT'), 'spend'); renderBoard(); saveGame();
-      });
-    });
-    body.querySelectorAll('.ow-ticket').forEach((el) => el.addEventListener('click', () => { S.ticket = +el.dataset.tk; renderBoard(); saveGame(); if (DynSound) DynSound.tap(); }));
-    const stadiumNameSaveBtn = $('stadiumNameSaveBtn');
-    if (stadiumNameSaveBtn) stadiumNameSaveBtn.addEventListener('click', () => {
-      const val = ($('stadiumNameInput').value || '').trim().slice(0, 40);
-      S.stadiumName = val || null;
-      toast('Nome dello stadio aggiornato.', 'success'); renderBoard(); saveGame();
-    });
-    const std = $('spinStdBtn'), prem = $('spinPremBtn'), premRole = $('spinPremRoleBtn'), stdRole = $('spinStdRoleBtn');
-    if (std) std.addEventListener('click', () => doSpin(false));
-    if (prem) prem.addEventListener('click', () => doSpin(true));
-    if (premRole) premRole.addEventListener('click', () => doSpin(true, true));
-    if (stdRole) stdRole.addEventListener('click', () => doSpin(false, true));
-    const fa = $('freeAgentBtn');
-    if (fa) fa.addEventListener('click', pickFreeAgentRole);
-    const inv = $('investorBtn');
-    if (inv) inv.addEventListener('click', () => {
-      const amount = Math.round(divOf().investor * diffOf().sponsorMult / 1e4) * 1e4;
-      S.investorUsed = true; S.budget += amount;
-      toast('Un investitore stacca un assegno: +' + fmtMoney(amount), 'money'); renderBoard(); saveGame();
-    });
-    const autoInvestorChk = $('autoInvestorChk');
-    if (autoInvestorChk) autoInvestorChk.addEventListener('change', () => { S.autoInvestor = autoInvestorChk.checked; saveGame(); });
-    const turboModeChk = $('turboModeChk');
-    if (turboModeChk) turboModeChk.addEventListener('change', () => { S.turboMode = turboModeChk.checked; toast(S.turboMode ? '⏩ Modalità veloce attiva.' : 'Modalità veloce disattivata.'); saveGame(); });
-    const scoutUpg = $('scoutUpgBtn');
-    if (scoutUpg) scoutUpg.addEventListener('click', () => {
-      const lvl = (S.scoutLevel || 0) + 1, cost = scoutUpgradeCost(lvl); if (S.budget < cost) return;
-      spendGuard(cost, 'L\'investimento nel settore giovanile', '', () => {
-        S.budget -= cost; S.scoutLevel = lvl;
-        toast('Settore giovanile potenziato: ' + SCOUT_TIERS[lvl].name + '.'); renderBoard(); saveGame();
-      });
-    });
-    body.querySelectorAll('[data-scoutsign]').forEach((el) => el.addEventListener('click', () => {
-      const i = +el.dataset.scoutsign;
-      const p = S.scoutProspects && S.scoutProspects[i]; if (!p) return;
-      p.homegrown = true;   // per l'achievement "Prodotto del vivaio" (sim.js, endSeason)
-      S.squad.push(p);
-      toast(p.n + ' entra in prima squadra dal settore giovanile.', 'success');
-      S.scoutProspects = []; renderBoard(); saveGame();
-    }));
-    body.querySelectorAll('[data-role]').forEach((el) => el.addEventListener('click', () => { squadRoleFilter = el.dataset.role; renderBoard(); }));
-    const sortBtn = $('squadSortBtn');
-    if (sortBtn) sortBtn.addEventListener('click', () => { squadSortDesc = !squadSortDesc; renderBoard(); });
-    body.querySelectorAll('[data-formation]').forEach((el) => el.addEventListener('click', () => { previewFormation = el.dataset.formation; S.formation = previewFormation; selectedPreviewPid = null; renderBoard(); saveGame(); }));
-    body.querySelectorAll('[data-tactic]').forEach((el) => el.addEventListener('click', () => {
-      if (!S.tacticStyle) S.tacticStyle = { ...DEFAULT_TACTIC_STYLE };
-      S.tacticStyle[el.dataset.tactic] = el.dataset.tacticVal;
-      renderBoard(); saveGame();
-    }));
-    // Scambio titolare/panchina: primo tocco seleziona, secondo tocco su un altro giocatore
-    // scambia i due (stesso giocatore due volte = deseleziona). Funziona anche titolare
-    // con titolare, per riordinare la formazione a piacere.
-    body.querySelectorAll('[data-pid]').forEach((el) => el.addEventListener('click', () => {
-      const pid = +el.dataset.pid;
-      if (selectedPreviewPid == null) { selectedPreviewPid = pid; renderBoard(); return; }
-      if (selectedPreviewPid === pid) { selectedPreviewPid = null; renderBoard(); return; }
-      const xi = S.previewXI.pids;
-      const idxA = xi.indexOf(selectedPreviewPid), idxB = xi.indexOf(pid);
-      if (idxA >= 0 && idxB >= 0) { xi[idxA] = pid; xi[idxB] = selectedPreviewPid; }
-      else if (idxA >= 0) { xi[idxA] = pid; }
-      else if (idxB >= 0) { xi[idxB] = selectedPreviewPid; }
-      selectedPreviewPid = null;
-      renderBoard(); saveGame();
-    }));
-    const resetXI = $('resetXIBtn');
-    if (resetXI) resetXI.addEventListener('click', () => { S.previewXI = null; selectedPreviewPid = null; renderBoard(); saveGame(); });
-    if (mpBoard) {
-      $('mpBoardReadyBtn').onclick = async () => {
-        // Stesso controllo di startSeason() (sim.js) prima di lasciar partire la stagione in
-        // singolo: lì un budget/rosa insufficiente blocca "Inizia Stagione" con un avviso. In
-        // multiplayer "Inizia Stagione" non esiste più (la stagione la avvia l'host per tutti),
-        // quindi lo stesso controllo va fatto qui, altrimenti la tua simulazione fallirebbe in
-        // silenzio nel browser dell'host (startSeason si ferma senza toast per un ctx remoto).
-        if (S.squad.length < MIN_SQUAD) { toast('Ti servono almeno ' + MIN_SQUAD + ' giocatori per iniziare la prossima stagione. Ingaggia svincolati gratis se sei a corto.', 'error'); return; }
-        const bill = kickoffBill();
-        if (S.budget < bill) { toast('Ti mancano ' + fmtMoney(bill - S.budget) + ' per il monte ingaggi della prossima stagione: vendi giocatori, prendi il bonus investitore o trova soldi prima di essere pronto.', 'error'); return; }
-        saveGame();
-        try {
-          const data = await mpApi('ready', { code: mpSess.code, playerId: mpSess.playerId, ready: true, state: S });
-          if (DynSound) DynSound.tap();
-          stopMpPolling();
-          renderLobby(data.room, mpSess.playerId);
-        } catch (e) { toast(e.message || 'Impossibile sottomettere la carriera.', 'error'); }
-      };
-      $('mpBoardBackBtn').onclick = async () => {
-        try {
-          const room = await mpFetchState(mpSess.code);
-          stopMpPolling();
-          renderLobby(room, mpSess.playerId);
-        } catch (e) { toast('Impossibile aggiornare lo stato della stanza.', 'error'); }
-      };
-    } else {
-      $('startSeasonBtn').addEventListener('click', () => { if (DynSound) DynSound.kickoff(); startSeason(); });
-    }
-    $('sellBtn').addEventListener('click', confirmSell);
-    $('resignBtn').addEventListener('click', confirmResign);
+    enhanceBoardNumbers(body, free);
+    bindBoardDelegation();
     show('owBoardScreen'); saveGame();
   }
 
@@ -2355,6 +2600,16 @@
   function spendGuard(cost, label, extra, go) {
     const after = S.budget - cost, bill = kickoffBill();
     if (after >= bill) { go(); return; }
+    // Hardcore: niente scorciatoia "Fallo comunque" — se non copri il costo d'avvio, prima
+    // vendi/sistemi la cassa, poi spendi. Nessuna via di mezzo con conseguenze rimandate.
+    if (S.hardcore) {
+      overlay(`
+        <h2>🔥 Cassa insufficiente</h2>
+        <p>${label} costa <b>${fmtMoney(cost)}</b>, lasciando <b>${fmtMoney(after)}</b> in banca. Il costo d'avvio (stipendi + allenatore) è <b>${fmtMoney(bill)}</b>: in modalità Hardcore non puoi procedere finché non copri la differenza. Vendi giocatori (💷) o sistema la cassa prima.</p>
+        <div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovHold">Ho capito</button></div>`);
+      $('ovHold').onclick = closeOverlay;
+      return;
+    }
     overlay(`
       <h2>⚠️ Attenzione alla cassa</h2>
       <p>${label} costa <b>${fmtMoney(cost)}</b>, lasciando <b>${fmtMoney(after)}</b> in banca. Il costo d'avvio (stipendi + allenatore) è <b>${fmtMoney(bill)}</b>, quindi saresti <b>${fmtMoney(bill - after)}</b> corto per iniziare la stagione.${extra ? ' ' + extra : ''} Puoi vendere giocatori (💷) per recuperare.</p>
@@ -2459,7 +2714,7 @@
       </div>
       <div class="dyn-modal-actions">
         <button class="dyn-btn dyn-btn-primary" id="ovSign">Ingaggialo</button>
-        <button class="dyn-btn" id="ovPass">Passa</button>
+        <button class="dyn-btn" id="ovPass">Passa${S.hardcore ? ' (nessun rimborso)' : ''}</button>
       </div>`);
     // Un piccolo momento in più quando lo spin pesca qualcosa di speciale: un giocatore
     // vero (o un'icona) suona diverso e si accende di coriandoli, non solo un bordo colorato.
@@ -2471,10 +2726,12 @@
       S._spin = null; closeOverlay(); toast(p.n + ' firma.', 'success'); renderBoard(); saveGame();
     };
     $('ovPass').onclick = () => {
-      const refund = Math.round(cost * 0.4);
+      // Hardcore: ogni spin è una scommessa vera, senza paracadute — passare non restituisce
+      // nulla, coerente con "ogni scelta è definitiva".
+      const refund = S.hardcore ? 0 : Math.round(cost * 0.4);
       S.budget += refund;
       S._spin = null; closeOverlay();
-      toast('Passi. Lo scout ti restituisce ' + fmtMoney(refund) + ' (40% dello spin).', 'money');
+      toast(S.hardcore ? 'Passi. Nessun rimborso in modalità Hardcore.' : 'Passi. Lo scout ti restituisce ' + fmtMoney(refund) + ' (40% dello spin).', 'money');
       renderBoard(); saveGame();
     };
   }
@@ -2814,7 +3071,7 @@
     }));
     document.querySelectorAll('#owOverlayModal [data-wh]').forEach((el) => el.addEventListener('click', () => {
       const m = S._janMgrCands[+el.dataset.wh]; if (!m) return;
-      const cost = Math.round(S.manager.salary * 0.3) + Math.round(m.salary * 0.5);
+      const cost = Math.round(S.manager.salary * severanceRate()) + Math.round(m.salary * 0.5);
       if (S.budget < cost) { toast('Non puoi permetterti il cambio (buonuscita + metà stipendio).', 'error'); return; }
       S.budget -= cost; S.manager = m;
       if (!S._seasonManagers) S._seasonManagers = [];
@@ -3044,9 +3301,6 @@
     })).concat(S.alumni || [])
       .sort((a, b) => (b.goals + b.assists) - (a.goals + a.assists) || b.apps - a.apps)
       .slice(0, 5);
-    const sparkRow = (label, values, color) => `
-      <div class="ow-spark-row"><span class="lbl">${label}</span></div>
-      ${sparklineSVG(values, color)}`;
     body.innerHTML = `
       <div class="dyn-top">${crestMarkup(S.crestShape, S.crestColors, 'ow-hero-crest')}<div class="dyn-top-title">${h[0]}</div><div class="dyn-top-sub">${h[1]}</div></div>
       <div class="dyn-panel">
@@ -3112,11 +3366,35 @@
   }
   function openReminders() {
     const items = buildReminders();
+    const canNotify = typeof Notification !== 'undefined';
     overlay(`<h2>🔔 Promemoria</h2>
       ${items.length ? items.map((r) => `<div class="ow-fin-row" style="align-items:flex-start"><span style="flex:0 0 auto">${r.icon}</span><span style="text-align:left">${r.text}</span></div>`).join('') : '<div class="ow-sub" style="text-align:center">Tutto sotto controllo, nessun promemoria al momento.</div>'}
+      ${canNotify && Notification.permission === 'default' ? `<div class="ow-sub" style="margin-top:10px">Vuoi essere avvisato anche quando non hai il gioco in primo piano (es. rinnovi in scadenza)?</div><button class="dyn-btn" id="remindersNotifyBtn" style="margin-top:6px">🔔 Avvisami anche a schermo spento</button>` : ''}
       <div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovClose">Chiudi</button></div>`);
     $('ovClose').onclick = closeOverlay;
+    const notifyBtn = $('remindersNotifyBtn');
+    if (notifyBtn) notifyBtn.onclick = async () => { try { await Notification.requestPermission(); } catch (e) {} openReminders(); };
   }
+
+  // Estende lo stesso pattern già usato per la lobby multiplayer (notifica reale quando
+  // cambia qualcosa nella stanza a tab nascosta) ai promemoria di carriera singola
+  // (buildReminders: rinnovi in scadenza, mercato di gennaio, offerte in sospeso...): un solo
+  // avviso per ogni volta che la tab torna nascosta, non uno ad ogni secondo di inattività.
+  let _remindersNotifiedThisHide = false;
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) { _remindersNotifiedThisHide = false; return; }
+    if (_remindersNotifiedThisHide) return;
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    if (!S || !S.squad) return;
+    const items = buildReminders();
+    if (!items.length) return;
+    _remindersNotifiedThisHide = true;
+    try {
+      new Notification('⚽ ' + S.club + ' — ' + items.length + ' promemoria', {
+        body: items.map((r) => r.icon + ' ' + r.text).join('\n').slice(0, 200),
+      });
+    } catch (e) {}
+  });
 
   // Classifica globale condivisa (leaderboard.php lato server): un invio a fine carriera
   // (facoltativo) e una lista consultabile in ogni momento dal topbar. Fallisce in
@@ -3576,9 +3854,65 @@
   }
 
   /* ---------------- overlay / toast ---------------- */
-  function overlay(html) { $('owOverlayModal').innerHTML = html; $('owOverlay').classList.remove('hidden'); }
+  // Selettore dei soli elementi che possono ricevere il focus da tastiera, usato sia per il
+  // focus iniziale sia per il focus trap qui sotto.
+  const FOCUSABLE_SEL = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-  function closeOverlay() { $('owOverlay').classList.add('hidden'); }
+  // Chi aveva il focus PRIMA di aprire l'overlay, per restituirglielo alla chiusura — senza,
+  // chi naviga da tastiera/screen reader si ritrova a ripartire dall'inizio della pagina ogni
+  // volta che chiude un modale.
+  let lastFocusedBeforeOverlay = null;
+  let overlayFocusTrapBound = false;
+
+  // Il modale non aveva alcun ruolo ARIA né gestione del focus: si apriva senza spostarcelo
+  // dentro (uno screen reader restava "fuori"), non intrappolava Tab al suo interno (si poteva
+  // tabulare nella pagina sottostante mentre il modale era aperto) e non lo restituiva alla
+  // chiusura. Niente Escape-to-close qui apposta: alcuni overlay (es. lo spin dopo aver già
+  // scalato il costo, o un evento narrativo a scelta obbligata) non hanno un'azione "annulla"
+  // neutra — chiuderli da fuori lascerebbe lo stato a metà (costo scalato, nessuna scelta
+  // applicata). Un tasto Escape "sicuro" richiederebbe marcare esplicitamente quali overlay
+  // sono annullabili, fuori scope per questo fix mirato al solo focus.
+  function overlay(html) {
+    const modal = $('owOverlayModal');
+    modal.innerHTML = html;
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.tabIndex = -1;
+    lastFocusedBeforeOverlay = document.activeElement;
+    $('owOverlay').classList.remove('hidden');
+    const first = modal.querySelector(FOCUSABLE_SEL);
+    (first || modal).focus({ preventScroll: true });
+    bindOverlayFocusTrap();
+  }
+
+  function closeOverlay() {
+    $('owOverlay').classList.add('hidden');
+    const modal = $('owOverlayModal');
+    modal.removeAttribute('role'); modal.removeAttribute('aria-modal');
+    if (lastFocusedBeforeOverlay && document.body.contains(lastFocusedBeforeOverlay)) {
+      lastFocusedBeforeOverlay.focus({ preventScroll: true });
+    }
+    lastFocusedBeforeOverlay = null;
+  }
+
+  // Tab/Shift+Tab restano dentro il modale finché è aperto, invece di uscire nella board
+  // sottostante. Registrato una sola volta (stesso pattern di bindBoardDelegation): controlla
+  // ad ogni pressione se l'overlay è visibile, quindi non serve ri-agganciarlo ad ogni overlay().
+  function bindOverlayFocusTrap() {
+    if (overlayFocusTrapBound) return;
+    overlayFocusTrapBound = true;
+    document.addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Tab') return;
+      const overlayEl = $('owOverlay');
+      if (!overlayEl || overlayEl.classList.contains('hidden')) return;
+      const modal = $('owOverlayModal');
+      const focusables = Array.from(modal.querySelectorAll(FOCUSABLE_SEL));
+      if (!focusables.length) return;
+      const first = focusables[0], last = focusables[focusables.length - 1];
+      if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
+      else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
+    });
+  }
 
   // Se arriva un nuovo toast mentre uno è ancora visibile, lo sostituisce subito (niente
   // coda che rallenta): resta comunque a schermo abbastanza a lungo da poterlo leggere.
