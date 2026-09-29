@@ -102,6 +102,10 @@ if (!is_array($body)) fail('JSON non valido.');
 $club = clean_name($body['club'] ?? '', 24);
 $owner = clean_name($body['owner'] ?? '', 18);
 $div = isset($body['div']) ? (int) $body['div'] : -1;
+// Da dove si è partiti (S.startDiv, già tracciato lato client per l'achievement "from_bottom"):
+// facoltativo per compatibilità con client vecchi che non lo mandano ancora, in quel caso non
+// si assume alcuna scalata (stesso comportamento di prima, nessun bonus/penalità).
+$startDiv = isset($body['startDiv']) ? (int) $body['startDiv'] : $div;
 $season = isset($body['season']) ? (int) $body['season'] : -1;
 $trophies = isset($body['trophies']) ? (int) $body['trophies'] : 0;
 $worth = isset($body['worth']) ? (float) $body['worth'] : 0;
@@ -109,6 +113,7 @@ $difficulty = clean_name($body['difficulty'] ?? '', 12);
 
 if ($club === '' || $owner === '') fail('Nome club/proprietario mancante.');
 if ($div < 0 || $div > 5) fail('Categoria non valida.');
+if ($startDiv < 0 || $startDiv > 5) $startDiv = $div;
 if ($season < 1 || $season > 60) fail('Stagione non valida.');
 if ($trophies < 0 || $trophies > 500) fail('Trofei non validi.');
 if ($worth < 0 || $worth > 1e13) fail('Valore club non valido.');
@@ -134,15 +139,18 @@ if ($tbIn) {
 }
 
 // Punteggio semplice e difficile da "barare" gonfiando un solo numero: pesa soprattutto i
-// trofei (il vero traguardo di una carriera), poi la categoria raggiunta, poi il valore
-// del club come spareggio.
+// trofei (il vero traguardo di una carriera), poi la categoria raggiunta, poi quanto si è
+// scalata la piramide dal punto di partenza (climb: chi parte già in Serie A e ci resta non
+// deve valere quanto chi ci arriva dalla Promozione), poi il valore del club come spareggio.
 $diffMult = ['facile' => 0.8, 'medio' => 1.0, 'difficile' => 1.35, 'estremo' => 1.7][$difficulty];
-$score = (int) round(($trophies * 5000 + $div * 800 + min($worth, 2e9) / 1e6) * $diffMult);
+$climb = max(0, $div - $startDiv);
+$score = (int) round(($trophies * 5000 + $div * 500 + $climb * 500 + min($worth, 2e9) / 1e6) * $diffMult);
 
 $entry = [
     'club' => $club,
     'owner' => $owner,
     'div' => $div,
+    'startDiv' => $startDiv,
     'season' => $season,
     'trophies' => $trophies,
     'worth' => $worth,

@@ -1288,7 +1288,7 @@
 
 
   /* ---------------- stato ---------------- */
-  const MAX_SEASONS = 20;
+  const MAX_SEASONS = 15;
 
   /* ---------------- settore giovanile / scouting ---------------- */
   // Un investimento persistente (4 livelli) che rende ogni spin migliore in media e più
@@ -1321,7 +1321,7 @@
     { key: 'treble', icon: '👑', title: 'Tripletta', desc: 'Vinci scudetto, Coppa Italia e Champions League nella stessa stagione.' },
     { key: 'no_releg_10', icon: '🧱', title: 'Un decennio di stabilità', desc: '10 stagioni di fila senza mai retrocedere.' },
     { key: 'legend_squad', icon: '⭐', title: 'Squadra di fenomeni', desc: 'Metti insieme 3 giocatori reali o leggende in rosa nella stessa stagione.' },
-    { key: 'dynasty_complete', icon: '🏁', title: 'Fine di un\'era', desc: 'Porta a termine tutte le 20 stagioni della dynasty.' },
+    { key: 'dynasty_complete', icon: '🏁', title: 'Fine di un\'era', desc: 'Porta a termine tutte le stagioni della dynasty.' },
     { key: 'hardcore_survivor', icon: '🔥', title: 'Sopravvissuto', desc: 'Porta a termine un\'intera dynasty in modalità Hardcore.' },
     { key: 'youth_movement', icon: '🧒', title: 'Movimento giovanile', desc: 'Vinci il campionato o ottieni una promozione con una rosa dall\'età media sotto i 23 anni.' },
     { key: 'frugal_champion', icon: '🪙', title: 'Vittoria a costo zero', desc: 'Vinci il campionato o ottieni una promozione con una rosa più debole della media di categoria.' },
@@ -1344,25 +1344,25 @@
   const DIFFICULTIES = [
     {
       key: 'facile', label: 'Facile', blurb: 'Più margine economico, avversari più abbordabili, meno imprevisti.',
-      budgetMult: 1.28, teamEffDelta: 3, injuryMult: 0.75, varianceMult: 0.88, wageMult: 0.95,
+      budgetMult: 1.28, teamEffDelta: 4, injuryMult: 0.75, varianceMult: 0.88, wageMult: 0.95,
       scoutCostMult: 0.88, sponsorMult: 1.10, mgrCostMult: 0.93, prospectMult: 1.12, promoStreakMalusMult: 0.68,
       patienceMult: 0.68, eventMult: 0.78,
     },
     {
       key: 'medio', label: 'Medio', blurb: 'Il bilanciamento classico del gioco, senza sconti né penalità.',
-      budgetMult: 0.95, teamEffDelta: -1, injuryMult: 1.06, varianceMult: 1.05, wageMult: 1.04,
+      budgetMult: 0.95, teamEffDelta: 0, injuryMult: 1.06, varianceMult: 1.05, wageMult: 1.04,
       scoutCostMult: 1.05, sponsorMult: 0.94, mgrCostMult: 1.04, prospectMult: 0.92, promoStreakMalusMult: 1.08,
       patienceMult: 1.08, eventMult: 1.08,
     },
     {
       key: 'difficile', label: 'Difficile', blurb: 'Budget più risicato, avversari più ostici, qualche imprevisto di troppo.',
-      budgetMult: 0.70, teamEffDelta: -5, injuryMult: 1.42, varianceMult: 1.26, wageMult: 1.17,
+      budgetMult: 0.70, teamEffDelta: -4, injuryMult: 1.42, varianceMult: 1.26, wageMult: 1.17,
       scoutCostMult: 1.26, sponsorMult: 0.82, mgrCostMult: 1.17, prospectMult: 0.78, promoStreakMalusMult: 1.4,
       patienceMult: 1.4, eventMult: 1.34,
     },
     {
       key: 'estremo', label: 'Estremo', blurb: 'Si parte con pochissimo, ogni partita è in salita e gli imprevisti sono la norma.',
-      budgetMult: 0.5, teamEffDelta: -9, injuryMult: 1.78, varianceMult: 1.47, wageMult: 1.31,
+      budgetMult: 0.5, teamEffDelta: -8, injuryMult: 1.78, varianceMult: 1.47, wageMult: 1.31,
       scoutCostMult: 1.52, sponsorMult: 0.69, mgrCostMult: 1.36, prospectMult: 0.58, promoStreakMalusMult: 1.82,
       patienceMult: 1.72, eventMult: 1.72,
     },

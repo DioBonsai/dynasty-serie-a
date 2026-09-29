@@ -135,6 +135,14 @@ body{
 .ow-target-pill.vertice{ border-color:var(--gold); color:var(--gold); }
 .ow-target-pill.playoff{ border-color:var(--dyn); color:var(--dyn); }
 .ow-target-pill.salvezza{ border-color:var(--bad); color:var(--bad); }
+/* Scouting report sul prossimo avversario (renderScouting, ui.js): stesso linguaggio visivo
+   delle card della board (.ow-sec), qui compresso per stare fra l'obiettivo di stagione e il
+   log partite senza aggiungere una schermata a parte. */
+.ow-scout-card{ background:var(--panel2); border:1px solid var(--line); border-radius:12px; padding:9px 12px; margin:0 0 10px; }
+.ow-scout-row{ display:flex; flex-direction:column; gap:2px; font-size:12.5px; font-weight:700; color:var(--txt); }
+.ow-scout-row + .ow-scout-row{ margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,.06); }
+.ow-scout-row small{ color:var(--muted); font-weight:600; font-size:11px; line-height:1.4; }
+.ow-scout-report span{ color:var(--dyn); }
 .cup-pill{ font-size:11px; font-weight:800; padding:6px 11px; border-radius:999px; border:1px solid var(--line); color:var(--muted); background:var(--panel); }
 .cup-pill b{ color:var(--txt); }
 /* Ogni coppa ha il suo colore anche mentre è in corso, non solo a vittoria ottenuta:

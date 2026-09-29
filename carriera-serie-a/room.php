@@ -8,6 +8,19 @@
  * dei campi, un tetto ai giocatori per stanza, scritture con lock esclusivo, pulizia
  * automatica delle stanze vecchie.
  *
+ * AUTENTICAZIONE: create/join restituiscono, oltre a `playerId` (pubblico: compare anche
+ * nello stato condiviso della stanza, usato come targetId in kick/adoptBot/trade), un
+ * `authToken` privato che NON viene mai restituito da nessun'altra chiamata (public_room lo
+ * filtra sempre). Ogni azione successiva (tutte tranne create/join) deve mandare sia
+ * `playerId` che `authToken`: senza il token giusto per quel playerId, l'azione fallisce con
+ * "Sessione non valida" — prima bastava playerId da solo, che però chiunque leggesse lo stato
+ * della stanza otteneva comunque in chiaro (hostId compreso), potendo così impersonare
+ * chiunque. Il client (ui.js) lo fa in automatico per ogni chiamata via mpApi().
+ *
+ * RATE-LIMIT: create/join/state (le uniche azioni raggiungibili senza già far parte di una
+ * stanza) sono limitate per IP, per rendere poco pratico sia il flood di stanze nuove sia il
+ * brute-force del codice a 4 caratteri.
+ *
  * POST room.php {action:'create', name, club, div, difficulty, roomName?} -> crea una stanza, ti
  *   aggiunge come host+primo giocatore
  * POST room.php {action:'join', code, name, club, div?}             -> entra in una stanza
@@ -47,7 +60,7 @@
  *   stagione successiva nella stessa stanza (fase 'done' -> 'session'), richiede che tutti
  *   abbiano scaricato (ackResult), a meno di force=true
  * POST room.php {action:'terminate', code, playerId}                 -> solo l'host: chiude la
- *   dynasty per tutti prima delle 20 stagioni (fase -> 'terminated', per sempre); ciascuno
+ *   dynasty per tutti prima delle 15 stagioni (fase -> 'terminated', per sempre); ciascuno
  *   vende il proprio club per conto suo (in locale, endDynasty in sim.js — non è mai stato
  *   compito di questo endpoint calcolare quanto vale un club)
  * POST room.php {action:'kick', code, playerId, targetId}           -> solo l'host: rimuove un
@@ -104,7 +117,7 @@ header('Cache-Control: no-store');
 
 $DIR = __DIR__;
 $MAX_PLAYERS = 6;
-// Una stanza dura tutta la dynasty (fino a 20 stagioni, MAX_SEASONS in data.js), giocata con
+// Una stanza dura tutta la dynasty (fino a 15 stagioni, MAX_SEASONS in data.js), giocata con
 // calma nel tempo libero: 24 ore sarebbero bastate solo per una singola sessione, qui serve
 // margine per settimane/mesi di inattività fra una stagione e l'altra senza perdere la stanza.
 $ROOM_TTL_SECONDS = 180 * 24 * 3600;
@@ -114,6 +127,36 @@ $CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // niente 0/O/1/I, meno e
 // da non scippare un host che sta solo simulando una stagione lunga senza pubblicare ancora
 // nulla, abbastanza poco da non lasciare la stanza bloccata per giorni.
 $HOST_INACTIVE_SECONDS = 15 * 60;
+
+// Rate-limit per IP, stesso principio di leaderboard.php/errors.php (che ce l'hanno già) ma
+// applicato qui su create/join/state — le uniche azioni raggiungibili SENZA far già parte di
+// una stanza, quindi le uniche utili per un brute-force sul codice a 4 caratteri o per un
+// flood di stanze nuove. Le altre azioni (chat/ready/trade/...) restano senza rate-limit:
+// richiedono già di essere nella stanza, e da questa versione anche l'authToken corretto.
+$CREATE_RATE_FILE = $DIR . '/room_rate_create.json';
+$JOIN_RATE_FILE = $DIR . '/room_rate_join.json';
+$STATE_RATE_FILE = $DIR . '/room_rate_state.json';
+$CREATE_RATE_WINDOW = 10; $CREATE_RATE_MAX = 1;   // 1 stanza creata ogni 10s per IP
+$JOIN_RATE_WINDOW = 5;    $JOIN_RATE_MAX = 2;      // 2 tentativi di join ogni 5s per IP
+$STATE_RATE_WINDOW = 5;   $STATE_RATE_MAX = 15;    // margine per più giocatori/tab sullo stesso IP/NAT
+
+// Finestra temporale globale (non per-IP): quando il bucket cambia, il conteggio si azzera per
+// tutti in un colpo solo — niente bisogno di scandire/scadere voci una per una ad ogni
+// richiesta, il file resta piccolo e la scrittura è O(1).
+function rate_check_window($file, $ipHash, $windowSeconds, $max) {
+    $bucket = (int) floor(time() / $windowSeconds);
+    $data = read_json_file($file, null);
+    if (!is_array($data) || !isset($data['bucket']) || $data['bucket'] !== $bucket) $data = ['bucket' => $bucket, 'counts' => []];
+    $count = ($data['counts'][$ipHash] ?? 0) + 1;
+    $data['counts'][$ipHash] = $count;
+    write_json_file_locked($file, $data);
+    return $count <= $max;
+}
+
+function client_ip_hash() {
+    $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    return substr(hash('sha256', $ip), 0, 24); // non salviamo l'IP in chiaro, stesso approccio di leaderboard.php
+}
 
 function fail($msg, $code = 400) {
     http_response_code($code);
@@ -177,6 +220,28 @@ function gen_player_id() {
     return 'p_' . bin2hex(random_bytes(6));
 }
 
+// playerId è pubblico (usato per targetId, per riferirsi ad altri giocatori in kick/trade/
+// chat) — authToken è la credenziale privata, generata solo qui, mai restituita da
+// public_room(). Le due cose insieme sono quello che prima era solo playerId da solo: prima
+// chiunque leggesse lo stato della stanza (GET, nessuna autenticazione) otteneva anche gli id
+// di tutti, hostId compreso, e poteva agire come chiunque. Ora id da solo non basta più.
+function gen_auth_token() {
+    return bin2hex(random_bytes(16));
+}
+
+// Verifica che $playerId esista nella stanza E che $authToken corrisponda al suo — restituisce
+// il giocatore (array) se sì, altrimenti null. hash_equals evita timing attack banali sul
+// confronto del token.
+function find_authed_player($room, $playerId, $authToken) {
+    if (!is_array($room) || !is_array($room['players'] ?? null) || $playerId === '' || $authToken === '') return null;
+    foreach ($room['players'] as $p) {
+        if (is_array($p) && ($p['id'] ?? null) === $playerId) {
+            return hash_equals((string) ($p['authToken'] ?? ''), (string) $authToken) ? $p : null;
+        }
+    }
+    return null;
+}
+
 function gen_room_code($alphabet) {
     $code = '';
     for ($i = 0; $i < 4; $i++) $code .= $alphabet[random_int(0, strlen($alphabet) - 1)];
@@ -198,8 +263,17 @@ function cleanup_old_rooms($dir, $ttl) {
 
 function public_room($room) {
     // Non c'è nulla di sensibile nello stato di una stanza (solo nomi club/proprietario
-    // scelti apposta per essere condivisi), quindi la si restituisce per intero.
-    return $room;
+    // scelti apposta per essere condivisi), quindi la si restituisce per intero — TRANNE
+    // players[].authToken, la credenziale privata di ciascun giocatore (vedi
+    // find_authed_player): quella non deve mai lasciare il server.
+    $safe = $room;
+    if (!empty($safe['players']) && is_array($safe['players'])) {
+        $safe['players'] = array_map(function ($p) {
+            if (is_array($p)) unset($p['authToken']);
+            return $p;
+        }, $safe['players']);
+    }
+    return $safe;
 }
 
 // Log minimo, append-only, best-effort (mai bloccante: se fallisce non deve rompere la
@@ -214,6 +288,7 @@ $method = $_SERVER['REQUEST_METHOD'];
 if ($method === 'GET') {
     $action = $_GET['action'] ?? '';
     if ($action !== 'state') fail('Azione non supportata.', 405);
+    if (!rate_check_window($STATE_RATE_FILE, client_ip_hash(), $STATE_RATE_WINDOW, $STATE_RATE_MAX)) fail('Troppe richieste, rallenta un po\'.', 429);
     $code = strtoupper(trim($_GET['code'] ?? ''));
     if ($code === '') fail('Codice stanza mancante.');
     $room = read_json_file(room_path($DIR, $code), null);
@@ -237,6 +312,7 @@ if (!is_array($body)) fail('JSON non valido.');
 $action = is_string($body['action'] ?? null) ? $body['action'] : '';
 
 if ($action === 'create') {
+    if (!rate_check_window($CREATE_RATE_FILE, client_ip_hash(), $CREATE_RATE_WINDOW, $CREATE_RATE_MAX)) fail('Puoi creare una stanza ogni pochi secondi. Riprova a breve.', 429);
     cleanup_old_rooms($DIR, $ROOM_TTL_SECONDS);
 
     $name = clean_name($body['name'] ?? '', 18);
@@ -249,6 +325,7 @@ if ($action === 'create') {
     if ($div < 0 || $div > 5) fail('Categoria non valida.');
 
     $playerId = gen_player_id();
+    $authToken = gen_auth_token();
     $now = time();
     $code = null;
     // Praticamente mai più di un tentativo (4 lettere su un alfabeto da 33 = oltre un
@@ -269,7 +346,7 @@ if ($action === 'create') {
         'hostId' => $playerId,
         'phase' => 'lobby',
         'players' => [
-            ['id' => $playerId, 'name' => $name, 'club' => $club, 'ready' => false, 'joinedAt' => $now],
+            ['id' => $playerId, 'authToken' => $authToken, 'name' => $name, 'club' => $club, 'ready' => false, 'joinedAt' => $now],
         ],
         'chat' => [],
         'hallOfFame' => [],
@@ -279,11 +356,12 @@ if ($action === 'create') {
     ];
     if (!write_json_file_locked(room_path($DIR, $code), $room)) fail('Impossibile salvare la stanza.', 500);
     log_activity($DIR, $code, 'create');
-    echo json_encode(['ok' => true, 'playerId' => $playerId, 'room' => public_room($room)]);
+    echo json_encode(['ok' => true, 'playerId' => $playerId, 'authToken' => $authToken, 'room' => public_room($room)]);
     exit;
 }
 
 if ($action === 'join') {
+    if (!rate_check_window($JOIN_RATE_FILE, client_ip_hash(), $JOIN_RATE_WINDOW, $JOIN_RATE_MAX)) fail('Troppi tentativi di ingresso, rallenta un po\'.', 429);
     // Anche l'ingresso in una stanza è un buon momento per la pulizia opportunistica: create
     // non è l'unica azione a poterla far scattare (altrimenti, se nessuno crea più stanze
     // nuove sull'hosting, le vecchie abbandonate non vengono mai più toccate).
@@ -315,19 +393,21 @@ if ($action === 'join') {
     if ($div < 0 || $div > 5) $div = (int) ($room['div'] ?? 0);
 
     $playerId = gen_player_id();
+    $authToken = gen_auth_token();
     $now = time();
-    $room['players'][] = ['id' => $playerId, 'name' => $name, 'club' => $club, 'ready' => false, 'joinedAt' => $now, 'joinDiv' => $div];
+    $room['players'][] = ['id' => $playerId, 'authToken' => $authToken, 'name' => $name, 'club' => $club, 'ready' => false, 'joinedAt' => $now, 'joinDiv' => $div];
     $room['updatedAt'] = $now;
     ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($room)); fflush($fp);
     flock($fp, LOCK_UN); fclose($fp);
     log_activity($DIR, $code, 'join');
-    echo json_encode(['ok' => true, 'playerId' => $playerId, 'room' => public_room($room)]);
+    echo json_encode(['ok' => true, 'playerId' => $playerId, 'authToken' => $authToken, 'room' => public_room($room)]);
     exit;
 }
 
 if ($action === 'rename') {
     $code = strtoupper(trim($body['code'] ?? ''));
     $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    $authToken = is_string($body['authToken'] ?? null) ? $body['authToken'] : '';
     $roomName = clean_name($body['roomName'] ?? '', 30);
     if ($code === '' || $playerId === '') fail('Richiesta non valida.');
 
@@ -338,6 +418,7 @@ if ($action === 'rename') {
     $raw = stream_get_contents($fp);
     $room = $raw ? json_decode($raw, true) : null;
     if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
+    if (!find_authed_player($room, $playerId, $authToken)) { flock($fp, LOCK_UN); fclose($fp); fail('Sessione non valida: esci e rientra nella stanza.', 403); }
     if ($room['hostId'] !== $playerId) { flock($fp, LOCK_UN); fclose($fp); fail('Solo l\'host può rinominare la stanza.', 403); }
     $room['name'] = $roomName !== '' ? $roomName : null;
     $room['updatedAt'] = time();
@@ -350,6 +431,7 @@ if ($action === 'rename') {
 if ($action === 'announce') {
     $code = strtoupper(trim($body['code'] ?? ''));
     $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    $authToken = is_string($body['authToken'] ?? null) ? $body['authToken'] : '';
     // Un annuncio non è un nome ma nemmeno un messaggio di chat "usa e getta": stesso testo
     // permissivo della chat (clean_chat_text, non clean_name — niente più punteggiatura
     // stroncata), ma un unico slot che resta fisso finché l'host non lo cambia o lo svuota.
@@ -363,6 +445,7 @@ if ($action === 'announce') {
     $raw = stream_get_contents($fp);
     $room = $raw ? json_decode($raw, true) : null;
     if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
+    if (!find_authed_player($room, $playerId, $authToken)) { flock($fp, LOCK_UN); fclose($fp); fail('Sessione non valida: esci e rientra nella stanza.', 403); }
     if ($room['hostId'] !== $playerId) { flock($fp, LOCK_UN); fclose($fp); fail('Solo l\'host può fissare un annuncio.', 403); }
     $room['announcement'] = $text !== '' ? $text : null;
     $room['updatedAt'] = time();
@@ -375,6 +458,7 @@ if ($action === 'announce') {
 if ($action === 'chat') {
     $code = strtoupper(trim($body['code'] ?? ''));
     $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    $authToken = is_string($body['authToken'] ?? null) ? $body['authToken'] : '';
     $text = clean_chat_text($body['text'] ?? '', 200);
     if ($code === '' || $playerId === '' || $text === '') fail('Richiesta non valida.');
 
@@ -385,9 +469,8 @@ if ($action === 'chat') {
     $raw = stream_get_contents($fp);
     $room = $raw ? json_decode($raw, true) : null;
     if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
-    $sender = null;
-    foreach ($room['players'] as $p) { if ($p['id'] === $playerId) { $sender = $p; break; } }
-    if (!$sender) { flock($fp, LOCK_UN); fclose($fp); fail('Non fai parte di questa stanza.', 404); }
+    $sender = find_authed_player($room, $playerId, $authToken);
+    if (!$sender) { flock($fp, LOCK_UN); fclose($fp); fail('Sessione non valida: esci e rientra nella stanza.', 403); }
     if (!isset($room['chat']) || !is_array($room['chat'])) $room['chat'] = [];
     $room['chat'][] = ['id' => $playerId, 'name' => $sender['name'], 'club' => $sender['club'], 'text' => $text, 'at' => time()];
     // Solo gli ultimi 60 messaggi: una chat di stanza, non un archivio — tiene la stanza
@@ -403,6 +486,7 @@ if ($action === 'chat') {
 if ($action === 'ready') {
     $code = strtoupper(trim($body['code'] ?? ''));
     $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    $authToken = is_string($body['authToken'] ?? null) ? $body['authToken'] : '';
     $ready = !empty($body['ready']);
     // Validazione tollerante, stesso criterio già usato lato client per un file di carriera
     // importato (handleImportSaveFile in ui.js): basta che abbia una rosa e un nome club.
@@ -417,6 +501,7 @@ if ($action === 'ready') {
     $raw = stream_get_contents($fp);
     $room = $raw ? json_decode($raw, true) : null;
     if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
+    if (!find_authed_player($room, $playerId, $authToken)) { flock($fp, LOCK_UN); fclose($fp); fail('Sessione non valida: esci e rientra nella stanza.', 403); }
     $prevPhase = $room['phase'] ?? 'lobby';
     if ($prevPhase === 'done') { flock($fp, LOCK_UN); fclose($fp); fail('La stanza ha già una stagione pronta.', 409); }
     if ($prevPhase === 'terminated') { flock($fp, LOCK_UN); fclose($fp); fail('La dynasty di questa stanza è stata conclusa dall\'host.', 409); }
@@ -463,6 +548,7 @@ if ($action === 'ready') {
 if ($action === 'startSession') {
     $code = strtoupper(trim($body['code'] ?? ''));
     $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    $authToken = is_string($body['authToken'] ?? null) ? $body['authToken'] : '';
     $force = !empty($body['force']);
     if ($code === '' || $playerId === '') fail('Richiesta non valida.');
 
@@ -473,6 +559,7 @@ if ($action === 'startSession') {
     $raw = stream_get_contents($fp);
     $room = $raw ? json_decode($raw, true) : null;
     if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
+    if (!find_authed_player($room, $playerId, $authToken)) { flock($fp, LOCK_UN); fclose($fp); fail('Sessione non valida: esci e rientra nella stanza.', 403); }
     if ($room['hostId'] !== $playerId) { flock($fp, LOCK_UN); fclose($fp); fail('Solo l\'host può avviare la sessione.', 403); }
     $phase = $room['phase'] ?? 'lobby';
     if (!in_array($phase, ['lobby', 'allReadyLobby'], true)) { flock($fp, LOCK_UN); fclose($fp); fail('La sessione è già stata avviata.', 409); }
@@ -491,6 +578,7 @@ if ($action === 'startSession') {
 if ($action === 'pushMatchday') {
     $code = strtoupper(trim($body['code'] ?? ''));
     $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    $authToken = is_string($body['authToken'] ?? null) ? $body['authToken'] : '';
     $matchday = isset($body['matchday']) ? (int) $body['matchday'] : -1;
     $total = isset($body['total']) ? (int) $body['total'] : -1;
     $groups = $body['groups'] ?? null;
@@ -503,6 +591,7 @@ if ($action === 'pushMatchday') {
     $raw = stream_get_contents($fp);
     $room = $raw ? json_decode($raw, true) : null;
     if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
+    if (!find_authed_player($room, $playerId, $authToken)) { flock($fp, LOCK_UN); fclose($fp); fail('Sessione non valida: esci e rientra nella stanza.', 403); }
     if ($room['hostId'] !== $playerId) { flock($fp, LOCK_UN); fclose($fp); fail('Solo l\'host può avanzare la simulazione.', 403); }
     $phase = $room['phase'] ?? 'lobby';
     if ($phase === 'done') { flock($fp, LOCK_UN); fclose($fp); fail('La stanza ha già una stagione pronta.', 409); }
@@ -533,6 +622,7 @@ if ($action === 'pushMatchday') {
 if ($action === 'submitResult') {
     $code = strtoupper(trim($body['code'] ?? ''));
     $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    $authToken = is_string($body['authToken'] ?? null) ? $body['authToken'] : '';
     $results = $body['results'] ?? null;
     if ($code === '' || $playerId === '' || !is_array($results)) fail('Richiesta non valida.');
 
@@ -543,6 +633,7 @@ if ($action === 'submitResult') {
     $raw = stream_get_contents($fp);
     $room = $raw ? json_decode($raw, true) : null;
     if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
+    if (!find_authed_player($room, $playerId, $authToken)) { flock($fp, LOCK_UN); fclose($fp); fail('Sessione non valida: esci e rientra nella stanza.', 403); }
     if ($room['hostId'] !== $playerId) { flock($fp, LOCK_UN); fclose($fp); fail('Solo l\'host può pubblicare il risultato.', 403); }
     $phase = $room['phase'] ?? 'lobby';
     if ($phase === 'done') { flock($fp, LOCK_UN); fclose($fp); fail('La stanza ha già una stagione pronta.', 409); }
@@ -608,7 +699,7 @@ if ($action === 'submitResult') {
         $seasonNum = null;
         foreach ($results as $ctx) { if (is_array($ctx) && isset($ctx['season'])) $seasonNum = max($seasonNum ?? 0, $ctx['season']); }
         $room['seasonAwards'][] = ['season' => $seasonNum, 'topScorer' => $topScorer, 'bestManager' => $bestManager, 'surprise' => $surprise];
-        // Stesso tetto storico dell'albo d'oro: una stanza che dura 20 stagioni non deve
+        // Stesso tetto storico dell'albo d'oro: una stanza che dura 15 stagioni non deve
         // accumulare un file all'infinito.
         if (count($room['seasonAwards']) > 20) $room['seasonAwards'] = array_slice($room['seasonAwards'], -20);
     }
@@ -622,6 +713,7 @@ if ($action === 'submitResult') {
 if ($action === 'ackResult') {
     $code = strtoupper(trim($body['code'] ?? ''));
     $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    $authToken = is_string($body['authToken'] ?? null) ? $body['authToken'] : '';
     if ($code === '' || $playerId === '') fail('Richiesta non valida.');
 
     $path = room_path($DIR, $code);
@@ -631,8 +723,12 @@ if ($action === 'ackResult') {
     $raw = stream_get_contents($fp);
     $room = $raw ? json_decode($raw, true) : null;
     if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); echo json_encode(['ok' => true]); exit; }
-    foreach ($room['players'] as &$p) { if ($p['id'] === $playerId) { $p['acked'] = true; break; } }
-    unset($p);
+    // Azione a basso rischio (solo un flag "ho visto"), stesso comportamento tollerante di
+    // sempre (non fallisce mai) — ma senza authToken valido non tocca lo stato di nessuno.
+    if (find_authed_player($room, $playerId, $authToken)) {
+        foreach ($room['players'] as &$p) { if ($p['id'] === $playerId) { $p['acked'] = true; break; } }
+        unset($p);
+    }
     $room['updatedAt'] = time();
     ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($room)); fflush($fp);
     flock($fp, LOCK_UN); fclose($fp);
@@ -643,6 +739,7 @@ if ($action === 'ackResult') {
 if ($action === 'nextRound') {
     $code = strtoupper(trim($body['code'] ?? ''));
     $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    $authToken = is_string($body['authToken'] ?? null) ? $body['authToken'] : '';
     $force = !empty($body['force']);
     if ($code === '' || $playerId === '') fail('Richiesta non valida.');
 
@@ -653,6 +750,7 @@ if ($action === 'nextRound') {
     $raw = stream_get_contents($fp);
     $room = $raw ? json_decode($raw, true) : null;
     if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
+    if (!find_authed_player($room, $playerId, $authToken)) { flock($fp, LOCK_UN); fclose($fp); fail('Sessione non valida: esci e rientra nella stanza.', 403); }
     if ($room['hostId'] !== $playerId) { flock($fp, LOCK_UN); fclose($fp); fail('Solo l\'host può avviare la prossima stagione.', 403); }
     $phase = $room['phase'] ?? 'lobby';
     if ($phase !== 'done') { flock($fp, LOCK_UN); fclose($fp); fail('Non c\'è nessun resoconto da chiudere.', 409); }
@@ -675,6 +773,7 @@ if ($action === 'nextRound') {
 if ($action === 'terminate') {
     $code = strtoupper(trim($body['code'] ?? ''));
     $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    $authToken = is_string($body['authToken'] ?? null) ? $body['authToken'] : '';
     if ($code === '' || $playerId === '') fail('Richiesta non valida.');
 
     $path = room_path($DIR, $code);
@@ -684,6 +783,7 @@ if ($action === 'terminate') {
     $raw = stream_get_contents($fp);
     $room = $raw ? json_decode($raw, true) : null;
     if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
+    if (!find_authed_player($room, $playerId, $authToken)) { flock($fp, LOCK_UN); fclose($fp); fail('Sessione non valida: esci e rientra nella stanza.', 403); }
     if ($room['hostId'] !== $playerId) { flock($fp, LOCK_UN); fclose($fp); fail('Solo l\'host può terminare la dynasty.', 403); }
     if (($room['phase'] ?? 'lobby') === 'terminated') { flock($fp, LOCK_UN); fclose($fp); fail('La dynasty è già stata conclusa.', 409); }
     // Fase finale, senza ritorno: nessun'altra azione di gioco cambia più questa stanza da
@@ -703,6 +803,7 @@ if ($action === 'terminate') {
 if ($action === 'kick') {
     $code = strtoupper(trim($body['code'] ?? ''));
     $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    $authToken = is_string($body['authToken'] ?? null) ? $body['authToken'] : '';
     $targetId = is_string($body['targetId'] ?? null) ? $body['targetId'] : '';
     if ($code === '' || $playerId === '' || $targetId === '') fail('Richiesta non valida.');
     if ($targetId === $playerId) fail('Non puoi espellere te stesso: usa "Esci dalla stanza".');
@@ -714,6 +815,7 @@ if ($action === 'kick') {
     $raw = stream_get_contents($fp);
     $room = $raw ? json_decode($raw, true) : null;
     if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
+    if (!find_authed_player($room, $playerId, $authToken)) { flock($fp, LOCK_UN); fclose($fp); fail('Sessione non valida: esci e rientra nella stanza.', 403); }
     if ($room['hostId'] !== $playerId) { flock($fp, LOCK_UN); fclose($fp); fail('Solo l\'host può espellere un giocatore.', 403); }
     if (!in_array($targetId, array_column($room['players'], 'id'), true)) { flock($fp, LOCK_UN); fclose($fp); fail('Giocatore non trovato in questa stanza.', 404); }
     $room['players'] = array_values(array_filter($room['players'], function ($p) use ($targetId) { return $p['id'] !== $targetId; }));
@@ -736,6 +838,7 @@ if ($action === 'kick') {
 if ($action === 'adoptBot') {
     $code = strtoupper(trim($body['code'] ?? ''));
     $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    $authToken = is_string($body['authToken'] ?? null) ? $body['authToken'] : '';
     $targetId = is_string($body['targetId'] ?? null) ? $body['targetId'] : '';
     if ($code === '' || $playerId === '' || $targetId === '') fail('Richiesta non valida.');
     if ($targetId === $playerId) fail('Non puoi adottare il tuo stesso club: usa "Esci dalla stanza" se vuoi lasciare.');
@@ -747,6 +850,7 @@ if ($action === 'adoptBot') {
     $raw = stream_get_contents($fp);
     $room = $raw ? json_decode($raw, true) : null;
     if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
+    if (!find_authed_player($room, $playerId, $authToken)) { flock($fp, LOCK_UN); fclose($fp); fail('Sessione non valida: esci e rientra nella stanza.', 403); }
     if ($room['hostId'] !== $playerId) { flock($fp, LOCK_UN); fclose($fp); fail('Solo l\'host può adottare un club rimasto senza presidente.', 403); }
     $phase = $room['phase'] ?? 'lobby';
     if (in_array($phase, ['done', 'terminated'], true)) { flock($fp, LOCK_UN); fclose($fp); fail('Non si può adottare un club in questa fase della stanza.', 409); }
@@ -776,6 +880,7 @@ if ($action === 'adoptBot') {
 if ($action === 'claimHost') {
     $code = strtoupper(trim($body['code'] ?? ''));
     $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    $authToken = is_string($body['authToken'] ?? null) ? $body['authToken'] : '';
     if ($code === '' || $playerId === '') fail('Richiesta non valida.');
 
     $path = room_path($DIR, $code);
@@ -785,7 +890,7 @@ if ($action === 'claimHost') {
     $raw = stream_get_contents($fp);
     $room = $raw ? json_decode($raw, true) : null;
     if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
-    if (!in_array($playerId, array_column($room['players'], 'id'), true)) { flock($fp, LOCK_UN); fclose($fp); fail('Non fai parte di questa stanza.', 404); }
+    if (!find_authed_player($room, $playerId, $authToken)) { flock($fp, LOCK_UN); fclose($fp); fail('Sessione non valida: esci e rientra nella stanza.', 403); }
     if ($room['hostId'] === $playerId) { flock($fp, LOCK_UN); fclose($fp); echo json_encode(['ok' => true, 'room' => public_room($room)]); exit; }
     $hostStillHere = in_array($room['hostId'], array_column($room['players'], 'id'), true);
     $inactiveLongEnough = (time() - ($room['updatedAt'] ?? 0)) > $HOST_INACTIVE_SECONDS;
@@ -833,6 +938,7 @@ function clean_player_snapshot($p) {
 if ($action === 'proposeTrade') {
     $code = strtoupper(trim($body['code'] ?? ''));
     $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    $authToken = is_string($body['authToken'] ?? null) ? $body['authToken'] : '';
     $targetId = is_string($body['targetId'] ?? null) ? $body['targetId'] : '';
     $playerName = clean_name($body['playerName'] ?? '', 40);
     $fee = isset($body['fee']) ? (float) $body['fee'] : -1;
@@ -854,8 +960,8 @@ if ($action === 'proposeTrade') {
     $raw = stream_get_contents($fp);
     $room = $raw ? json_decode($raw, true) : null;
     if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
+    if (!find_authed_player($room, $playerId, $authToken)) { flock($fp, LOCK_UN); fclose($fp); fail('Sessione non valida: esci e rientra nella stanza.', 403); }
     $players = array_column($room['players'], null, 'id');
-    if (!isset($players[$playerId])) { flock($fp, LOCK_UN); fclose($fp); fail('Non fai parte di questa stanza.', 404); }
     if (!isset($players[$targetId]) || !empty($players[$targetId]['bot'])) { flock($fp, LOCK_UN); fclose($fp); fail('Destinatario non trovato o non più in gioco.', 404); }
     $phase = $room['phase'] ?? 'lobby';
     if (!in_array($phase, ['session', 'readyForSim', 'lobby', 'allReadyLobby'], true)) { flock($fp, LOCK_UN); fclose($fp); fail('Le trattative si fanno solo in dirigenza, non a simulazione in corso.', 409); }
@@ -887,6 +993,7 @@ if ($action === 'proposeTrade') {
 if ($action === 'respondTrade') {
     $code = strtoupper(trim($body['code'] ?? ''));
     $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    $authToken = is_string($body['authToken'] ?? null) ? $body['authToken'] : '';
     $tradeId = is_string($body['tradeId'] ?? null) ? $body['tradeId'] : '';
     $response = is_string($body['response'] ?? null) ? $body['response'] : '';
     if ($code === '' || $playerId === '' || $tradeId === '' || !in_array($response, ['accept', 'reject', 'counter', 'cancel'], true)) fail('Richiesta non valida.');
@@ -898,6 +1005,7 @@ if ($action === 'respondTrade') {
     $raw = stream_get_contents($fp);
     $room = $raw ? json_decode($raw, true) : null;
     if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); fail('Stanza non trovata.', 404); }
+    if (!find_authed_player($room, $playerId, $authToken)) { flock($fp, LOCK_UN); fclose($fp); fail('Sessione non valida: esci e rientra nella stanza.', 403); }
     if (!isset($room['trades']) || !is_array($room['trades'])) $room['trades'] = [];
     $idx = null;
     foreach ($room['trades'] as $i => $t) { if (($t['id'] ?? null) === $tradeId) { $idx = $i; break; } }
@@ -955,6 +1063,7 @@ if ($action === 'respondTrade') {
 if ($action === 'leave') {
     $code = strtoupper(trim($body['code'] ?? ''));
     $playerId = is_string($body['playerId'] ?? null) ? $body['playerId'] : '';
+    $authToken = is_string($body['authToken'] ?? null) ? $body['authToken'] : '';
     if ($code === '' || $playerId === '') fail('Richiesta non valida.');
 
     $path = room_path($DIR, $code);
@@ -964,6 +1073,11 @@ if ($action === 'leave') {
     $raw = stream_get_contents($fp);
     $room = $raw ? json_decode($raw, true) : null;
     if (!is_array($room)) { flock($fp, LOCK_UN); fclose($fp); echo json_encode(['ok' => true]); exit; }
+    // Prima non c'era ALCUNA verifica qui: chiunque conoscesse un playerId (esposto a tutti
+    // via lo stato pubblico della stanza) poteva far uscire un altro giocatore senza essere
+    // host né quel giocatore. Risposta lenient (ok:true) se il token non torna, stesso
+    // principio "non deve mai rompersi" di questa azione — semplicemente non fa nulla.
+    if (!find_authed_player($room, $playerId, $authToken)) { flock($fp, LOCK_UN); fclose($fp); echo json_encode(['ok' => true]); exit; }
     $room['players'] = array_values(array_filter($room['players'], function ($p) use ($playerId) { return $p['id'] !== $playerId; }));
     if (!count($room['players'])) {
         // L'ultimo a uscire si porta via la stanza.

@@ -586,6 +586,12 @@
       const pool = sameRole.slice(0, Math.max(1, Math.ceil(sameRole.length * 0.3)));
       return pool[rnd(pool.length)].i;
     };
+    // Voci di mercato: solo i trasferimenti che coinvolgono un giocatore sopra una certa
+    // soglia (78+, un nome che si nota) finiscono in ctx._marketRumors — mostrate poi nel
+    // riassunto "cosa è cambiato" a inizio stagione (ctx._seasonRecap, vedi advance()). Non è
+    // una vera lista "obiettivi seguiti" (non esiste ancora una rosa avversaria sfogliabile
+    // per i club minori, vedi POOLS), solo colore su cosa si è mosso fra i rivali quest'estate.
+    const rumors = [];
     for (let i = 0; i < transferCount; i++) {
       const a = pick(allClubs), b = pick(allClubs);
       if (a === b) continue;
@@ -597,9 +603,14 @@
       if (idxB < 0) continue;
       const playerB = rosterB[idxB];
       if (Math.abs(ovrOf(playerA, a.kind) - ovrOf(playerB, b.kind)) > SWAP_OVR_TOLERANCE) continue;
+      const ovrA = ovrOf(playerA, a.kind), ovrB = ovrOf(playerB, b.kind);
+      if (ovrA >= 78) rumors.push({ player: playerA.n, ovr: ovrA, from: a.name, to: b.name });
+      if (ovrB >= 78) rumors.push({ player: playerB.n, ovr: ovrB, from: b.name, to: a.name });
       rosterA[idxA] = convertTo(playerB, a.kind);
       rosterB[idxB] = convertTo(playerA, b.kind);
     }
+    rumors.sort((x, y) => y.ovr - x.ovr);
+    ctx._marketRumors = rumors.length ? rumors.slice(0, 2) : null;
     // ---- invecchiamento: ogni giocatore di ogni rosa sbloccata invecchia di un anno e
     // sale o scende di overall in base all'età, con la stessa curva (e lo stesso tetto di
     // crescita) della nostra rosa — succede anche a chi non è mai passato per il nostro
@@ -1031,6 +1042,13 @@
 
   const finalYear = (p) => (p.yrs || 0) <= 1;   // ultimo anno di contratto -> rinnova o lo perdi a zero
 
+  // Bandiera del club: chi è in rosa da almeno FLAG_TENURE_SEASONS stagioni piene. Solo un
+  // badge + una reazione dei tifosi se lo vendi (vedi handler .ow-x in ui.js) — niente bonus
+  // di rendimento in campo, per non rendere "tenerlo per forza" la scelta numericamente
+  // ottimale rispetto a una rosa costruita per meriti sportivi.
+  const FLAG_TENURE_SEASONS = 5;
+  const isClubFlag = (p, ctx = S) => (ctx.season - (p.joinedSeason != null ? p.joinedSeason : ctx.season)) >= FLAG_TENURE_SEASONS;
+
   // Cosa chiede per rinnovare: il suo stipendio di mercato per il suo rating (spesso
   // migliorato) più un premio più alto per i giovani talenti. I giocatori più anziani
   // chiedono di meno, e un veterano il cui valore di mercato è ormai sceso sotto lo
@@ -1443,7 +1461,11 @@
 
   function expectedPos(ctx = S) {
     const mine = squadStr(ctx) + mgrBonus(ctx);
-    return 1 + ctx.opps.filter((o) => o.s > mine).length;
+    // Le aspettative (obiettivo di stagione + gradimento proprietario a fine anno, endSeason)
+    // contavano ogni rivale anche solo di un soffio più forte: un margine di tolleranza (un
+    // rivale deve essere chiaramente più forte, non solo pari) abbassa leggermente l'asticella,
+    // così un piazzamento in linea con la vera forza della rosa non delude quasi mai i tifosi.
+    return 1 + ctx.opps.filter((o) => o.s > mine + 1.5).length;
   }
 
   // Dove finiresti al ritmo di punti attuale (pre-stagione: proiettato sulla forza della rosa).
@@ -1631,7 +1653,7 @@
       scoutLevel: 0, scoutProspects: [], scoutProspectSeason: 0,
       market: null, marketSeenB: div >= 4, marketSeenA: div >= 5,
       formation: '433', tacticStyle: { ...DEFAULT_TACTIC_STYLE }, turboMode: false,
-      maxSeasons: [8, 12, 20].includes(seasons) ? seasons : MAX_SEASONS,
+      maxSeasons: [8, 12, 15].includes(seasons) ? seasons : MAX_SEASONS,
       stadiumName: null, stadiumRecordAtt: 0, stadiumRecordSeason: null,
       hardcore: !!hardcore, youthSquad: [], youthSquadSeason: 0,
     };
@@ -1802,7 +1824,7 @@
     // modesto con cui era partito.
     ctx.seasonTargetInfo = seasonTarget(ctx);
     if (local) {
-      show('owSeasonScreen'); $('owLog').innerHTML = ''; renderHud(); renderCups(); renderSeasonTarget(); saveGame();
+      show('owSeasonScreen'); $('owLog').innerHTML = ''; renderHud(); renderCups(); renderSeasonTarget(); renderScouting(); saveGame();
       toast('🎯 Obiettivo di stagione: ' + ctx.seasonTargetInfo.label + '.');
     }
   }
@@ -2003,14 +2025,36 @@
     // così le due notizie non capitano mai lo stesso giorno.
     const motmSteps = [0.2, 0.4, 0.6, 0.8];
     if (motmSteps.some((f) => ctx.played === Math.round(gp(ctx) * f))) maybePlayerOfMonth(ctx);
-    if (local && !BULK_SIM) { renderHud(); saveGame(); }
+    if (local && !BULK_SIM) { renderHud(); renderScouting(); saveGame(); }
     // Un evento narrativo, quando scatta, apre un popup che il giocatore deve chiudere
     // esplicitamente (X o un bottone/una scelta): mette in pausa la stagione esattamente
     // come il mercato di gennaio, il resto (mercato invernale/fine stagione) riprende solo
     // alla chiusura del popup, in checkSeasonMilestones().
     if (local && !BULK_SIM && maybeNarrativeEvent(ctx)) return;
     if (local && !BULK_SIM && maybeMatchRecap(ctx, row)) return;
+    if (local && !BULK_SIM && maybeRivalryPrompt(ctx, row)) return;
     checkSeasonMilestones(ctx);
+  }
+
+  // Dopo una batosta pesante (scarto di almeno 3 gol) contro un club che non è già una
+  // rivalità (derby storico, DERBIES/data.js, o "nata in campo" per vicinanza in classifica,
+  // endSeason) offre di segnarlo come rivalità personale — riusa lo stesso ctx.rivalries già
+  // letto in simMatch per il bonus di intensità (umore in palio + storico dei confronti),
+  // nessun nuovo meccanismo da mantenere, solo un secondo modo di finirci dentro: la scelta
+  // del giocatore, non solo la classifica. Raro per costruzione (tetto a parte da
+  // maybeMatchRecap, una batosta è un evento diverso da una gara in bilico) e mai due volte
+  // per lo stesso club.
+  function maybeRivalryPrompt(ctx, row) {
+    if (ctx.turboMode) return false;
+    if (row.res !== 'L' || (row.ga - row.gf) < 3) return false;
+    if (row.derby) return false;
+    if (!ctx.rivalries) ctx.rivalries = [];
+    if (ctx.rivalries.indexOf(row.opp) !== -1) return false;
+    if ((ctx._rivalryPromptCountSeason || 0) >= 2) return false;
+    ctx._rivalryPromptCountSeason = (ctx._rivalryPromptCountSeason || 0) + 1;
+    ctx._pause = true;
+    openRivalryPromptOverlay(row, ctx);
+    return true;
   }
 
   // Un mini-resoconto post-partita con una vera decisione, non solo il risultato: solo per le
@@ -2065,15 +2109,47 @@
   function simToEnd(ctx = S) {
     if (!isClubCtx(ctx)) ctx = S;
     BULK_SIM = true;
+    const bulkStartIdx = (ctx.results || []).length;
     while (ctx.seasonActive && ctx.played < gp(ctx) && !ctx._pause) { const b = ctx.played; simMatch(ctx); if (ctx._pause) break; if (ctx.played === b) break; }
     BULK_SIM = false;
     // Un solo render del log/HUD/coppe alla fine, invece di uno per ciascuna partita appena
     // simulata: stesso risultato visivo, molto più leggero. Solo se siamo ancora sullo
     // schermo di stagione (season non ancora terminata: endSeason ha già mostrato altro).
     if (ctx === S) {
-      if (ctx.seasonActive) { $('owLog').innerHTML = ''; (ctx.results || []).forEach(logMatch); renderHud(); renderCups(); }
+      if (ctx.seasonActive) {
+        $('owLog').innerHTML = ''; (ctx.results || []).forEach(logMatch); renderHud(); renderCups(); renderScouting();
+        // "Simula fino a fine stagione" salta tutto il colore partita per partita: un digest
+        // dei momenti salienti SOLO di questo blocco (bulkStartIdx in poi, non tutta la
+        // stagione) recupera un po' di narrativa anche a velocità alta, senza dover mostrare
+        // ogni singolo risultato. Solo se il ciclo si è fermato perché le partite sono finite
+        // per davvero (season ancora attiva ma nessun'altra causa) — se invece si è fermato
+        // per una pausa vera (mercato di gennaio, checkSeasonMilestones), quella ha già aperto
+        // il suo overlay: mostrare anche il digest lo sovrascriverebbe, perdendo il mercato.
+        if (!ctx._pause) {
+          const digest = buildBulkDigest((ctx.results || []).slice(bulkStartIdx));
+          if (digest && digest.length) openBulkDigestOverlay(digest);
+        }
+      }
       saveGame();
     }
+  }
+
+  // Vedi simToEnd: qualche riga di colore su un blocco di partite saltate in blocco, non un
+  // resoconto completo — goleade/batoste marcate, i derby del blocco, il bilancio numerico.
+  function buildBulkDigest(rows) {
+    if (!rows || !rows.length) return null;
+    const items = [];
+    let biggestWin = null, biggestLoss = null;
+    rows.forEach((row) => {
+      if (row.res === 'W' && (!biggestWin || (row.gf - row.ga) > (biggestWin.gf - biggestWin.ga))) biggestWin = row;
+      if (row.res === 'L' && (!biggestLoss || (row.ga - row.gf) > (biggestLoss.ga - biggestLoss.gf))) biggestLoss = row;
+      if (row.derby) items.push({ icon: row.res === 'W' ? '🔥' : row.res === 'L' ? '💔' : '🤝', text: 'Derby vs ' + row.opp + ': ' + row.gf + '-' + row.ga });
+    });
+    if (biggestWin && (biggestWin.gf - biggestWin.ga) >= 3) items.unshift({ icon: '🎉', text: 'Goleada vs ' + biggestWin.opp + ': ' + biggestWin.gf + '-' + biggestWin.ga });
+    if (biggestLoss && (biggestLoss.ga - biggestLoss.gf) >= 3) items.unshift({ icon: '😬', text: 'Batosta vs ' + biggestLoss.opp + ': ' + biggestLoss.gf + '-' + biggestLoss.ga });
+    const wins = rows.filter((r) => r.res === 'W').length, losses = rows.filter((r) => r.res === 'L').length, draws = rows.length - wins - losses;
+    items.push({ icon: '📊', text: rows.length + ' partit' + (rows.length === 1 ? 'a' : 'e') + ': ' + wins + 'V ' + draws + 'N ' + losses + 'P' });
+    return items.slice(0, 4);
   }
 
   // Un evento narrativo casuale ogni tanto fra una partita e l'altra (mai durante la
@@ -2589,7 +2665,7 @@
         // dell'utente): il bottone "Gioca prossima partita" diventa "Gioca la prossima gara di
         // playoff" (renderHud, ui.js), il log si ricostruisce per intero nel caso si sia
         // arrivati qui con "Simula fino a fine stagione" (che durante BULK_SIM non logga).
-        $('owLog').innerHTML = ''; (ctx.results || []).forEach(logMatch); renderCups(); renderHud(); renderSeasonTarget();
+        $('owLog').innerHTML = ''; (ctx.results || []).forEach(logMatch); renderCups(); renderHud(); renderSeasonTarget(); renderScouting();
         saveGame();
         return;
       } else {
@@ -3000,8 +3076,10 @@
     // Riassunto "cosa è cambiato" a inizio stagione: null se non c'è nulla di rilevante da
     // dire (niente rinnovi scaduti, nessuno calato vistosamente, nessun rivale rinforzato) —
     // in quel caso si salta dritti in Dirigenza come sempre, invece di un popup vuoto.
-    ctx._seasonRecap = (decliningPlayers.length || risingRivals.length || freed.length)
-      ? { decliningPlayers, risingRivals, freedContracts: freed.slice() } : null;
+    const marketRumors = ctx._marketRumors || [];
+    ctx._seasonRecap = (decliningPlayers.length || risingRivals.length || freed.length || marketRumors.length)
+      ? { decliningPlayers, risingRivals, freedContracts: freed.slice(), marketRumors } : null;
+    ctx._marketRumors = null;
     if (local) {
       // Modalità veloce: chi è a fine carriera resta "un'altra stagione" in automatico (stesso
       // esito di default già offerto per primo nel popup normale) invece di fermarsi a
