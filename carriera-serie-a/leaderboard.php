@@ -9,9 +9,12 @@
  * attaccante motivato (nessun endpoint pubblico scrivibile lo è, senza login reale),
  * ma è sufficiente contro spam/abuso occasionale.
  *
- * GET  leaderboard.php            -> le migliori 10 carriere (JSON)
+ * GET  leaderboard.php            -> le migliori carriere (JSON), ciascuna con `boardSeason`
+ *                                    (vedi get_leaderboard_season sotto), più `currentSeason`
+ *                                    a parte per sapere qual è quella "in corso"
  * POST leaderboard.php {body JSON}-> invia una carriera (rifiutata se invalida o troppo
- *                                    frequente dallo stesso IP)
+ *                                    frequente dallo stesso IP), etichettata in automatico con
+ *                                    la stagione di classifica corrente
  */
 
 header('Content-Type: application/json; charset=utf-8');
@@ -24,12 +27,28 @@ require_once __DIR__ . '/storage.php';
 // automatico (mai eliminato) se l'estensione non c'è. Vedi storage.php per i dettagli.
 $SQLITE_FILE = __DIR__ . '/data.sqlite';
 $DATA_FILE = __DIR__ . '/leaderboard_data.json';
+$SEASON_FILE = __DIR__ . '/leaderboard_season_data.json';
 $RATE_FILE = __DIR__ . '/leaderboard_rate.json';
 $MAX_ENTRIES = 100;      // quante carriere restano salvate (le migliori per punteggio)
 $RETURN_TOP = 50;        // quante ne restituisce la GET (il client filtra per difficoltà/categoria
                          // lato suo, vedi showGlobalLeaderboard in ui.js — deve avere abbastanza
                          // scelta oltre alla sola top 10 assoluta, non solo le migliori in assoluto)
 $RATE_LIMIT_SECONDS = 300; // un invio ogni 5 minuti per IP
+
+// Stagione della CLASSIFICA (boardSeason): un concetto diverso da `season` sull'entry (quella
+// è la stagione IN carriera, S.season, a cui la dynasty inviata era arrivata). boardSeason
+// esiste per poter "chiudere" ogni tanto la classifica e farne ripartire una nuova, senza
+// perdere lo storico: tenuto come contatore condiviso via lo stesso storage_read_all/write_all
+// generico già usato per le voci. La primissima volta che questo endpoint gira con questo
+// concetto (il contatore non esiste ancora da nessuna parte) si parte da 2, non da 1: tutto
+// quello già salvato finora non ha un boardSeason esplicito e viene trattato come Stagione 1
+// (vedi il fallback qui sotto), le carriere inviate da questo momento in poi sono Stagione 2.
+function get_leaderboard_season($sqliteFile, $seasonFile) {
+    $data = storage_read_all($sqliteFile, $seasonFile, 'leaderboard_season', null);
+    if (is_array($data) && isset($data['current'])) return (int) $data['current'];
+    storage_write_all($sqliteFile, $seasonFile, 'leaderboard_season', ['current' => 2]);
+    return 2;
+}
 
 function fail($msg, $code = 400) {
     http_response_code($code);
@@ -75,8 +94,12 @@ $method = $_SERVER['REQUEST_METHOD'];
 
 if ($method === 'GET') {
     $entries = storage_read_all($SQLITE_FILE, $DATA_FILE, 'leaderboard', []);
+    // Le voci inviate prima che boardSeason esistesse non hanno il campo: sono per
+    // definizione Stagione 1 (tutto quello che c'era "prima" del concetto di stagioni).
+    foreach ($entries as &$e) { if (!isset($e['boardSeason'])) $e['boardSeason'] = 1; }
+    unset($e);
     usort($entries, function ($a, $b) { return ($b['score'] ?? 0) <=> ($a['score'] ?? 0); });
-    echo json_encode(['ok' => true, 'entries' => array_slice($entries, 0, $RETURN_TOP)]);
+    echo json_encode(['ok' => true, 'entries' => array_slice($entries, 0, $RETURN_TOP), 'currentSeason' => get_leaderboard_season($SQLITE_FILE, $SEASON_FILE)]);
     exit;
 }
 
@@ -152,6 +175,7 @@ $entry = [
     'div' => $div,
     'startDiv' => $startDiv,
     'season' => $season,
+    'boardSeason' => get_leaderboard_season($SQLITE_FILE, $SEASON_FILE),
     'trophies' => $trophies,
     'worth' => $worth,
     'difficulty' => $difficulty,

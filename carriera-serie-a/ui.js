@@ -3543,12 +3543,18 @@
   let lbEntries = [];
   let lbFilterDiff = 'all';
   let lbFilterDiv = 'all';
+  // boardSeason (server, leaderboard.php): un concetto diverso da e.season (quella è la
+  // stagione IN carriera). Serve a poter "chiudere" la classifica ogni tanto senza perdere lo
+  // storico — di default si mostra solo quella in corso (lbCurrentSeason, dal server), con un
+  // selettore per rivedere le stagioni passate.
+  let lbCurrentSeason = 1;
+  let lbFilterSeason = 1;
 
   const diffOfEntry = (key) => DIFFICULTIES.find((d) => d.key === key) || { label: 'Media', key: 'medio' };
   const diffBadge = (key) => { const d = diffOfEntry(key); return `<span style="display:inline-block;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:800;border:1px solid ${DIFF_COLOR[d.key] || 'var(--line)'};color:${DIFF_COLOR[d.key] || 'var(--muted)'}">${d.label}</span>`; };
 
   function renderLeaderboardBody() {
-    const filtered = lbEntries.filter((e) => (lbFilterDiff === 'all' || e.difficulty === lbFilterDiff) && (lbFilterDiv === 'all' || e.div === +lbFilterDiv));
+    const filtered = lbEntries.filter((e) => (e.boardSeason || 1) === lbFilterSeason && (lbFilterDiff === 'all' || e.difficulty === lbFilterDiff) && (lbFilterDiv === 'all' || e.div === +lbFilterDiv));
     const top10 = filtered.slice(0, 10);
     const medal = ['🥇', '🥈', '🥉'];
     // Podio per i primi 3: il 1° al centro e più grande, come un vero podio, ordinato con
@@ -3573,8 +3579,14 @@
       </div>`).join('');
     const diffPills = ['all'].concat(DIFFICULTIES.map((d) => d.key)).map((k) => `<button type="button" class="ow-filter-pill ${lbFilterDiff === k ? 'on' : ''}" data-lbdiff="${k}">${k === 'all' ? 'Tutte' : diffOfEntry(k).label}</button>`).join('');
     const divPills = ['all'].concat(DIVS.map((d, i) => i)).map((k) => `<button type="button" class="ow-filter-pill ${lbFilterDiv === String(k) ? 'on' : ''}" data-lbdiv="${k}">${k === 'all' ? 'Tutte' : DIVS[k].name}</button>`).join('');
+    // Le stagioni di classifica presenti fra le voci scaricate (di solito solo 1-2: quella
+    // chiusa e quella in corso), più recente per prima — mai solo quella corrente, altrimenti
+    // una classifica appena "chiusa" sparirebbe dal selettore finché nessuno invia più nulla.
+    const seasons = Array.from(new Set(lbEntries.map((e) => e.boardSeason || 1).concat([lbCurrentSeason]))).sort((a, b) => b - a);
+    const seasonPills = seasons.map((s) => `<button type="button" class="ow-filter-pill ${lbFilterSeason === s ? 'on' : ''}" data-lbseason="${s}">Stagione ${s}${s === lbCurrentSeason ? ' (in corso)' : ''}</button>`).join('');
     overlay(`<h2>🌍 Classifica presidenti</h2>
-      <div class="ow-sub" style="text-align:center">Le migliori 10 carriere condivise da chi gioca, filtrabili per difficoltà e categoria raggiunta · punteggio in PA (Punti Aura)</div>
+      <div class="ow-sub" style="text-align:center">Le migliori 10 carriere condivise da chi gioca, filtrabili per stagione di classifica, difficoltà e categoria raggiunta · punteggio in PA (Punti Aura)</div>
+      ${seasons.length > 1 ? `<div class="ow-sub" style="margin:8px 0 2px">Stagione di classifica</div><div class="ow-squad-filters">${seasonPills}</div>` : ''}
       <div class="ow-sub" style="margin:8px 0 2px">Difficoltà</div>
       <div class="ow-squad-filters">${diffPills}</div>
       <div class="ow-sub" style="margin:8px 0 2px">Categoria</div>
@@ -3583,6 +3595,7 @@
       <div style="max-height:38vh;overflow:auto;margin:10px -6px 4px;display:flex;flex-direction:column;gap:2px">${restRows || (podium ? '' : `<div class="ow-sub" style="margin:14px 0">${lbEntries.length ? 'Nessuna carriera in questo filtro.' : 'Ancora nessuna carriera condivisa: sii il primo a fine partita.'}</div>`)}</div>
       <div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovClose">Chiudi</button></div>`);
     $('ovClose').onclick = closeOverlay;
+    document.querySelectorAll('#owOverlayModal [data-lbseason]').forEach((el) => el.addEventListener('click', () => { lbFilterSeason = +el.dataset.lbseason; renderLeaderboardBody(); }));
     document.querySelectorAll('#owOverlayModal [data-lbdiff]').forEach((el) => el.addEventListener('click', () => { lbFilterDiff = el.dataset.lbdiff; renderLeaderboardBody(); }));
     document.querySelectorAll('#owOverlayModal [data-lbdiv]').forEach((el) => el.addEventListener('click', () => { lbFilterDiv = el.dataset.lbdiv; renderLeaderboardBody(); }));
     document.querySelectorAll('#owOverlayModal [data-lbpodium]').forEach((el) => el.addEventListener('click', () => { const e = top10[+el.dataset.lbpodium]; if (e) showLeaderboardDetail(e); }));
@@ -3626,6 +3639,8 @@
       const data = await res.json();
       if (!data || !data.ok) throw new Error('bad response');
       lbEntries = data.entries || [];
+      lbCurrentSeason = data.currentSeason || 1;
+      lbFilterSeason = lbCurrentSeason;   // di default si mostra la stagione in corso
       renderLeaderboardBody();
     } catch (err) {
       overlay(`<h2>🌍 Classifica presidenti</h2><div class="ow-sub" style="text-align:center">Non riesco a caricarla al momento. Riprova più tardi.</div><div class="dyn-modal-actions"><button class="dyn-btn dyn-btn-primary" id="ovClose">Chiudi</button></div>`);
