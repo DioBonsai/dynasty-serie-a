@@ -830,6 +830,21 @@ body{
 .ow-diff-pick > small{ display:block; font-size:10.5px; font-weight:600; color:var(--muted); line-height:1.35; }
 .ow-diff-pick.on{ border-color:var(--dyn); background:rgba(201,144,47,.14); box-shadow:0 0 0 1px var(--dyn) inset; }
 
+/* ---------- interruttore modalità Hardcore ---------- */
+.ow-hardcore-toggle{
+  display:flex; align-items:center; gap:12px; cursor:pointer;
+  background:var(--panel2); border:1.5px solid rgba(255,120,40,.35); border-radius:14px;
+  padding:11px 14px; margin:4px 0 12px; transition:border-color .15s ease, background .15s ease, box-shadow .15s ease;
+}
+.ow-hardcore-toggle:hover{ border-color:rgba(255,120,40,.65); }
+.ow-hardcore-toggle input{ width:19px; height:19px; accent-color:#ff7828; flex:0 0 auto; cursor:pointer; }
+.ow-hardcore-icon{ font-size:21px; line-height:1; flex:0 0 auto; filter:grayscale(.75) opacity(.6); transition:filter .15s ease; }
+.ow-hardcore-text{ flex:1; min-width:0; }
+.ow-hardcore-text b{ display:block; font-family:var(--serif); font-size:14.5px; font-weight:700; color:var(--txt); }
+.ow-hardcore-text small{ display:block; font-size:10.5px; font-weight:600; color:var(--muted); line-height:1.35; margin-top:1px; }
+.ow-hardcore-toggle.on{ border-color:#ff7828; background:rgba(255,120,40,.13); box-shadow:0 0 0 1px rgba(255,120,40,.45) inset; }
+.ow-hardcore-toggle.on .ow-hardcore-icon{ filter:none; }
+
 /* ---------- scelta del modulo (anteprima formazione) ---------- */
 .ow-formation-picker{ display:flex; flex-wrap:wrap; gap:6px; margin:0 0 10px; }
 .ow-formation-pick{

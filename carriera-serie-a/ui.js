@@ -1603,8 +1603,12 @@
     // Con gli slot multipli, comprare un nuovo club non minaccia mai le carriere già
     // salvate (restano nell'elenco "Le tue carriere" qui sotto): nessuna conferma di
     // sovrascrittura da chiedere.
-    const hardcoreChk = $('hardcoreChk');
-    if (hardcoreChk) hardcoreChk.addEventListener('change', () => { startHardcore = hardcoreChk.checked; });
+    const hardcoreChk = $('hardcoreChk'), hardcoreToggle = $('hardcoreToggle');
+    if (hardcoreChk) hardcoreChk.addEventListener('change', () => {
+      startHardcore = hardcoreChk.checked;
+      if (hardcoreToggle) hardcoreToggle.classList.toggle('on', startHardcore);
+      if (DynSound) DynSound.tap();
+    });
     $('owStartBtn').addEventListener('click', () => {
       if (selTakeover < 0) { toast('Scegli prima una situazione di partenza.'); return; }
       // Una sola dynasty Hardcore per volta: vero spirito "una vita sola", niente farm di
